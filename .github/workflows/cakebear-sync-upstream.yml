@@ -1,0 +1,111 @@
+name: cakebear-sync-upstream
+
+# -----------------------------------------------------------------------------
+# Merge microsoft/typescript-go into cakebear once a week and open a PR.
+#
+# The cadence is the point. A fork that syncs weekly resolves import-line
+# conflicts in minutes; a fork that syncs after six months resolves them for a
+# day and eventually gets abandoned instead. Finding out on a Monday that a
+# sync breaks the build is the cheapest version of that news.
+#
+# Upstream will eventually be merged into microsoft/TypeScript and this repo
+# will close. When that happens, change UPSTREAM_URL below and nothing else.
+# -----------------------------------------------------------------------------
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_URL: https://github.com/microsoft/typescript-go.git
+
+jobs:
+  sync:
+    name: merge upstream/main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure git
+        run: |
+          git config user.name  "cakebear-sync[bot]"
+          git config user.email "cakebear-sync@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream "$UPSTREAM_URL" || git remote set-url upstream "$UPSTREAM_URL"
+          git fetch upstream --no-tags
+
+      - name: Skip if already up to date
+        id: check
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "up-to-date=true" >>"$GITHUB_OUTPUT"
+            echo "Already contains upstream/main; nothing to do."
+          else
+            echo "up-to-date=false" >>"$GITHUB_OUTPUT"
+            echo "behind=$(git rev-list --count HEAD..upstream/main)" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge and rewrite module path
+        if: steps.check.outputs.up-to-date == 'false'
+        id: merge
+        run: |
+          set -euo pipefail
+          branch="sync/upstream-$(date -u +%Y%m%d)"
+          git switch -c "$branch"
+          scripts/sync-upstream.sh upstream/main
+          git push --force-with-lease origin "$branch"
+          echo "branch=$branch" >>"$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short upstream/main)" >>"$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.check.outputs.up-to-date == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The golden-rule gate steps aside for this label, and only this label.
+          gh label create upstream-sync \
+            --color 0E8A16 \
+            --description "Merges microsoft/typescript-go; exempt from the golden-rule gate" \
+            2>/dev/null || true
+          gh pr create \
+            --base main \
+            --head "${{ steps.merge.outputs.branch }}" \
+            --label upstream-sync \
+            --title "Merge upstream/main (${{ steps.merge.outputs.sha }})" \
+            --body "$(cat <<'BODY'
+Automated weekly sync with `microsoft/typescript-go`.
+
+`scripts/sync-upstream.sh` merged `upstream/main`, took upstream's side of every
+conflicted file, and re-ran `scripts/rename-module.sh`. That resolution is only
+correct while the golden rule holds — if this PR shows changes to a file
+cakebear owns, the script would have stopped instead, so review the diff for
+anything outside upstream's tree.
+
+`go build ./...` passed before the merge was committed.
+
+**Review checklist**
+- [ ] `git show --stat` shows only upstream paths plus module-path lines
+- [ ] cakebear's own tests still pass against the new frontend
+- [ ] No new upstream package that `cmd/cakec` should be adopting
+BODY
+)"
+
+      - name: Report
+        if: steps.check.outputs.up-to-date == 'true'
+        run: echo "cakebear is level with upstream/main."

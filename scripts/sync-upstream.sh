@@ -13,9 +13,9 @@ set -euo pipefail
 REF="${1:-upstream/main}"
 
 cd "$(dirname "$0")/.."
-
-# Paths cakebear owns. Everything else belongs to upstream.
-OURS_RE='^(cmd/cakec/|ir/|backend/|runtime/|types/|scripts/|CLAUDE\.md|README\.md|\.github/workflows/cakebear-)'
+# shellcheck source=scripts/lib-owned.sh
+. scripts/lib-owned.sh
+owned_load
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "working tree is dirty; commit or stash first" >&2
@@ -27,10 +27,13 @@ git merge --no-commit --no-ff "$REF" || true
 
 conflicts=$(git diff --name-only --diff-filter=U || true)
 if [ -n "$conflicts" ]; then
-  ours=$(printf '%s\n' "$conflicts" | grep -E "$OURS_RE" || true)
-  if [ -n "$ours" ]; then
+  ours=()
+  while IFS= read -r file; do
+    is_owned "$file" && ours+=("$file")
+  done <<<"$conflicts"
+  if [ ${#ours[@]} -gt 0 ]; then
     echo "conflicts in files cakebear owns — resolve these by hand, then commit:" >&2
-    printf '%s\n' "$ours" | sed 's/^/  /' >&2
+    printf '  %s\n' "${ours[@]}" >&2
     exit 1
   fi
   # Upstream-owned conflicts are import lines. Take their side wholesale;

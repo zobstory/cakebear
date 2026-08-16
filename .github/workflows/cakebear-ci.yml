@@ -1,57 +1,109 @@
-name: ci
+name: cakebear-ci
 
 # -----------------------------------------------------------------------------
-# Initially MANUAL-ONLY: this pipeline does NOT run on push or PR yet.
-# It will only fire when you click "Run workflow" in the Actions tab.
+# cakebear's own gates. Upstream's ci.yml is a separate, inherited workflow --
+# leave it alone; it is an upstream file (see scripts/owned-paths.txt).
 #
-# To turn on automatic enforcement once you've verified it works:
-#   1. Uncomment the `pull_request` and `push` triggers below.
-#   2. Add a branch protection rule on `main` that requires these jobs:
-#        gh api -X PUT repos/zobstory/cake_bear/branches/main/protection \
-#          -F 'required_status_checks[strict]=true' \
-#          -F 'required_status_checks[contexts][]=line-limit (≤ 500 lines per .rs file)' \
-#          -F 'required_status_checks[contexts][]=coverage (≥ 70%, goal 80%)' \
-#          -F 'enforce_admins=true' \
-#          -F 'required_pull_request_reviews[required_approving_review_count]=1' \
-#          -F 'required_pull_request_reviews[require_code_owner_reviews]=true' \
-#          -F 'restrictions=' --input -
-#      (Or set it from the UI: Settings → Branches → Add branch protection rule.)
+# Everything here is scoped to the paths cakebear owns. Upstream's tree is
+# ~4800 Go files, so an unscoped coverage or line-limit gate would be measuring
+# Microsoft's code and telling us nothing about ours.
+#
+# To require these before merge:
+#   Settings -> Branches -> add a rule on `main` requiring
+#     golden-rule, line-limit, build, test, lint
 # -----------------------------------------------------------------------------
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
-  # pull_request:
-  #   branches: [main]
-  # push:
-  #   branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
-  line-limit:
-    name: line-limit (≤ 500 lines per .rs file)
+  golden-rule:
+    name: golden-rule (no upstream files touched)
     runs-on: ubuntu-latest
+    # Upstream syncs necessarily touch upstream files. cakebear-sync-upstream.yml
+    # labels those PRs so this gate steps aside for them, and only for them.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check file line counts
-        run: python3 scripts/check-line-limit.py
-
-  coverage:
-    name: coverage (≥ 70%, goal 80%)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
-      - name: Cache cargo build artifacts
-        uses: Swatinem/rust-cache@v2
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Run tests and enforce 70% line coverage
-        # The 70% floor is the merge gate; 80% is the target we're aiming at.
-        # When most of the workspace is past 80%, bump --fail-under-lines and
-        # delete this comment.
-        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 70
+          fetch-depth: 0
+      - name: Check no upstream file was modified
+        run: scripts/check-upstream-untouched.sh origin/${{ github.base_ref || 'main' }}
+
+  line-limit:
+    name: line-limit (<= 500 lines per owned .go file)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check-line-limit.py
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build ./...
+
+  test:
+    name: test (coverage >= 70%, goal 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test cakebear packages with coverage
+        # The 70% floor is the merge gate; 80% is the target. When most owned
+        # packages are past 80%, raise FLOOR and delete this comment.
+        run: |
+          set -euo pipefail
+          FLOOR=70
+          pkgs=$(scripts/owned-go-packages.sh)
+          if [ -z "$pkgs" ]; then
+            echo "No cakebear-owned packages yet — nothing to cover."
+            exit 0
+          fi
+          echo "$pkgs"
+          # shellcheck disable=SC2086
+          go test -covermode=atomic -coverprofile=cover.out $pkgs
+          go tool cover -func=cover.out | tail -1
+          total=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)
+          awk -v t="$total" -v f="$FLOOR" 'BEGIN {
+            if (t + 0 < f) { printf "::error::line coverage %.1f%% is below the %d%% floor\n", t, f; exit 1 }
+            printf "coverage %.1f%% (floor %d%%)\n", t, f
+          }'
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve owned packages
+        id: pkgs
+        run: |
+          set -euo pipefail
+          pkgs=$(scripts/owned-go-packages.sh)
+          echo "empty=$([ -z "$pkgs" ] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+      - name: golangci-lint
+        if: steps.pkgs.outputs.empty == 'false'
+        uses: golangci/golangci-lint-action@v6
+        with:
+          # Config is upstream's .golangci.yml, inherited by the fork.
+          args: --timeout=10m ./cmd/cakec/... ./ir/... ./backend/... ./runtime/... ./types/...
+      - name: Skip
+        if: steps.pkgs.outputs.empty == 'true'
+        run: echo "No cakebear-owned packages yet — nothing to lint."

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Enforce a 500-line maximum on Rust source files in the workspace.
+"""Enforce a 500-line maximum on cakebear's own Go source files.
 
 A guardrail to keep modules focused. If a file legitimately wants more
-lines, split it into submodules rather than raising the limit.
+lines, split it into more files rather than raising the limit.
+
+Only files under paths listed in scripts/owned-paths.txt are checked --
+upstream's tree runs well past 500 lines in many places and is not ours
+to split. See CLAUDE.md, "The golden rule".
 
 Run from the repo root:
     python3 scripts/check-line-limit.py
@@ -17,8 +21,27 @@ import sys
 from pathlib import Path
 
 LIMIT = 500
-ROOTS = [Path("crates")]
-SUFFIXES = {".rs"}
+SUFFIXES = {".go"}
+OWNED = Path("scripts/owned-paths.txt")
+
+
+def owned_dirs() -> list[Path]:
+    """Directory prefixes from the ownership manifest.
+
+    Exact-file entries (CLAUDE.md and friends) are skipped: they hold no
+    Go source, so the suffix filter would drop them anyway.
+    """
+    if not OWNED.exists():
+        print(f"error: {OWNED} not found; run from the repo root", file=sys.stderr)
+        sys.exit(2)
+
+    dirs = []
+    for raw in OWNED.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or not line.endswith("/"):
+            continue
+        dirs.append(Path(line))
+    return dirs
 
 
 def count_lines(path: Path) -> int:
@@ -27,25 +50,32 @@ def count_lines(path: Path) -> int:
 
 
 def main() -> int:
+    roots = owned_dirs()
     violations: list[tuple[Path, int]] = []
-    for root in ROOTS:
+    checked = 0
+
+    # Test files count too. A 600-line table-driven test is still a file
+    # that wants splitting, and exempting them is how the limit erodes.
+    for root in roots:
         if not root.exists():
-            continue
-        for path in root.rglob("*"):
+            continue  # Phases land these directories one at a time.
+        for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix not in SUFFIXES:
                 continue
+            checked += 1
             n = count_lines(path)
             if n > LIMIT:
                 violations.append((path, n))
 
     if not violations:
-        roots_repr = ", ".join(str(r) for r in ROOTS)
-        print(f"OK: every .rs file under {roots_repr} is within {LIMIT} lines.")
+        roots_repr = ", ".join(str(r) for r in roots)
+        print(f"OK: {checked} cakebear-owned .go file(s) within {LIMIT} lines.")
+        print(f"    roots: {roots_repr}")
         return 0
 
     # GitHub Actions annotations (no-op outside Actions).
     for path, n in violations:
-        print(f"::error file={path}::file has {n} lines, limit is {LIMIT}")
+        print(f"::error file={path},line={LIMIT}::file has {n} lines, limit is {LIMIT}")
 
     print(f"\n{len(violations)} file(s) exceed the {LIMIT}-line limit:", file=sys.stderr)
     for path, n in violations:
