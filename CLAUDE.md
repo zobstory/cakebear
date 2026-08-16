@@ -96,8 +96,9 @@ counts.
 
 ```sh
 go build ./...                        # whole fork; ~1.5 min cold
+go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
 go run ./cmd/tsgo --version           # upstream CLI still works
-go run ./cmd/cakec build foo.ts       # ours (lands in Phase 2)
+bin/cakec build examples/basic/main.ts
 
 scripts/owned-go-packages.sh          # the packages that are ours
 go test $(scripts/owned-go-packages.sh)
@@ -105,6 +106,13 @@ go test $(scripts/owned-go-packages.sh)
 python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
 scripts/check-upstream-untouched.sh main      # the golden rule
 ```
+
+**Always build binaries into `bin/`.** A bare `go build ./cmd/cakec` drops a
+`cakec` executable at the repo root, which is not ignored — and we cannot add it
+to `.gitignore`, because that is an upstream file. `/bin` is already in
+upstream's ignore list, so `-o bin/` is the convention that needs no edit to
+their tree. (The `golden-rule` gate catches this if you forget; it already has
+once.)
 
 `_submodules/TypeScript` is upstream's conformance corpus. Clone without
 `--recurse-submodules` unless you need it.
@@ -123,16 +131,16 @@ own, it stops and hands it to you rather than guessing.
 labelled PR. Keep the cadence: weekly syncs conflict for minutes, six-monthly
 syncs conflict for a day and eventually get abandoned.
 
-## Current phase: **Phase 2 — `cakec` type-checks TypeScript**
+## Current phase: **Phase 3 — expose the parallelism**
 
-Build `cmd/cakec` on upstream's packages: construct a `Program`, parse, bind,
-check, and report diagnostics through our own CLI formatting. No compiler code
-of our own yet.
+Wire `--checkers` through `cakec` (the option already exists as
+`core.CompilerOptions.Checkers`), benchmark on a real multi-thousand-file
+codebase to establish the baseline every later phase is measured against, and
+verify diagnostic output is byte-identical at 1 and 8 workers. Nondeterministic
+error ordering is the classic bug here and it bites CI, not you.
 
-Done when `cakec build examples/basic/main.ts` type-checks correctly and
-reports a real diagnostic with a real span on a broken file.
-
-Completed: **P0** fork established, **P1** guardrails and sync.
+Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
+type-checks TypeScript end to end.
 
 ## Open questions — answer before writing the emitter
 
