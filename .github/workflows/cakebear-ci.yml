@@ -1,0 +1,57 @@
+name: ci
+
+# -----------------------------------------------------------------------------
+# Initially MANUAL-ONLY: this pipeline does NOT run on push or PR yet.
+# It will only fire when you click "Run workflow" in the Actions tab.
+#
+# To turn on automatic enforcement once you've verified it works:
+#   1. Uncomment the `pull_request` and `push` triggers below.
+#   2. Add a branch protection rule on `main` that requires these jobs:
+#        gh api -X PUT repos/zobstory/cake_bear/branches/main/protection \
+#          -F 'required_status_checks[strict]=true' \
+#          -F 'required_status_checks[contexts][]=line-limit (≤ 500 lines per .rs file)' \
+#          -F 'required_status_checks[contexts][]=coverage (≥ 70%, goal 80%)' \
+#          -F 'enforce_admins=true' \
+#          -F 'required_pull_request_reviews[required_approving_review_count]=1' \
+#          -F 'required_pull_request_reviews[require_code_owner_reviews]=true' \
+#          -F 'restrictions=' --input -
+#      (Or set it from the UI: Settings → Branches → Add branch protection rule.)
+# -----------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   branches: [main]
+  # push:
+  #   branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  line-limit:
+    name: line-limit (≤ 500 lines per .rs file)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check file line counts
+        run: python3 scripts/check-line-limit.py
+
+  coverage:
+    name: coverage (≥ 70%, goal 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: Cache cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests and enforce 70% line coverage
+        # The 70% floor is the merge gate; 80% is the target we're aiming at.
+        # When most of the workspace is past 80%, bump --fail-under-lines and
+        # delete this comment.
+        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 70
