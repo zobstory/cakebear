@@ -4,7 +4,7 @@
 A guardrail to keep modules focused. If a file legitimately wants more
 lines, split it into more files rather than raising the limit.
 
-Only files under paths listed in scripts/owned-paths.txt are checked --
+Only files under paths listed in scripts/owned-paths are checked --
 upstream's tree runs well past 500 lines in many places and is not ours
 to split. See CLAUDE.md, "The golden rule".
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 LIMIT = 500
 SUFFIXES = {".go"}
-OWNED = Path("scripts/owned-paths.txt")
+OWNED = Path("scripts/owned-paths")
 
 
 def owned_dirs() -> list[Path]:

@@ -1,14 +1,14 @@
 # Shared ownership matching for cakebear's guardrail scripts.
 # Source this, don't execute it. Expects the caller to have cd'd to the repo root.
 #
-# The manifest is scripts/owned-paths.txt; see CLAUDE.md, "The golden rule".
+# The manifest is scripts/owned-paths; see CLAUDE.md, "The golden rule".
 
 # shellcheck shell=bash
 
 _OWNED_PATTERNS=""
 
 owned_load() {
-  local manifest="scripts/owned-paths.txt"
+  local manifest="scripts/owned-paths"
   if [ ! -f "$manifest" ]; then
     echo "$manifest not found; run from the repo root" >&2
     return 1

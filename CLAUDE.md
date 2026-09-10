@@ -19,7 +19,7 @@ JavaScript, we lower to Go and shell out to `go build`.
 
 A fork's maintenance cost is directly proportional to its diff against
 upstream, and upstream is actively developed. Every cakebear behaviour goes in
-a new file under a path listed in `scripts/owned-paths.txt`. In particular
+a new file under a path listed in `scripts/owned-paths`. In particular
 `cmd/cakec` constructs its own `Program` from their packages and runs its own
 emit — it never routes through `internal/execute`, precisely so that hooking
 the pipeline requires no edit inside their tree.
@@ -48,8 +48,9 @@ it is a diff.
   build-time dependency on the Go toolchain.
 - **`ir/` is backend-agnostic.** It must not import `backend/`, and `backend/`
   must import nothing from the fork. That constraint is the escape hatch (swap
-  the Go emitter for LLVM if beating Go ever matters) and the precondition for
-  extracting `backend/` to a standalone `github.com/zobstory/buildbinary`.
+  the Go emitter for LLVM if beating Go ever matters) and what keeps a future
+  extraction into a separate module a file move. `scripts/check-boundary.sh`
+  enforces it and CI runs it.
 
 ## Repo layout
 
@@ -61,24 +62,25 @@ cakebear/
 ├── cmd/tsgo/       UPSTREAM  their CLI — keep it working, it is a free
 │                             regression check that a sync didn't break the frontend
 ├── cmd/cakec/      OURS      the cakebear CLI
+├── ir/             OURS      lowered IR: pure data, stdlib imports only
 ├── lower/          OURS      checked AST → ir; the only package seeing both worlds
+├── backend/        OURS      IR → Go source → `go build` → executable
+│   └── runtime/    OURS      linked into compiled output; lives here because
+│                             go:embed cannot traverse ".."
 ├── types/          OURS      cakebear type extensions (base64, refined numerics)
 └── scripts/        OURS      fork maintenance and CI gates
 ```
 
-The IR and the backend now live in a separate module,
-**[github.com/zobstory/buildbinary](https://github.com/zobstory/buildbinary)**:
+`ir/` and `backend/` sit at top level rather than under `internal/` on purpose:
+that is what would make a future extraction into a separate module a file move
+rather than a visibility rewrite:
 
-```
-buildbinary/
-├── ir/              the IR: pure data, stdlib only
-├── backend/         IR → Go source → `go build` → executable
-└── backend/runtime/ linked into compiled output; here because go:embed
-                     cannot traverse ".."
-```
+- `ir/` imports only the standard library.
+- `backend/` imports only `ir/` and the standard library.
+- `lower/` absorbs all the coupling to the fork, and is the only package that
+  sees both worlds.
 
-The module boundary now *enforces* what used to be a convention: `backend`
-cannot reach the fork even by accident. `lower/` absorbs all the coupling.
+`scripts/check-boundary.sh` enforces this, and CI runs it.
 
 ## Pipeline
 
@@ -102,7 +104,6 @@ counts.
 ## Build / test / run
 
 ```sh
-# Both repositories must sit side by side: ../buildbinary holds ir and backend.
 go build ./...                        # whole fork; ~1.5 min cold
 go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
 go run ./cmd/tsgo --version           # upstream CLI still works
@@ -137,10 +138,12 @@ It takes upstream's side of every conflicted file and re-runs the module rename
 — correct only because of the golden rule. If it finds a conflict in a file we
 own, it stops and hands it to you rather than guessing.
 
-`go.mod` and `go.sum` are listed as ours for exactly that reason. We add a
-dependency upstream does not have, so the gate has to permit our edits — and a
-conflict there must stop for a human, because a dependency change is precisely
-the kind of upstream edit that deserves someone looking at it.
+One trap worth knowing: upstream's `.gitignore` has a blanket `*.txt` rule, and
+`scripts/owned-paths` went untracked for five phases when it was named
+`owned-paths.txt`. Every guardrail script reads that manifest, so a fresh
+checkout would have failed all of them. We cannot add a negation — `.gitignore`
+is an upstream file — so the manifest is deliberately extensionless. Run
+`git status --ignored` before assuming a new file is committed.
 
 `.github/workflows/cakebear-sync-upstream.yml` runs this weekly and opens a
 labelled PR. Keep the cadence: weekly syncs conflict for minutes, six-monthly
@@ -174,29 +177,37 @@ The gap in this baseline is a genuinely large corpus of checkable `.ts`.
 (ambient declarations, bodyless overloads) is not legal in a `.ts` file, which
 is why workload B is 491 files rather than 3000.
 
-## Current phase: **unblocking the split**
+## Current phase: **open**
 
-`buildbinary` exists locally at `../buildbinary` with its own git history, but
-is **not yet on GitHub**. Until it is:
+P0–P5 are done and nothing is blocked. Reasonable next steps, none urgent:
 
-- `go.mod` carries `replace github.com/zobstory/buildbinary => ../buildbinary`.
-- `cakebear-ci.yml` checks out both repositories side by side, because that
-  replace only resolves when the sibling directory exists.
-- Neither repository has been pushed.
-
-To finish: create `zobstory/buildbinary`, push it, tag a version, then
-`go mod edit -dropreplace` and require the tag. The second checkout in CI goes
-at the same time.
-
-Be aware of the cost this bought early: the IR changed shape in P5 and will
-change again, and every such change is now a tag in one repo and a bump in the
-other. `replace` hides that while it is in place, which is convenient and also
-why it should not stay.
+- Widen the language subset. `null`/`undefined` need a nullable representation
+  in the IR; arrays and objects need an aggregate one. Both are prerequisites
+  for most real programs.
+- Multi-file programs, which need an import graph in the IR.
+- `tsconfig.json` support, so `cakec` can build a real project.
+- Push. Nothing has been pushed to GitHub yet, and upstream's `ci.yml` will fire
+  its full matrix on the first push unless Actions is disabled first.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
-**P4** IR, Go emission and native binaries, **P5** cakebear's type extensions,
-**P6** `ir`/`backend` extracted to their own module.
+**P4** IR, Go emission and native binaries, **P5** cakebear's type extensions.
+
+### On extracting the backend into its own module
+
+An earlier plan made this a phase. It was done, then reverted. Keeping the
+reasoning so it is not re-litigated from scratch:
+
+A separate module enforces the `ir`/`backend` boundary structurally. But
+`scripts/check-boundary.sh` enforces the same property for a fraction of the
+cost, and a split charges a tag in one repo plus a version bump in the other
+every time the IR changes shape — which, while the IR is young, is most weeks.
+A `replace` directive papers over that precisely while it matters most.
+
+Worth revisiting when there is a second consumer of the IR, or when the IR has
+gone a few months without changing shape. Note also that a Go *module* boundary
+does not require a separate *repository*: a nested `go.mod` gives the same
+guarantee in one repo.
 
 ## cakebear's type extensions
 

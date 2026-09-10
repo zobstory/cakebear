@@ -3,7 +3,7 @@
 #
 # cakebear is a fork of microsoft/typescript-go. Our merge cost is directly
 # proportional to our diff against upstream, so every cakebear behaviour goes
-# in a new file under a path listed in scripts/owned-paths.txt. Hooking the
+# in a new file under a path listed in scripts/owned-paths. Hooking the
 # pipeline never requires editing their tree -- cmd/cakec builds its own
 # Program rather than routing through internal/execute, precisely so that
 # stays true.
@@ -43,7 +43,7 @@ if [ ${#violations[@]} -eq 0 ]; then
 fi
 
 for file in "${violations[@]}"; do
-  echo "::error file=$file::upstream file modified; cakebear code belongs in a path listed in scripts/owned-paths.txt"
+  echo "::error file=$file::upstream file modified; cakebear code belongs in a path listed in scripts/owned-paths"
 done
 
 {

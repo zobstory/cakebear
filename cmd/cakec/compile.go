@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zobstory/buildbinary/backend"
+	"github.com/zobstory/cakebear/backend"
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/compiler"
 	"github.com/zobstory/cakebear/lower"

@@ -1,0 +1,33 @@
+# Paths cakebear owns.
+#
+# Everything else in this repository belongs to upstream
+# (github.com/microsoft/typescript-go) and must not be modified outside an
+# upstream sync. See CLAUDE.md, "The golden rule", for why.
+#
+# One path per line. A trailing slash means "this directory and everything
+# under it"; anything else is an exact file path. Blank lines and lines
+# starting with # are ignored.
+#
+# Deliberately extensionless: upstream's .gitignore has a blanket `*.txt` rule,
+# so this file was silently untracked for five phases when it was called
+# owned-paths. Adding a negation to .gitignore is not an option -- that is
+# an upstream file. Do not give this a .txt extension.
+#
+# Read by:
+#   scripts/check-upstream-untouched.sh  (fails a PR that touches upstream)
+#   scripts/check-boundary.sh            (keeps ir/ and backend/ extractable)
+#   scripts/check-line-limit.py          (only lints .go files we own)
+#   scripts/owned-go-packages.sh         (test, coverage and lint scoping)
+#   scripts/sync-upstream.sh             (refuses to auto-resolve our files)
+
+cmd/cakec/
+ir/
+lower/
+backend/
+types/
+examples/
+scripts/
+CLAUDE.md
+README.md
+.github/workflows/cakebear-ci.yml
+.github/workflows/cakebear-sync-upstream.yml
