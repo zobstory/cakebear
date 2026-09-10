@@ -102,6 +102,16 @@ func BoolToString(b bool) string {
 
 func LogNumber(f float64) { writeLine(numberForDisplay(f)) }
 
+// The extension types print as the integers they are, not through
+// numberForDisplay: they cannot be NaN, infinite or negative zero, so routing
+// them through float64 formatting would only risk precision loss. int64 and
+// uint64 in particular hold values that a float64 cannot represent exactly.
+func LogInt32(v int32)     { writeLine(strconv.FormatInt(int64(v), 10)) }
+func LogInt64(v int64)     { writeLine(strconv.FormatInt(v, 10)) }
+func LogUint32(v uint32)   { writeLine(strconv.FormatUint(uint64(v), 10)) }
+func LogUint64(v uint64)   { writeLine(strconv.FormatUint(v, 10)) }
+func LogFloat32(v float32) { writeLine(numberForDisplay(float64(v))) }
+
 // numberForDisplay is console.log's conversion, which is deliberately not
 // NumberToString.
 //

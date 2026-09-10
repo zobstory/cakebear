@@ -188,6 +188,12 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.Unary:
 		return fmt.Sprintf("(%s%s)", goUnaryOp(x.Op), e.expr(x.Operand))
 
+	case *ir.Convert:
+		// A plain Go conversion. Truncation and wrapping follow Go's rules,
+		// which are the machine's; the compile-time range check in types/
+		// catches the literal cases before they get here.
+		return fmt.Sprintf("%s(%s)", goType(x.Typ), e.expr(x.Value))
+
 	case *ir.Call:
 		args := make([]string, len(x.Args))
 		for i, a := range x.Args {
@@ -230,6 +236,20 @@ func goType(t ir.Type) string {
 		return "string"
 	case ir.Boolean:
 		return "bool"
+	case ir.Int32:
+		return "int32"
+	case ir.Int64:
+		return "int64"
+	case ir.Uint32:
+		return "uint32"
+	case ir.Uint64:
+		return "uint64"
+	case ir.Float32:
+		return "float32"
+	case ir.Base64:
+		// base64 is a compile-time refinement over string, not a distinct
+		// runtime representation. See types/cakebear.d.ts.
+		return "string"
 	default:
 		return "any"
 	}
@@ -245,6 +265,18 @@ func logFunc(t ir.Type) string {
 		return "LogBool"
 	case ir.Null:
 		return "LogNull"
+	case ir.Int32:
+		return "LogInt32"
+	case ir.Int64:
+		return "LogInt64"
+	case ir.Uint32:
+		return "LogUint32"
+	case ir.Uint64:
+		return "LogUint64"
+	case ir.Float32:
+		return "LogFloat32"
+	case ir.Base64:
+		return "LogString"
 	default:
 		return "LogUndefined"
 	}

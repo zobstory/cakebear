@@ -15,6 +15,7 @@ import (
 	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
 	"github.com/zobstory/cakebear/ir"
+	"github.com/zobstory/cakebear/types"
 )
 
 // lowerSource type-checks a snippet and lowers it, the way cakec does.
@@ -28,7 +29,9 @@ func lowerSource(t *testing.T, src string) (*ir.Module, []*Error) {
 	}
 
 	cwd := tspath.NormalizePath(dir)
-	fs := bundled.WrapFS(osvfs.FS())
+	// Mirrors what cakec does: cakebear's declarations overlaid on the
+	// bundled lib files, so i32 and base64 resolve here too.
+	fs := types.WrapFS(bundled.WrapFS(osvfs.FS()))
 	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil, nil)
 
 	config := tsoptions.NewParsedCommandLine(
@@ -38,7 +41,7 @@ func lowerSource(t *testing.T, src string) (*ir.Module, []*Error) {
 			Strict: core.TSTrue,
 			NoEmit: core.TSTrue,
 		},
-		[]string{tspath.NormalizePath(path)},
+		[]string{tspath.NormalizePath(path), types.DeclarationPath()},
 		tspath.ComparePathsOptions{UseCaseSensitiveFileNames: fs.UseCaseSensitiveFileNames(), CurrentDirectory: cwd},
 	)
 
@@ -356,5 +359,112 @@ func TestErrorFormatsWithSpan(t *testing.T) {
 	e := &Error{Span: ir.Span{File: "a.ts", Line: 4, Col: 2}, Msg: "nope"}
 	if got, want := e.Error(), "a.ts:4:2: nope"; got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestLowerExtensionTypes(t *testing.T) {
+	t.Parallel()
+
+	m, errs := lowerSource(t, `
+const a: i32 = i32(1);
+const b: i64 = i64(2);
+const c: u32 = u32(3);
+const d: u64 = u64(4);
+const e: f32 = f32(1.5);
+const f: base64 = base64("YQ==");
+`)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	want := []ir.Type{ir.Int32, ir.Int64, ir.Uint32, ir.Uint64, ir.Float32, ir.Base64}
+	for i, expected := range want {
+		decl, ok := m.Main[i].(*ir.VarDecl)
+		if !ok {
+			t.Fatalf("statement %d is %T, want *ir.VarDecl", i, m.Main[i])
+		}
+		if decl.Type != expected {
+			t.Errorf("statement %d has type %v, want %v", i, decl.Type, expected)
+		}
+		if _, ok := decl.Init.(*ir.Convert); !ok {
+			t.Errorf("statement %d initialiser is %T, want *ir.Convert", i, decl.Init)
+		}
+	}
+}
+
+// A call returning an extension type must stay a call. Resolving conversions by
+// result type turned twice(x) into a cast that discarded the function entirely.
+func TestCallReturningExtensionStaysACall(t *testing.T) {
+	t.Parallel()
+
+	m, errs := lowerSource(t, "function twice(n: i32): i32 {\n  return i32(n + n);\n}\nconst r: i32 = twice(i32(1));\n")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	decl := m.Main[0].(*ir.VarDecl)
+	call, ok := decl.Init.(*ir.Call)
+	if !ok {
+		t.Fatalf("initialiser is %T, want *ir.Call — the call was replaced by a cast", decl.Init)
+	}
+	if call.Callee != "twice" || call.Typ != ir.Int32 {
+		t.Errorf("call = %+v, want twice returning i32", call)
+	}
+}
+
+func TestExtensionArithmeticKeepsItsType(t *testing.T) {
+	t.Parallel()
+
+	m, errs := lowerSource(t, "const a: i32 = i32(1);\nconst b: boolean = a < i32(2);\n")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	decl := m.Main[1].(*ir.VarDecl)
+	bin, ok := decl.Init.(*ir.Binary)
+	if !ok {
+		t.Fatalf("initialiser is %T, want *ir.Binary", decl.Init)
+	}
+	if bin.Typ != ir.Boolean {
+		t.Errorf("comparison type = %v, want boolean", bin.Typ)
+	}
+}
+
+// Out-of-range literals are Invalid, not Unsupported: no later phase makes them
+// legal, and telling someone to wait for a release would be a lie.
+func TestInvalidLiteralsAreClassifiedInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, errs := lowerSource(t, "const a: i32 = i32(3000000000);\n")
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors, want 1", len(errs))
+	}
+	if errs[0].Kind != Invalid {
+		t.Errorf("kind = %v, want Invalid", errs[0].Kind)
+	}
+
+	_, errs = lowerSource(t, "class C { }\n")
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors, want 1", len(errs))
+	}
+	if errs[0].Kind != Unsupported {
+		t.Errorf("kind = %v, want Unsupported", errs[0].Kind)
+	}
+}
+
+func TestExtensionTypeMapping(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		brand string
+		want  ir.Type
+	}{
+		{types.I32, ir.Int32}, {types.I64, ir.Int64}, {types.U32, ir.Uint32},
+		{types.U64, ir.Uint64}, {types.F32, ir.Float32}, {types.Base64, ir.Base64},
+		{"nope", ir.Invalid},
+	} {
+		if got := extensionType(tt.brand); got != tt.want {
+			t.Errorf("extensionType(%q) = %v, want %v", tt.brand, got, tt.want)
+		}
 	}
 }

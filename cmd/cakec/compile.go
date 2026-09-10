@@ -38,10 +38,25 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 	done()
 
 	if len(lowerErrs) > 0 {
+		var unsupported, invalid int
 		for _, e := range lowerErrs {
-			fmt.Fprintf(stderr, "%s: cannot compile yet: %s\n", e.Span, e.Msg)
+			switch e.Kind {
+			case lower.Invalid:
+				invalid++
+				fmt.Fprintf(stderr, "%s: error: %s\n", e.Span, e.Msg)
+			default:
+				unsupported++
+				fmt.Fprintf(stderr, "%s: cannot compile yet: %s\n", e.Span, e.Msg)
+			}
 		}
-		fmt.Fprintf(stderr, "cakec: %s the backend does not support yet\n", plural(len(lowerErrs), "construct"))
+		// Two counts, because they mean opposite things to whoever is reading:
+		// one asks them to change their code, the other to wait for a release.
+		if invalid > 0 {
+			fmt.Fprintf(stderr, "cakec: %s\n", plural(invalid, "error"))
+		}
+		if unsupported > 0 {
+			fmt.Fprintf(stderr, "cakec: %s the backend does not support yet\n", plural(unsupported, "construct"))
+		}
 		return exitErrors
 	}
 
@@ -86,6 +101,8 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 // userFiles returns the program's source files that came from the command line,
 // filtering out lib.d.ts and anything pulled in by resolution.
 func userFiles(program *compiler.Program, opts buildOptions) []*ast.SourceFile {
+	// opts.files holds only what the user named; cakebear's injected
+	// declarations are deliberately absent, so they are never compiled.
 	wanted := make(map[string]bool, len(opts.files))
 	for _, f := range opts.files {
 		abs, err := filepath.Abs(f)

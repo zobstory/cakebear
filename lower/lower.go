@@ -20,16 +20,30 @@ import (
 	"github.com/zobstory/cakebear/internal/checker"
 	"github.com/zobstory/cakebear/internal/scanner"
 	"github.com/zobstory/cakebear/ir"
+	"github.com/zobstory/cakebear/types"
 )
 
-// Error is a construct the backend cannot lower yet.
-//
-// It carries a span so the CLI can point at the source, and phrases the problem
-// as a limit of the current phase rather than as a mistake by the user, because
-// that is what it is.
+// Kind separates the two very different things lowering can refuse.
+type Kind int
+
+const (
+	// Unsupported is a construct a later phase will handle. Nothing is wrong
+	// with the source; the backend just cannot represent it yet.
+	Unsupported Kind = iota
+	// Invalid is a genuine error in the source that no future phase will make
+	// legal, such as a literal outside its type's range.
+	//
+	// Conflating the two would be a lie in both directions: it tells someone
+	// their correct-but-early code is broken, and tells someone whose value is
+	// out of range to wait for a release that will never fix it.
+	Invalid
+)
+
+// Error is something lowering refused, with a span so the CLI can point at it.
 type Error struct {
 	Span ir.Span
 	Msg  string
+	Kind Kind
 }
 
 func (e *Error) Error() string {
@@ -87,8 +101,15 @@ func (l *lowerer) span(n *ast.Node) ir.Span {
 	}
 }
 
+// fail records a construct the backend does not support yet.
 func (l *lowerer) fail(n *ast.Node, format string, args ...any) {
-	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...)})
+	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...), Kind: Unsupported})
+}
+
+// invalid records a genuine error in the source, which no later phase will make
+// legal.
+func (l *lowerer) invalid(n *ast.Node, format string, args ...any) {
+	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...), Kind: Invalid})
 }
 
 // typeOf maps a checked TypeScript type onto the Phase-1 type surface.
@@ -97,6 +118,14 @@ func (l *lowerer) typeOf(n *ast.Node) ir.Type {
 	if t == nil {
 		return ir.Invalid
 	}
+
+	// cakebear's extensions are checked first: they are intersections whose
+	// primitive half would otherwise match below and lose the brand, turning
+	// an i32 back into a float64.
+	if brand := types.BrandOf(l.checker, t); brand != "" {
+		return extensionType(brand)
+	}
+
 	flags := t.Flags()
 	switch {
 	case flags&checker.TypeFlagsNumberLike != 0:
@@ -111,6 +140,26 @@ func (l *lowerer) typeOf(n *ast.Node) ir.Type {
 		return ir.Null
 	case flags&checker.TypeFlagsUndefined != 0:
 		return ir.Undefined
+	default:
+		return ir.Invalid
+	}
+}
+
+// extensionType maps a brand name onto its IR type.
+func extensionType(brand string) ir.Type {
+	switch brand {
+	case types.I32:
+		return ir.Int32
+	case types.I64:
+		return ir.Int64
+	case types.U32:
+		return ir.Uint32
+	case types.U64:
+		return ir.Uint64
+	case types.F32:
+		return ir.Float32
+	case types.Base64:
+		return ir.Base64
 	default:
 		return ir.Invalid
 	}

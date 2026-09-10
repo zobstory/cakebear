@@ -14,6 +14,7 @@ import (
 	"github.com/zobstory/cakebear/internal/tsoptions"
 	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
+	cakebeartypes "github.com/zobstory/cakebear/types"
 )
 
 // runBuild type-checks the input files and reports what it finds.
@@ -50,9 +51,16 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	// bundled.WrapFS overlays the embedded lib.*.d.ts files onto the real
 	// filesystem, so a checkout without a node_modules still resolves the
 	// standard library.
-	fs := bundled.WrapFS(osvfs.FS())
+	// Two overlays: upstream's bundled lib.*.d.ts, and cakebear's own type
+	// extensions. Both serve virtual paths, so neither can be shadowed by a
+	// real file or left stale by a partial install.
+	fs := cakebeartypes.WrapFS(bundled.WrapFS(osvfs.FS()))
 
 	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/)
+
+	// cakebear's declarations are a root file of every program, so `i32` and
+	// `base64` resolve without an import or a reference directive.
+	roots = append(roots, cakebeartypes.DeclarationPath())
 
 	config := tsoptions.NewParsedCommandLine(
 		compilerOptionsFor(opts),

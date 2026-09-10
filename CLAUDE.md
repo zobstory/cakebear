@@ -164,20 +164,54 @@ The gap in this baseline is a genuinely large corpus of checkable `.ts`.
 (ambient declarations, bodyless overloads) is not legal in a `.ts` file, which
 is why workload B is 491 files rather than 3000.
 
-## Current phase: **Phase 5 — cakebear's type extensions**
+## Current phase: **Phase 6 — extract `buildbinary`**
 
-`base64` and the refined numerics, implemented in `types/` as a layer alongside
-the checker rather than edits inside it.
+Move `ir/` and `backend/` into a standalone
+`github.com/zobstory/buildbinary` and depend on it normally. The
+precondition already holds: `backend/` imports only `ir/` and the standard
+library, and `ir/` imports only the standard library.
 
-Promote the numerics ahead of `base64`: because `number` lowers to `float64`,
-integer-heavy TypeScript runs measurably slower than equivalent Go, and an
-`i32`/`u64` that lowers straight to Go's is the escape hatch. The README pitched
-these as precision ergonomics; the backend decision turned them into the
-project's main performance story.
+Worth doing once the IR has stopped changing shape every week — splitting the
+repo before then means version-bumping two repos per change. Nothing else is
+blocked on it.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
-**P4** IR, Go emission and native binaries.
+**P4** IR, Go emission and native binaries, **P5** cakebear's type extensions.
+
+## cakebear's type extensions
+
+Declared in `types/cakebear.d.ts` and injected into every program from a
+virtual path, so they resolve with no import or reference directive.
+
+| Type | Lowers to | Notes |
+|---|---|---|
+| `i32` `i64` | `int32` `int64` | native integers, no float64 round-trip |
+| `u32` `u64` | `uint32` `uint64` | |
+| `f32` | `float32` | |
+| `base64` | `string` | compile-time refinement, no runtime representation |
+
+They are **branded types** — an intersection of the primitive with a phantom
+property, e.g. `number & { readonly __cakebearBrand: "i32" }`. That is what
+makes them possible without a single edit inside `internal/checker`:
+TypeScript's own checker does the enforcement, so upstream merges stay
+mechanical and retiring an extension is deleting a declaration rather than
+unpicking a patch.
+
+Each brand has a conversion function of the same name, and conversion is
+deliberately explicit: TypeScript types `i32 + i32` as `number`, because adding
+two 32-bit integers can overflow, so widening back is `i32(a + b)` and the
+truncation is visible to whoever reads it.
+
+**Literal arguments are validated at compile time.** `i32(3000000000)`,
+`i32(1.5)`, `u32(-1)` and `base64("!!!")` are all compile errors. This is the
+part a plain `number` or `string` could never do, and the reason the extensions
+earn their place. Non-literal arguments are the machine's problem at runtime,
+under Go's conversion rules.
+
+Two failure kinds, reported separately because they mean opposite things:
+`error:` is a genuine mistake no later phase will make legal, and
+`cannot compile yet:` is a limit of the current phase.
 
 ## The Phase-1 language subset
 
@@ -186,7 +220,8 @@ else is refused by `lower/` with a span and the construct's name — the refusal
 is a limit of the current phase, and the diagnostics say so rather than implying
 the user made a mistake.
 
-Supported: `number`, `string`, `boolean`; `const`/`let` with explicit type
+Supported: `number`, `string`, `boolean`, and cakebear's extensions
+(`i32`, `i64`, `u32`, `u64`, `f32`, `base64`); `const`/`let` with explicit type
 annotations; function declarations with typed parameters and return; arithmetic;
 string concatenation with `+` when both operands are strings; comparisons;
 `===`/`!==`; `&&`/`||`/`!`; unary minus; `if`/`else`; `while`; `return`;

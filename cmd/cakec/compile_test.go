@@ -238,3 +238,113 @@ func TestParseTarget(t *testing.T) {
 		}
 	}
 }
+
+// The extension types exist so the backend can use a native machine type
+// instead of float64, and this proves the whole path: brand recognised,
+// lowered to int32/int64/uint32/string, printed as the integers they are.
+func TestCompileExtensionTypes(t *testing.T) {
+	t.Parallel()
+
+	stdout, buildOut, code := compileAndRun(t, `
+const small: i32 = i32(42);
+const big: i64 = i64(9007199254740991);
+const un: u32 = u32(4294967295);
+const enc: base64 = base64("Y2FrZWJlYXI=");
+console.log(small);
+console.log(big);
+console.log(un);
+console.log(enc);
+`)
+
+	if code != exitOK {
+		t.Fatalf("build failed (%d):\n%s", code, buildOut)
+	}
+	want := "42\n9007199254740991\n4294967295\nY2FrZWJlYXI=\n"
+	if stdout != want {
+		t.Errorf("program printed %q, want %q", stdout, want)
+	}
+}
+
+// A call returning an extension type is a call, not a conversion.
+//
+// Resolving conversions by result type instead of declaration site silently
+// replaced twice(small) with int32(small), so the program printed its input
+// back. This is the regression test for that.
+func TestCallReturningExtensionIsNotAConversion(t *testing.T) {
+	t.Parallel()
+
+	stdout, buildOut, code := compileAndRun(t, `
+function twice(n: i32): i32 {
+  return i32(n + n);
+}
+console.log(twice(i32(21)));
+`)
+
+	if code != exitOK {
+		t.Fatalf("build failed (%d):\n%s", code, buildOut)
+	}
+	if stdout != "42\n" {
+		t.Errorf("program printed %q, want %q — the call was replaced by a cast", stdout, "42\n")
+	}
+}
+
+// Brand enforcement is TypeScript's own checker doing the work, with no edit
+// inside internal/checker. That is the whole reason for choosing branded types.
+func TestExtensionBrandsAreEnforcedByTheChecker(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "brand.ts")
+	if err := os.WriteFile(path, []byte("const x: i32 = 5;\nconst s: base64 = \"plain\";\n"), 0o600); err != nil {
+		t.Fatalf("writing source: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	code := runBuild(buildOptions{files: []string{path}, output: filepath.Join(dir, "out"), color: false}, &stderr)
+
+	if code != exitErrors {
+		t.Errorf("exit code = %d, want %d", code, exitErrors)
+	}
+	out := stderr.String()
+	// TS2322 is the checker's own "not assignable" diagnostic.
+	if !strings.Contains(out, "TS2322") {
+		t.Errorf("expected the checker to reject an unbranded value:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "out")); err == nil {
+		t.Error("a binary was produced despite type errors")
+	}
+}
+
+// Out-of-range literals are permanent errors, not phase limitations, and the
+// diagnostics have to say so differently — one asks the reader to change their
+// code, the other to wait for a release.
+func TestInvalidLiteralsReadAsErrorsNotLimitations(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.ts")
+	src := "const a: i32 = i32(3000000000);\nconst b: base64 = base64(\"!!!\");\nclass Later { }\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatalf("writing source: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	if code := runBuild(buildOptions{files: []string{path}, output: filepath.Join(dir, "out"), color: false}, &stderr); code != exitErrors {
+		t.Errorf("exit code = %d, want %d", code, exitErrors)
+	}
+
+	out := stderr.String()
+	if !strings.Contains(out, "error: 3000000000 is outside the range of i32") {
+		t.Errorf("range failure did not read as an error:\n%s", out)
+	}
+	if !strings.Contains(out, "error: \"!!!\" is not valid base64") {
+		t.Errorf("base64 failure did not read as an error:\n%s", out)
+	}
+	if !strings.Contains(out, "cannot compile yet: class declaration") {
+		t.Errorf("phase limitation did not read as one:\n%s", out)
+	}
+	// Counted separately, because they mean opposite things.
+	if !strings.Contains(out, "2 errors") || !strings.Contains(out, "1 construct") {
+		t.Errorf("the two kinds were not tallied separately:\n%s", out)
+	}
+}

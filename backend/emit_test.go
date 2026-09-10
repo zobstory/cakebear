@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -213,5 +215,87 @@ func TestEmitNegativeZeroUsesRuntimeValue(t *testing.T) {
 	got := Emit(m)
 	if !strings.Contains(got, rtPkg+".NegZero") {
 		t.Errorf("negative zero was emitted as a constant, which Go folds to +0:\n%s", got)
+	}
+}
+
+func TestGoTypeForExtensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		in   ir.Type
+		want string
+	}{
+		{ir.Int32, "int32"},
+		{ir.Int64, "int64"},
+		{ir.Uint32, "uint32"},
+		{ir.Uint64, "uint64"},
+		{ir.Float32, "float32"},
+		// base64 is a compile-time refinement over string, not a distinct
+		// runtime representation.
+		{ir.Base64, "string"},
+	} {
+		if got := goType(tt.in); got != tt.want {
+			t.Errorf("goType(%v) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestLogFuncForExtensions(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		in   ir.Type
+		want string
+	}{
+		{ir.Int32, "LogInt32"},
+		{ir.Int64, "LogInt64"},
+		{ir.Uint32, "LogUint32"},
+		{ir.Uint64, "LogUint64"},
+		{ir.Float32, "LogFloat32"},
+		{ir.Base64, "LogString"},
+	} {
+		if got := logFunc(tt.in); got != tt.want {
+			t.Errorf("logFunc(%v) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestEmitConversion(t *testing.T) {
+	t.Parallel()
+
+	m := &ir.Module{Name: "t", Main: []ir.Stmt{
+		&ir.VarDecl{
+			Name: "n", Type: ir.Int32,
+			Init: &ir.Convert{Value: num(42), Typ: ir.Int32, Span: span},
+			Span: span,
+		},
+	}}
+
+	if got := Emit(m); !strings.Contains(got, "var n int32 = int32(42.0)") {
+		t.Errorf("conversion did not emit as a Go conversion:\n%s", got)
+	}
+}
+
+// int64 holds values a float64 cannot represent exactly, so the runtime must
+// print them as integers rather than routing through float formatting.
+func TestExtensionIntegersRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	m := &ir.Module{Name: "t", Main: []ir.Stmt{
+		logNum(&ir.Convert{Value: num(9007199254740991), Typ: ir.Int64, Span: span}),
+		logNum(&ir.Convert{Value: num(4294967295), Typ: ir.Uint32, Span: span}),
+	}}
+
+	out := filepath.Join(t.TempDir(), "prog")
+	src, err := Build(m, Options{Output: out})
+	if err != nil {
+		t.Fatalf("Build: %v\n%s", err, src)
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("running: %v", err)
+	}
+	if want := "9007199254740991\n4294967295\n"; string(got) != want {
+		t.Errorf("printed %q, want %q", got, want)
 	}
 }

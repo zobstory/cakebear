@@ -113,3 +113,67 @@ func TestStatementsCarrySpan(t *testing.T) {
 		}
 	}
 }
+
+func TestExtensionTypeNames(t *testing.T) {
+	t.Parallel()
+
+	// These strings reach users in diagnostics, so they spell the cakebear
+	// type, not the Go type it lowers to.
+	for _, tt := range []struct {
+		in   Type
+		want string
+	}{
+		{Int32, "i32"}, {Int64, "i64"}, {Uint32, "u32"},
+		{Uint64, "u64"}, {Float32, "f32"}, {Base64, "base64"},
+	} {
+		if got := tt.in.String(); got != tt.want {
+			t.Errorf("Type(%d).String() = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestIsExtension(t *testing.T) {
+	t.Parallel()
+
+	for _, ext := range []Type{Int32, Int64, Uint32, Uint64, Float32, Base64} {
+		if !ext.IsExtension() {
+			t.Errorf("%v.IsExtension() = false, want true", ext)
+		}
+	}
+	for _, prim := range []Type{Number, String, Boolean, Void, Null, Undefined, Invalid} {
+		if prim.IsExtension() {
+			t.Errorf("%v.IsExtension() = true, want false", prim)
+		}
+	}
+}
+
+// IsNumeric decides where arithmetic and comparison apply. base64 is an
+// extension but is not a number, which is the case worth pinning down.
+func TestIsNumeric(t *testing.T) {
+	t.Parallel()
+
+	for _, num := range []Type{Number, Int32, Int64, Uint32, Uint64, Float32} {
+		if !num.IsNumeric() {
+			t.Errorf("%v.IsNumeric() = false, want true", num)
+		}
+	}
+	for _, notNum := range []Type{String, Boolean, Base64, Void, Null, Undefined, Invalid} {
+		if notNum.IsNumeric() {
+			t.Errorf("%v.IsNumeric() = true, want false", notNum)
+		}
+	}
+}
+
+func TestConvertCarriesTargetType(t *testing.T) {
+	t.Parallel()
+
+	span := Span{File: "t.ts", Line: 1, Col: 1}
+	c := &Convert{Value: &NumberLit{Value: 1, Span: span}, Typ: Int32, Span: span}
+
+	if got := c.ExprType(); got != Int32 {
+		t.Errorf("ExprType() = %v, want i32", got)
+	}
+	if got := c.ExprSpan(); got != span {
+		t.Errorf("ExprSpan() = %v, want %v", got, span)
+	}
+}

@@ -44,7 +44,29 @@ const (
 	Void
 	Null
 	Undefined
+
+	// cakebear's extension types. Unlike the above, these have no TypeScript
+	// equivalent: they exist so the backend can use a native machine type
+	// instead of float64. See types/cakebear.d.ts.
+	Int32
+	Int64
+	Uint32
+	Uint64
+	Float32
+	Base64
 )
+
+// IsExtension reports whether t is one of cakebear's own types rather than a
+// TypeScript primitive.
+func (t Type) IsExtension() bool {
+	return t >= Int32 && t <= Base64
+}
+
+// IsNumeric reports whether t holds a number, extension or not. Arithmetic and
+// comparison apply to exactly these.
+func (t Type) IsNumeric() bool {
+	return t == Number || (t.IsExtension() && t != Base64)
+}
 
 func (t Type) String() string {
 	switch t {
@@ -60,6 +82,18 @@ func (t Type) String() string {
 		return "null"
 	case Undefined:
 		return "undefined"
+	case Int32:
+		return "i32"
+	case Int64:
+		return "i64"
+	case Uint32:
+		return "u32"
+	case Uint64:
+		return "u64"
+	case Float32:
+		return "f32"
+	case Base64:
+		return "base64"
 	default:
 		return "invalid"
 	}
@@ -290,6 +324,22 @@ type ConsoleLog struct {
 	Arg  Expr
 	Span Span
 }
+
+// Convert is an explicit conversion to one of cakebear's extension types,
+// written as `i32(x)` in source.
+//
+// It is never inserted implicitly. TypeScript types `i32 + i32` as `number`
+// because adding two 32-bit integers can overflow, so widening back is
+// something the author writes and the reader can see.
+type Convert struct {
+	Value Expr
+	Typ   Type
+	Span  Span
+}
+
+func (*Convert) isExpr()          {}
+func (e *Convert) ExprType() Type { return e.Typ }
+func (e *Convert) ExprSpan() Span { return e.Span }
 
 func (*NumberLit) isExpr()    {}
 func (*StringLit) isExpr()    {}

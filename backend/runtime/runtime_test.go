@@ -109,3 +109,17 @@ func TestLoggersWriteThroughTheBuffer(t *testing.T) {
 	LogUndefined()
 	Flush()
 }
+
+// The extension loggers print integers exactly. Routing an int64 through
+// float64 formatting would lose precision above 2^53, which is squarely inside
+// the range i64 exists to provide.
+func TestExtensionLoggersArePrecise(t *testing.T) {
+	t.Parallel()
+
+	LogInt32(-2147483648)
+	LogInt64(9007199254740993) // 2^53 + 1: not representable as a float64
+	LogUint32(4294967295)
+	LogUint64(18446744073709551615) // math.MaxUint64
+	LogFloat32(1.5)
+	Flush()
+}

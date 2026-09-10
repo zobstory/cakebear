@@ -8,6 +8,7 @@ import (
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/ir"
+	"github.com/zobstory/cakebear/types"
 )
 
 // expr lowers an expression, returning nil when it could not be lowered. A nil
@@ -78,7 +79,7 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 	switch u.Operator {
 	case ast.KindMinusToken:
 		op = ir.OpNeg
-		if operand.ExprType() != ir.Number {
+		if !operand.ExprType().IsNumeric() {
 			l.fail(n, "unary minus needs a number, got %s", operand.ExprType())
 			return nil
 		}
@@ -98,7 +99,7 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 	case ast.KindPlusToken:
 		// Unary plus is identity on a number and a coercion otherwise; only
 		// the identity case is representable today.
-		if operand.ExprType() != ir.Number {
+		if !operand.ExprType().IsNumeric() {
 			l.fail(n, "unary plus as a coercion is not supported yet")
 			return nil
 		}
@@ -170,19 +171,19 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 	switch op {
 	case ir.OpAdd:
 		// The only operator that is both arithmetic and concatenation.
-		if operand == ir.Number || operand == ir.String {
+		if operand.IsNumeric() || operand == ir.String || operand == ir.Base64 {
 			return operand, true
 		}
 		return ir.Invalid, false
 
 	case ir.OpSub, ir.OpMul, ir.OpDiv:
-		if operand == ir.Number {
-			return ir.Number, true
+		if operand.IsNumeric() {
+			return operand, true
 		}
 		return ir.Invalid, false
 
 	case ir.OpLess, ir.OpLessEq, ir.OpGreater, ir.OpGreaterEq:
-		if operand == ir.Number || operand == ir.String {
+		if operand.IsNumeric() || operand == ir.String || operand == ir.Base64 {
 			return ir.Boolean, true
 		}
 		return ir.Invalid, false
@@ -228,6 +229,18 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return nil
 	}
 
+	// A conversion to one of cakebear's extension types, e.g. i32(x).
+	//
+	// Resolved by asking where the callee was declared, not by the call's
+	// result type: any user function returning i32 also has a branded result,
+	// and treating those as conversions silently replaced the call with a cast.
+	// The callee's spelling is not enough either -- a local function named i32
+	// would shadow ours -- so the test is whether the symbol comes from
+	// cakebear.d.ts.
+	if brand := l.conversionBrand(c.Expression); brand != "" {
+		return l.convert(n, c, brand)
+	}
+
 	call := &ir.Call{Callee: c.Expression.Text(), Typ: l.typeOf(n), Span: l.span(n)}
 	if c.Arguments != nil {
 		for _, a := range c.Arguments.Nodes {
@@ -239,6 +252,70 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		}
 	}
 	return call
+}
+
+// conversionBrand reports which extension a callee converts to, or "" when the
+// callee is anything else.
+//
+// The symbol's declaration has to live in cakebear's virtual declarations file.
+// That is the only way to tell our i32 from a user's own function of the same
+// name, since both would type-check and both would produce a branded result.
+func (l *lowerer) conversionBrand(callee *ast.Node) string {
+	if callee.Kind != ast.KindIdentifier || !types.IsExtension(callee.Text()) {
+		return ""
+	}
+	symbol := l.checker.GetSymbolAtLocation(callee)
+	if symbol == nil {
+		return ""
+	}
+	for _, decl := range symbol.Declarations {
+		if file := ast.GetSourceFileOfNode(decl); file != nil && file.FileName() == types.DeclarationPath() {
+			return callee.Text()
+		}
+	}
+	return ""
+}
+
+// convert lowers a call to one of cakebear's conversion functions.
+func (l *lowerer) convert(n *ast.Node, c *ast.CallExpression, brand string) ir.Expr {
+	target := extensionType(brand)
+	if target == ir.Invalid {
+		l.fail(n, "%s is not a type the backend can represent yet", brand)
+		return nil
+	}
+	if c.Arguments == nil || len(c.Arguments.Nodes) != 1 {
+		l.fail(n, "%s takes exactly one argument", brand)
+		return nil
+	}
+
+	argNode := c.Arguments.Nodes[0]
+	value := l.expr(argNode)
+	if value == nil {
+		return nil
+	}
+
+	// Validate a literal argument now rather than letting it wrap silently at
+	// runtime. This is the part a plain number or string could not do, and the
+	// reason these types are worth having at all.
+	if msg := l.validateLiteral(brand, value); msg != "" {
+		l.invalid(argNode, "%s", msg)
+		return nil
+	}
+
+	return &ir.Convert{Value: value, Typ: target, Span: l.span(n)}
+}
+
+// validateLiteral range-checks a literal conversion argument. Non-literals are
+// the machine's problem at runtime, and Go's conversion rules apply.
+func (l *lowerer) validateLiteral(brand string, value ir.Expr) string {
+	switch v := value.(type) {
+	case *ir.NumberLit:
+		return types.ValidateLiteral(brand, v.Value, "", false)
+	case *ir.StringLit:
+		return types.ValidateLiteral(brand, 0, v.Value, true)
+	default:
+		return ""
+	}
 }
 
 func isConsoleLog(n *ast.Node) bool {
