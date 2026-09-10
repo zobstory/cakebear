@@ -6,8 +6,8 @@ import (
 
 	"sort"
 
+	"github.com/zobstory/buildbinary/ir"
 	"github.com/zobstory/cakebear/internal/ast"
-	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/types"
 )
 

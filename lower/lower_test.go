@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zobstory/buildbinary/ir"
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/bundled"
 	"github.com/zobstory/cakebear/internal/compiler"
@@ -14,7 +15,6 @@ import (
 	"github.com/zobstory/cakebear/internal/tsoptions"
 	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
-	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/types"
 )
 

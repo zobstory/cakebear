@@ -8,6 +8,12 @@ name: cakebear-ci
 # ~4800 Go files, so an unscoped coverage or line-limit gate would be measuring
 # Microsoft's code and telling us nothing about ours.
 #
+# cakebear depends on github.com/zobstory/buildbinary, which holds the IR and
+# the Go backend. Until that module is published and tagged, go.mod carries a
+# `replace` pointing at a sibling directory, so every job that compiles Go has
+# to check out both repositories side by side. Once buildbinary is tagged, drop
+# the replace and the second checkout goes with it.
+#
 # To require these before merge:
 #   Settings -> Branches -> add a rule on `main` requiring
 #     golden-rule, line-limit, build, test, lint
@@ -45,22 +51,40 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cakebear
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: cakebear
+      - uses: actions/checkout@v4
+        with:
+          repository: zobstory/buildbinary
+          path: buildbinary
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: cakebear/go.mod
           cache: true
       - run: go build ./...
 
   test:
     name: test (coverage >= 70%, goal 80%)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cakebear
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: cakebear
+      - uses: actions/checkout@v4
+        with:
+          repository: zobstory/buildbinary
+          path: buildbinary
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: cakebear/go.mod
           cache: true
       - name: Test cakebear packages with coverage
         # The 70% floor is the merge gate; 80% is the target. When most owned
@@ -86,11 +110,20 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cakebear
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: cakebear
+      - uses: actions/checkout@v4
+        with:
+          repository: zobstory/buildbinary
+          path: buildbinary
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: cakebear/go.mod
           cache: true
       - name: Resolve owned packages
         id: pkgs
@@ -103,7 +136,8 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           # Config is upstream's .golangci.yml, inherited by the fork.
-          args: --timeout=10m ./cmd/cakec/... ./ir/... ./backend/... ./runtime/... ./types/...
+          working-directory: cakebear
+          args: --timeout=10m ./cmd/cakec/... ./lower/... ./types/...
       - name: Skip
         if: steps.pkgs.outputs.empty == 'true'
         run: echo "No cakebear-owned packages yet — nothing to lint."
