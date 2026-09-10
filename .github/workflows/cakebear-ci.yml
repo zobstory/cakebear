@@ -38,6 +38,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Fetch upstream for comparison
+        # The check asks whether upstream actually has each changed file, so it
+        # needs the ref. Without it the check still runs, against the manifest
+        # alone, and says so.
+        run: |
+          git remote add upstream https://github.com/microsoft/typescript-go.git || true
+          git fetch --no-tags --depth=1 upstream main:refs/remotes/upstream/main
       - name: Check no upstream file was modified
         run: scripts/check-upstream-untouched.sh origin/${{ github.base_ref || 'main' }}
 
