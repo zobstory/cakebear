@@ -59,6 +59,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/check-line-limit.py
+      # A malformed workflow fails as a run with zero jobs and no message,
+      # which is a slow way to find a typo. Catch it here instead.
+      - run: scripts/check-workflows.sh
 
   build:
     name: build
