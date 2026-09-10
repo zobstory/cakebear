@@ -16,7 +16,7 @@ import (
 // build, and conflating them is how a warning quietly becomes unfixable.
 func report(diags []*ast.Diagnostic, cwd string, opts buildOptions, w io.Writer) int {
 	if len(diags) == 0 {
-		fmt.Fprintf(w, "cakec: %s type-checks clean\n", opts.file)
+		fmt.Fprintf(w, "cakec: %s type-checks clean\n", inputSummary(opts.files))
 		fmt.Fprintln(w, "cakec: lowering to Go lands in Phase 4 — nothing built yet")
 		return exitOK
 	}
@@ -77,4 +77,13 @@ func plural(n int, noun string) string {
 		return fmt.Sprintf("1 %s", noun)
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// inputSummary names the inputs without pasting a thousand paths into the
+// success line when someone points cakec at a whole tree.
+func inputSummary(files []string) string {
+	if len(files) == 1 {
+		return files[0]
+	}
+	return plural(len(files), "file")
 }

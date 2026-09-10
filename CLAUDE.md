@@ -99,6 +99,8 @@ go build ./...                        # whole fork; ~1.5 min cold
 go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
 go run ./cmd/tsgo --version           # upstream CLI still works
 bin/cakec build examples/basic/main.ts
+bin/cakec build --checkers 8 --files-from list.txt   # large corpora
+scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
 scripts/owned-go-packages.sh          # the packages that are ours
 go test $(scripts/owned-go-packages.sh)
@@ -131,16 +133,47 @@ own, it stops and hands it to you rather than guessing.
 labelled PR. Keep the cadence: weekly syncs conflict for minutes, six-monthly
 syncs conflict for a day and eventually get abandoned.
 
-## Current phase: **Phase 3 — expose the parallelism**
+## Parallelism baseline
 
-Wire `--checkers` through `cakec` (the option already exists as
-`core.CompilerOptions.Checkers`), benchmark on a real multi-thousand-file
-codebase to establish the baseline every later phase is measured against, and
-verify diagnostic output is byte-identical at 1 and 8 workers. Nondeterministic
-error ordering is the classic bug here and it bites CI, not you.
+Measured 16 Aug 2026 on Darwin arm64, 8 cores, via
+`scripts/bench-checkers.sh`. Re-run on the same machine and corpus when
+comparing; the ratio is the number that matters, not the seconds.
+
+| Workload | 1 | 2 | 4 | 8 |
+|---|---|---|---|---|
+| A — 3000 real `.d.ts` from a `node_modules` tree | 1.00x | 1.45x | 2.19x | 2.24x |
+| B — 491 `.ts` that actually type-check, 1588 errors | 1.00x | 1.09x | 1.44x | 1.55x |
+
+Read these carefully rather than quoting the headline. Workload A is dominated
+by parse, bind and module resolution: `SkipLibCheck` is on by default, so
+declaration files are parsed but never checked. Workload B is checker-dominated
+but small, so a fixed cost that does not parallelise — loading `lib.d.ts`,
+building the program — eats a large share of the run.
+
+Neither reaches Microsoft's ~3x, and neither should: their figure comes from
+codebases orders of magnitude larger, where the fixed cost is noise. The
+honest read is that parallelism is working and scaling stops paying past 4
+checkers at these sizes.
+
+The gap in this baseline is a genuinely large corpus of checkable `.ts`.
+`_submodules/TypeScript` is the obvious candidate and is not cloned. Copying
+`.d.ts` files to `.ts` does not work as a substitute: most of their content
+(ambient declarations, bodyless overloads) is not legal in a `.ts` file, which
+is why workload B is 491 files rather than 3000.
+
+## Current phase: **Phase 4 — IR, Go emission, native binary**
+
+The feature the project exists for. Answer the three semantics questions below
+and record the decisions here *before* writing the emitter. Then define `ir/`
+against the checked AST, lower the Phase-1 subset (primitives, functions,
+arithmetic, `if`/`while`/`return`, `console.log`), and write `backend/` against
+nothing but `ir/` and the standard library.
+
+Done when `cakec build examples/basic/main.ts` produces `./main`, which runs
+and prints `5`.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
-type-checks TypeScript end to end.
+type-checks TypeScript, **P3** parallelism exposed and proven deterministic.
 
 ## Open questions — answer before writing the emitter
 

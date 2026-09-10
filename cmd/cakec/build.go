@@ -16,25 +16,28 @@ import (
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
 )
 
-// runBuild type-checks a single file and reports what it finds.
+// runBuild type-checks the input files and reports what it finds.
 //
 // The pipeline is assembled here rather than borrowed from internal/execute:
 // filesystem, host, config, Program, diagnostics. Phase 4 lowers the checked
 // program to Go and hands it to `go build`; that step slots in after
 // collectDiagnostics reports clean.
 func runBuild(opts buildOptions, stderr io.Writer) int {
-	file, err := filepath.Abs(opts.file)
-	if err != nil {
-		fmt.Fprintf(stderr, "cakec: resolving %s: %v\n", opts.file, err)
-		return exitBadArgs
-	}
-
-	// Read the file before handing it to the compiler. The Program would
-	// report a missing input as a diagnostic, but "no such file" deserves a
-	// plain error rather than TS6053 formatted like a type error.
-	if _, err := os.Stat(file); err != nil {
-		fmt.Fprintf(stderr, "cakec: %v\n", err)
-		return exitBadArgs
+	roots := make([]string, 0, len(opts.files))
+	for _, name := range opts.files {
+		abs, err := filepath.Abs(name)
+		if err != nil {
+			fmt.Fprintf(stderr, "cakec: resolving %s: %v\n", name, err)
+			return exitBadArgs
+		}
+		// Check the file exists before handing it to the compiler. The Program
+		// would report a missing input as a diagnostic, but "no such file"
+		// deserves a plain error rather than TS6053 formatted like a type error.
+		if _, err := os.Stat(abs); err != nil {
+			fmt.Fprintf(stderr, "cakec: %v\n", err)
+			return exitBadArgs
+		}
+		roots = append(roots, tspath.NormalizePath(abs))
 	}
 
 	cwd, err := os.Getwd()
@@ -52,8 +55,8 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/)
 
 	config := tsoptions.NewParsedCommandLine(
-		defaultCompilerOptions(),
-		[]string{tspath.NormalizePath(file)},
+		compilerOptionsFor(opts),
+		roots,
 		tspath.ComparePathsOptions{
 			UseCaseSensitiveFileNames: fs.UseCaseSensitiveFileNames(),
 			CurrentDirectory:          cwd,
@@ -63,13 +66,16 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	program := compiler.NewProgram(compiler.ProgramOptions{
 		Config: config,
 		Host:   host,
+		// SingleThreaded reaches further than --checkers: it also serialises
+		// parsing and binding, not just the checker pool.
+		SingleThreaded: singleThreadedTristate(opts),
 	})
 
 	diags := collectDiagnostics(context.Background(), program, config)
 	return report(diags, cwd, opts, stderr)
 }
 
-// defaultCompilerOptions is cakebear's stance when there is no tsconfig.json.
+// compilerOptionsFor is cakebear's stance when there is no tsconfig.json.
 //
 // Strict is on because cakebear compiles ahead of time: every escape hatch the
 // non-strict defaults allow (implicit any, unchecked null) is a value whose
@@ -78,26 +84,40 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 //
 // NoEmit is on because upstream's emit stage produces JavaScript, which is
 // precisely what cakebear does not want. Phase 4 emits Go from the IR instead.
-//
-// Phase 3 will let tsconfig.json override these; for now a single file gets a
-// single sensible configuration.
-func defaultCompilerOptions() *core.CompilerOptions {
-	return &core.CompilerOptions{
+func compilerOptionsFor(opts buildOptions) *core.CompilerOptions {
+	options := &core.CompilerOptions{
 		Target:       core.ScriptTargetESNext,
 		Module:       core.ModuleKindESNext,
 		Strict:       core.TSTrue,
 		NoEmit:       core.TSTrue,
 		SkipLibCheck: core.TSTrue,
 	}
+	if opts.checkers > 0 {
+		options.Checkers = &opts.checkers
+	}
+	return options
+}
+
+// defaultCompilerOptions is the no-flags configuration, kept as a named
+// function because the defaults are a deliberate stance worth testing directly.
+func defaultCompilerOptions() *core.CompilerOptions {
+	return compilerOptionsFor(buildOptions{})
+}
+
+func singleThreadedTristate(opts buildOptions) core.Tristate {
+	if opts.singleThreaded {
+		return core.TSTrue
+	}
+	return core.TSUnknown
 }
 
 // collectDiagnostics runs every check stage and returns one sorted, deduplicated
 // list.
 //
-// Order matters for what the user sees first, but not for correctness: the
-// results are sorted by file and position at the end regardless. Syntactic
-// diagnostics come first because a parse error usually cascades into semantic
-// noise that is not worth reading.
+// The sort at the end is what makes output independent of how many checkers ran:
+// the pool hands files to workers by weight, so the order diagnostics are
+// produced in varies, but the order they are reported in must not. The
+// determinism test in parallel_test.go is the guard on that.
 func collectDiagnostics(ctx context.Context, program *compiler.Program, config *tsoptions.ParsedCommandLine) []*ast.Diagnostic {
 	var diags []*ast.Diagnostic
 

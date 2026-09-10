@@ -23,7 +23,7 @@ func writeTS(t *testing.T, name, src string) string {
 func build(t *testing.T, path string) (int, string) {
 	t.Helper()
 	var stderr bytes.Buffer
-	code := runBuild(buildOptions{file: path, color: false}, &stderr)
+	code := runBuild(buildOptions{files: []string{path}, color: false}, &stderr)
 	return code, stderr.String()
 }
 

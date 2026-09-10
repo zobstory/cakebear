@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -21,7 +23,6 @@ func TestParseBuildArgs(t *testing.T) {
 		{name: "no file", args: nil, wantErr: "missing input file"},
 		{name: "only a flag", args: []string{"--no-color"}, wantErr: "missing input file"},
 		{name: "unknown flag", args: []string{"--emit-go", "main.ts"}, wantErr: `unknown flag "--emit-go"`},
-		{name: "two files", args: []string{"a.ts", "b.ts"}, wantErr: "multiple input files"},
 		// A lone "-" is a filename, not a flag: the flag branch requires
 		// len(arg) > 1 precisely so this stays reachable.
 		{name: "lone dash is a file", args: []string{"-"}, wantFile: "-"},
@@ -46,8 +47,8 @@ func TestParseBuildArgs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseBuildArgs(%q) = %v, want success", tt.args, err)
 			}
-			if opts.file != tt.wantFile {
-				t.Errorf("file = %q, want %q", opts.file, tt.wantFile)
+			if len(opts.files) != 1 || opts.files[0] != tt.wantFile {
+				t.Errorf("files = %q, want exactly [%q]", opts.files, tt.wantFile)
 			}
 		})
 	}
@@ -154,5 +155,73 @@ func TestPlural(t *testing.T) {
 		if got := plural(tt.n, "error"); got != tt.want {
 			t.Errorf("plural(%d, error) = %q, want %q", tt.n, got, tt.want)
 		}
+	}
+}
+
+func TestReadFileList(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	list := filepath.Join(dir, "files.txt")
+	body := "# a comment\n\na.ts\n  b.ts  \n\n# another\nc.ts\n"
+	if err := os.WriteFile(list, []byte(body), 0o600); err != nil {
+		t.Fatalf("writing list: %v", err)
+	}
+
+	got, err := readFileList(list)
+	if err != nil {
+		t.Fatalf("readFileList: %v", err)
+	}
+
+	want := []string{"a.ts", "b.ts", "c.ts"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestReadFileListErrors(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	if _, err := readFileList(filepath.Join(dir, "missing.txt")); err == nil {
+		t.Error("readFileList on a missing path succeeded, want an error")
+	}
+
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("# only comments\n\n"), 0o600); err != nil {
+		t.Fatalf("writing: %v", err)
+	}
+	if _, err := readFileList(empty); err == nil {
+		t.Error("readFileList on a list with no files succeeded, want an error")
+	}
+}
+
+func TestFilesFromFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	list := filepath.Join(dir, "files.txt")
+	if err := os.WriteFile(list, []byte("x.ts\ny.ts\n"), 0o600); err != nil {
+		t.Fatalf("writing list: %v", err)
+	}
+
+	// --files-from composes with paths given directly on the command line.
+	opts, err := parseBuildArgs([]string{"z.ts", "--files-from", list})
+	if err != nil {
+		t.Fatalf("parseBuildArgs: %v", err)
+	}
+	want := []string{"z.ts", "x.ts", "y.ts"}
+	if len(opts.files) != len(want) {
+		t.Fatalf("files = %q, want %q", opts.files, want)
+	}
+
+	if _, err := parseBuildArgs([]string{"--files-from"}); err == nil {
+		t.Error("--files-from with no path succeeded, want an error")
 	}
 }
