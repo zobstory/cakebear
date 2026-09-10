@@ -29,7 +29,7 @@ jobs:
     # labels those PRs so this gate steps aside for them, and only for them.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Fetch upstream for comparison
@@ -46,8 +46,8 @@ jobs:
     name: boundary (ir/ and backend/ stay extractable)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -57,7 +57,7 @@ jobs:
     name: line-limit (<= 500 lines per owned .go file)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 scripts/check-line-limit.py
       # A malformed workflow fails as a run with zero jobs and no message,
       # which is a slow way to find a typo. Catch it here instead.
@@ -67,8 +67,8 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -78,8 +78,8 @@ jobs:
     name: test (coverage >= 70%, goal 80%)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -108,8 +108,8 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -121,7 +121,7 @@ jobs:
           echo "empty=$([ -z "$pkgs" ] && echo true || echo false)" >>"$GITHUB_OUTPUT"
       - name: golangci-lint
         if: steps.pkgs.outputs.empty == 'false'
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           # Config is upstream's .golangci.yml, inherited by the fork.
           args: --timeout=10m ./cmd/cakec/... ./ir/... ./backend/... ./runtime/... ./types/...
