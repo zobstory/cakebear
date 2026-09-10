@@ -17,7 +17,6 @@ import (
 func report(diags []*ast.Diagnostic, cwd string, opts buildOptions, w io.Writer) int {
 	if len(diags) == 0 {
 		fmt.Fprintf(w, "cakec: %s type-checks clean\n", inputSummary(opts.files))
-		fmt.Fprintln(w, "cakec: lowering to Go lands in Phase 4 — nothing built yet")
 		return exitOK
 	}
 

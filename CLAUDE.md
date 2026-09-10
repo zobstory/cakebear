@@ -61,17 +61,20 @@ cakebear/
 ├── cmd/tsgo/       UPSTREAM  their CLI — keep it working, it is a free
 │                             regression check that a sync didn't break the frontend
 ├── cmd/cakec/      OURS      the cakebear CLI
-├── ir/             OURS      lowered IR: the contract between their checked AST
-│                             and our backend
+├── ir/             OURS      lowered IR: pure data, stdlib imports only
+├── lower/          OURS      checked AST → ir; the only package seeing both worlds
 ├── backend/        OURS      IR → Go source → `go build` → executable
-├── runtime/        OURS      support code linked into compiled output
+│   └── runtime/    OURS      linked into compiled output; lives here because
+│                             go:embed cannot traverse ".."
 ├── types/          OURS      cakebear type extensions (base64, refined numerics)
 └── scripts/        OURS      fork maintenance and CI gates
 ```
 
 `ir/` and `backend/` sit at top level rather than under `internal/` on purpose:
 that is what makes the eventual extraction to `buildbinary` a file move rather
-than a visibility rewrite.
+than a visibility rewrite. `ir/` imports only the standard library, so
+`backend/` never depends on the fork even transitively — `lower/` absorbs that
+coupling instead.
 
 ## Pipeline
 
@@ -161,38 +164,77 @@ The gap in this baseline is a genuinely large corpus of checkable `.ts`.
 (ambient declarations, bodyless overloads) is not legal in a `.ts` file, which
 is why workload B is 491 files rather than 3000.
 
-## Current phase: **Phase 4 — IR, Go emission, native binary**
+## Current phase: **Phase 5 — cakebear's type extensions**
 
-The feature the project exists for. Answer the three semantics questions below
-and record the decisions here *before* writing the emitter. Then define `ir/`
-against the checked AST, lower the Phase-1 subset (primitives, functions,
-arithmetic, `if`/`while`/`return`, `console.log`), and write `backend/` against
-nothing but `ir/` and the standard library.
+`base64` and the refined numerics, implemented in `types/` as a layer alongside
+the checker rather than edits inside it.
 
-Done when `cakec build examples/basic/main.ts` produces `./main`, which runs
-and prints `5`.
+Promote the numerics ahead of `base64`: because `number` lowers to `float64`,
+integer-heavy TypeScript runs measurably slower than equivalent Go, and an
+`i32`/`u64` that lowers straight to Go's is the escape hatch. The README pitched
+these as precision ergonomics; the backend decision turned them into the
+project's main performance story.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
-type-checks TypeScript, **P3** parallelism exposed and proven deterministic.
+type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
+**P4** IR, Go emission and native binaries.
 
-## Open questions — answer before writing the emitter
+## The Phase-1 language subset
 
-Emitting Go means TypeScript's runtime semantics get expressed in Go's, and
-three places they disagree need decisions recorded here before Phase 4, not
-during it:
+`cakec` type-checks all of TypeScript but can only *lower* this much. Anything
+else is refused by `lower/` with a span and the construct's name — the refusal
+is a limit of the current phase, and the diagnostics say so rather than implying
+the user made a mistake.
 
-1. **Strings.** JS strings are UTF-16 code units (`"日本".length` is 2); Go
-   strings are UTF-8 bytes (`len("日本")` is 6). A naive mapping silently breaks
-   `.length`, indexing and `slice` on non-ASCII input. Leaning toward UTF-8
-   underneath with runtime helpers carrying an ASCII fast path.
-2. **Numbers.** `number` lowers to `float64`, but JS bitwise operators coerce to
-   int32 first: `a | b` must lower to `float64(int32(a) | int32(b))`, and `>>>`
-   to the uint32 form.
-3. **`async`/`await`.** JS async is concurrent but never parallel, so correct
-   TypeScript cannot race. Goroutines are genuinely parallel. Taking the
-   parallel mapping makes cakebear a language that differs from TypeScript at
-   runtime — which the README's compatibility promise currently rules out, and
-   that promise is the thing to amend.
+Supported: `number`, `string`, `boolean`; `const`/`let` with explicit type
+annotations; function declarations with typed parameters and return; arithmetic;
+string concatenation with `+` when both operands are strings; comparisons;
+`===`/`!==`; `&&`/`||`/`!`; unary minus; `if`/`else`; `while`; `return`;
+`console.log` on one primitive argument; calls to top-level functions.
+
+Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
+`+`, `var`, loose equality, arrays, objects, classes, generics, imports, `for`,
+multi-file programs, bitwise operators, `async`.
+
+## Semantics decisions
+
+Recorded before the emitter was written, per the rule above. Emitting Go means
+TypeScript's runtime semantics get expressed in Go's, and these are the three
+places they disagree.
+
+**1. Strings are UTF-8, with access mediated by the runtime.** JS strings are
+UTF-16 code units (`"日本".length` is 2); Go strings are UTF-8 bytes
+(`len("日本")` is 6). We keep Go's representation and route `.length`,
+indexing and `slice` through runtime helpers that carry an ASCII fast path,
+rather than paying UTF-16 conversion on every string. The overwhelming majority
+of strings are ASCII, where the two agree exactly.
+
+*Live in Phase 1:* only that string literals emit as Go string literals. The
+helpers land with `.length`.
+
+**2. Numbers are `float64`, printed by JS rules.** TS `number` is IEEE-754
+double, so it lowers to Go `float64` directly. Bitwise operators will need
+int32/uint32 coercion (`a | b` becomes `float64(int32(a) | int32(b))`), and
+`>>>` the unsigned form; neither is in the subset yet.
+
+*Live in Phase 1:* printing. `console.log(5)` must print `5`, not `5e+00` or
+`5.000000`. Go's `%v` on a float64 is not JS's Number-to-String algorithm, so
+the runtime implements it. This is why `console.log` is a runtime call rather
+than a direct `fmt.Println`.
+
+**3. `async`/`await` maps to goroutines, genuinely in parallel.** JS async is
+concurrent but never parallel, so correct TypeScript cannot race; goroutines
+can. We take the parallel mapping: it is what the M:N scheduler note always
+implied, and pretending to be an event loop would throw away most of the
+performance that justifies compiling TypeScript at all.
+
+This makes cakebear a language that differs from TypeScript at runtime, which
+the README's compatibility promise currently rules out. **That promise is the
+thing to amend**, and it should be amended before anyone writes async code
+against cakebear rather than after.
+
+*Live in Phase 1:* nothing, but the IR must not assume single-threaded
+execution anywhere.
 
 Related: because `number` is `float64`, integer-heavy TypeScript will run
 slower than equivalent Go. The refined numeric types (`i32`, `u64`) lowering

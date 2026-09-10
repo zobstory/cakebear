@@ -71,8 +71,16 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 		SingleThreaded: singleThreadedTristate(opts),
 	})
 
-	diags := collectDiagnostics(context.Background(), program, config)
-	return report(diags, cwd, opts, stderr)
+	ctx := context.Background()
+	diags := collectDiagnostics(ctx, program, config)
+
+	if code := report(diags, cwd, opts, stderr); code != exitOK {
+		return code
+	}
+	if opts.checkOnly {
+		return exitOK
+	}
+	return compileToBinary(ctx, program, opts, stderr)
 }
 
 // compilerOptionsFor is cakebear's stance when there is no tsconfig.json.

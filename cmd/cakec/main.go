@@ -26,13 +26,18 @@ USAGE:
     cakec --version
 
 FLAGS:
+    -o PATH             write the executable to PATH (default: source basename)
+    --check             type-check only; do not build
+    --emit-go           also write the generated Go beside the output
+    --target GOOS/ARCH  cross-compile, e.g. linux/amd64
     --files-from PATH   read input paths from PATH, one per line
     --checkers N        type-check with N parallel checkers (default 4)
     --single-threaded   parse, bind and check on one goroutine
     --no-color          plain diagnostics, no ANSI styling
 
-Phase 3 type-checks the inputs and reports diagnostics. Lowering to Go and
-producing a binary lands in Phase 4.
+cakec type-checks the inputs, lowers them to Go, and invokes the Go toolchain
+to produce a native binary. The language subset the backend can lower is
+narrower than what it type-checks; unsupported constructs are named.
 
 EXIT CODES:
     0    no diagnostics
@@ -100,6 +105,12 @@ type buildOptions struct {
 	// runs one checker no matter what is asked for here.
 	checkers       int
 	singleThreaded bool
+
+	output    string
+	checkOnly bool
+	emitGo    bool
+	goos      string
+	goarch    string
 }
 
 func parseBuildArgs(args []string) (buildOptions, error) {
@@ -114,6 +125,30 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 
 		case arg == "--single-threaded":
 			opts.singleThreaded = true
+
+		case arg == "--check":
+			opts.checkOnly = true
+
+		case arg == "--emit-go":
+			opts.emitGo = true
+
+		case arg == "-o":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("-o needs a path")
+			}
+			opts.output = args[i]
+
+		case arg == "--target":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("--target needs a GOOS/GOARCH pair, e.g. linux/amd64")
+			}
+			goos, goarch, err := parseTarget(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.goos, opts.goarch = goos, goarch
 
 		case arg == "--files-from":
 			i++
@@ -185,6 +220,16 @@ func readFileList(path string) ([]string, error) {
 		return nil, fmt.Errorf("--files-from %s listed no files", path)
 	}
 	return files, nil
+}
+
+// parseTarget splits a GOOS/GOARCH pair. Cross-compilation is a passthrough to
+// the Go toolchain, which is most of what choosing a Go-emitting backend bought.
+func parseTarget(raw string) (goos, goarch string, err error) {
+	goos, goarch, found := strings.Cut(raw, "/")
+	if !found || goos == "" || goarch == "" {
+		return "", "", fmt.Errorf("--target wants GOOS/GOARCH, e.g. linux/amd64, got %q", raw)
+	}
+	return goos, goarch, nil
 }
 
 func parseCheckers(raw string) (int, error) {

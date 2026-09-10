@@ -23,7 +23,7 @@ func writeTS(t *testing.T, name, src string) string {
 func build(t *testing.T, path string) (int, string) {
 	t.Helper()
 	var stderr bytes.Buffer
-	code := runBuild(buildOptions{files: []string{path}, color: false}, &stderr)
+	code := runBuild(buildOptions{files: []string{path}, color: false, checkOnly: true}, &stderr)
 	return code, stderr.String()
 }
 
@@ -98,7 +98,7 @@ func TestBuildSuppressesSemanticsAfterSyntaxError(t *testing.T) {
 func TestBuildAcceptsUnicodeIdentifiers(t *testing.T) {
 	t.Parallel()
 
-	path := writeTS(t, "unicode.ts", "const café: string = \"ok\";\nconst 日本: number = 1;\nconsole.log(café, 日本);\n")
+	path := writeTS(t, "unicode.ts", "const café: string = \"ok\";\nconst 日本: number = 1;\nconsole.log(café);\nconsole.log(日本);\n")
 
 	code, out := build(t, path)
 

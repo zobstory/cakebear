@@ -22,7 +22,7 @@ func TestParseBuildArgs(t *testing.T) {
 		{name: "flag then file", args: []string{"--no-color", "main.ts"}, wantFile: "main.ts"},
 		{name: "no file", args: nil, wantErr: "missing input file"},
 		{name: "only a flag", args: []string{"--no-color"}, wantErr: "missing input file"},
-		{name: "unknown flag", args: []string{"--emit-go", "main.ts"}, wantErr: `unknown flag "--emit-go"`},
+		{name: "unknown flag", args: []string{"--optimise", "main.ts"}, wantErr: `unknown flag "--optimise"`},
 		// A lone "-" is a filename, not a flag: the flag branch requires
 		// len(arg) > 1 precisely so this stays reachable.
 		{name: "lone dash is a file", args: []string{"-"}, wantFile: "-"},
