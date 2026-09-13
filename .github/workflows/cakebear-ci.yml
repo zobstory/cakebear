@@ -16,6 +16,11 @@ name: cakebear-ci
 on:
   pull_request:
     branches: [main]
+  # Also verify main after a merge. A PR gate only proves each change was good
+  # in isolation; it says nothing about the result of combining two that were
+  # each green separately, or about a merge resolved by hand.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -25,9 +30,14 @@ jobs:
   golden-rule:
     name: golden-rule (no upstream files touched)
     runs-on: ubuntu-latest
+    # Only meaningful on a pull request: on a push to main the diff against
+    # main is empty, so the check would pass without examining anything.
+    #
     # Upstream syncs necessarily touch upstream files. cakebear-sync-upstream.yml
     # labels those PRs so this gate steps aside for them, and only for them.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
+    if: >-
+      ${{ github.event_name == 'pull_request'
+          && !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
     steps:
       - uses: actions/checkout@v4
         with:
