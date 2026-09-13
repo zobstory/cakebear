@@ -118,7 +118,10 @@ python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
 scripts/check-upstream-untouched.sh main      # the golden rule
 scripts/check-boundary.sh                     # ir/ and backend/ stay liftable
 scripts/check-workflows.sh                    # our workflow YAML actually parses
-golangci-lint run --config .golangci.cakebear.yml $(scripts/owned-go-packages.sh)
+# Relative patterns, not owned-go-packages.sh: that prints import paths, which
+# golangci-lint cannot resolve -- it reports "0 issues" having linted nothing.
+golangci-lint run --config .golangci.cakebear.yml \
+  ./cmd/cakec/... ./lower/... ./types/... ./ir/... ./backend/...
 ```
 
 **Always build binaries into `bin/`.** A bare `go build ./cmd/cakec` drops a
