@@ -63,7 +63,7 @@ func summary(errors, warnings int) string {
 	case errors > 0 && warnings > 0:
 		return fmt.Sprintf("cakec: %s, %s", plural(errors, "error"), plural(warnings, "warning"))
 	case errors > 0:
-		return fmt.Sprintf("cakec: %s", plural(errors, "error"))
+		return "cakec: " + plural(errors, "error")
 	case warnings > 0:
 		return fmt.Sprintf("cakec: %s, no errors", plural(warnings, "warning"))
 	default:
@@ -73,7 +73,7 @@ func summary(errors, warnings int) string {
 
 func plural(n int, noun string) string {
 	if n == 1 {
-		return fmt.Sprintf("1 %s", noun)
+		return "1 " + noun
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
 }

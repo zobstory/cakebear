@@ -1,7 +1,6 @@
 package lower
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,7 +57,7 @@ func lowerSource(t *testing.T, src string) (*ir.Module, []*Error) {
 		t.Fatal("source file not found in program")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	c, done := program.GetTypeCheckerForFile(ctx, file)
 	defer done()
 	return File(file, c)

@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+
+# Lint configuration for cakebear's own packages.
+#
+# We cannot reuse upstream's .golangci.yml. It enables `customlint`, a plugin
+# that only exists in a golangci-lint binary built from their .custom-gcl.yml
+# (upstream builds it at _tools/custom-gcl via their Herebyfile). The stock
+# binary the CI action installs has no such linter, so pointing at upstream's
+# config fails before it lints a single file -- which is exactly what happened
+# on the first real CI run.
+#
+# Building their custom binary would work too, but it ties our lint job to their
+# tooling for no benefit: customlint enforces conventions internal to the
+# TypeScript port, none of which apply to the five packages we own.
+#
+# The enabled set is upstream's, minus customlint, minus depguard (whose rules
+# reference their import graph), and minus modernize (not in the pinned
+# golangci-lint version). Same standards, our code.
+
+version: '2'
+
+run:
+  allow-parallel-runners: true
+
+issues:
+  # Report every finding rather than a sample. The defaults cap repeats per
+  # linter, which turns one clean-up into several fix-and-rerun rounds.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: none
+  enable:
+    - asasalint
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - fatcontext
+    - gocheckcompilerdirectives
+    - goprintffuncname
+    - govet
+    - grouper
+    - inamedparam
+    - ineffassign
+    - intrange
+    - makezero
+    - mirror
+    - misspell
+    # `modernize` is upstream's but does not exist in golangci-lint v2.1.6,
+    # which cakebear-ci pins. Re-add it when the pin moves past its release.
+    - musttag
+    - nakedret
+    - nolintlint
+    - paralleltest
+    - perfsprint
+    - predeclared
+    - reassign
+    - testableexamples
+    - tparallel
+    - unconvert
+    - usestdlibvars
+    - usetesting
+
+  exclusions:
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
