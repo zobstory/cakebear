@@ -10,6 +10,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,14 +136,14 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 		case arg == "-o":
 			i++
 			if i >= len(args) {
-				return opts, fmt.Errorf("-o needs a path")
+				return opts, errors.New("-o needs a path")
 			}
 			opts.output = args[i]
 
 		case arg == "--target":
 			i++
 			if i >= len(args) {
-				return opts, fmt.Errorf("--target needs a GOOS/GOARCH pair, e.g. linux/amd64")
+				return opts, errors.New("--target needs a GOOS/GOARCH pair, e.g. linux/amd64")
 			}
 			goos, goarch, err := parseTarget(args[i])
 			if err != nil {
@@ -153,7 +154,7 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 		case arg == "--files-from":
 			i++
 			if i >= len(args) {
-				return opts, fmt.Errorf("--files-from needs a path")
+				return opts, errors.New("--files-from needs a path")
 			}
 			listed, err := readFileList(args[i])
 			if err != nil {
@@ -164,7 +165,7 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 		case arg == "--checkers":
 			i++
 			if i >= len(args) {
-				return opts, fmt.Errorf("--checkers needs a number")
+				return opts, errors.New("--checkers needs a number")
 			}
 			n, err := parseCheckers(args[i])
 			if err != nil {
@@ -188,10 +189,10 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 	}
 
 	if len(opts.files) == 0 {
-		return opts, fmt.Errorf("missing input file")
+		return opts, errors.New("missing input file")
 	}
 	if opts.checkers > 0 && opts.singleThreaded {
-		return opts, fmt.Errorf("--checkers and --single-threaded contradict each other; pick one")
+		return opts, errors.New("--checkers and --single-threaded contradict each other; pick one")
 	}
 	return opts, nil
 }

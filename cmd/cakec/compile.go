@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -82,7 +83,7 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 	}
 
 	if err != nil {
-		if err == backend.ErrNoToolchain {
+		if errors.Is(err, backend.ErrNoToolchain) {
 			fmt.Fprintln(stderr, "cakec: the Go toolchain is required to build cakebear programs but was not found on PATH")
 			fmt.Fprintln(stderr, "cakec: install Go from https://go.dev/dl and make sure `go` is on PATH")
 			return exitBadArgs

@@ -104,7 +104,7 @@ func ValidateLiteral(extension string, num float64, str string, isString bool) s
 	}
 
 	if isString {
-		return fmt.Sprintf("%s needs a number", extension)
+		return extension + " needs a number"
 	}
 
 	if math.IsNaN(num) || math.IsInf(num, 0) {
@@ -116,7 +116,7 @@ func ValidateLiteral(extension string, num float64, str string, isString bool) s
 		// float32 has a much smaller range than float64; anything beyond it
 		// would silently become an infinity.
 		if math.Abs(num) > math.MaxFloat32 {
-			return fmt.Sprintf("%s is outside the range of f32", showNumber(num))
+			return showNumber(num) + " is outside the range of f32"
 		}
 		return ""
 	case I32:

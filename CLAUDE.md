@@ -118,6 +118,7 @@ python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
 scripts/check-upstream-untouched.sh main      # the golden rule
 scripts/check-boundary.sh                     # ir/ and backend/ stay liftable
 scripts/check-workflows.sh                    # our workflow YAML actually parses
+golangci-lint run --config .golangci.cakebear.yml $(scripts/owned-go-packages.sh)
 ```
 
 **Always build binaries into `bin/`.** A bare `go build ./cmd/cakec` drops a
@@ -139,6 +140,13 @@ scripts/sync-upstream.sh              # merges upstream/main, rewrites module pa
 It takes upstream's side of every conflicted file and re-runs the module rename
 — correct only because of the golden rule. If it finds a conflict in a file we
 own, it stops and hands it to you rather than guessing.
+
+Lint uses `.golangci.cakebear.yml`, not upstream's `.golangci.yml`. Theirs
+enables `customlint`, a plugin that only exists in a binary built from their
+`.custom-gcl.yml`, so pointing at it fails before linting a single file. Ours is
+their linter set minus that plugin, minus `depguard` (their import graph) and
+minus `modernize` (absent from the pinned version). The golangci-lint version is
+pinned in CI so it matches what gets run locally.
 
 One trap worth knowing: upstream's `.gitignore` has a blanket `*.txt` rule, and
 `scripts/owned-paths` went untracked for five phases when it was named

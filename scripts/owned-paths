@@ -29,5 +29,6 @@ examples/
 scripts/
 CLAUDE.md
 README.md
+.golangci.cakebear.yml
 .github/workflows/cakebear-ci.yml
 .github/workflows/cakebear-sync-upstream.yml

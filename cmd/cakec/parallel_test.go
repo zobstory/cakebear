@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -149,7 +150,7 @@ func TestParseCheckersFlag(t *testing.T) {
 				if err == nil {
 					t.Fatalf("parseBuildArgs(%q) succeeded, want error containing %q", tt.args, tt.wantErr)
 				}
-				if !bytes.Contains([]byte(err.Error()), []byte(tt.wantErr)) {
+				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("error = %q, want it to contain %q", err, tt.wantErr)
 				}
 				return
