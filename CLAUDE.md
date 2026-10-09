@@ -283,13 +283,27 @@ string concatenation with `+` when both operands are strings; comparisons;
 `===`/`!==`; `&&`/`||`/`!`; unary minus; `if`/`else`; `while`; `return`;
 `console.log` on one primitive argument; calls to a function by name;
 arrow functions and anonymous function expressions as values, with
-function-typed parameters, variables and results.
+function-typed parameters, variables and results; `import` from `node:http`
+or `http` (named, renamed or namespace), and the members its bundled
+declarations list (`createServer`, `listen`, `setHeader`, `writeHead`, `end`,
+`req.url`, `req.method`). Those lower to host operations; the backend emits
+them from M1 steps 6–7, and until then reports each as `cannot compile yet`.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, `var`, loose equality, arrays, objects, classes, generics, imports, `for`,
-multi-file programs, bitwise operators, `async`; calling anything but a name
-(`f()()`); named function expressions; optional, default, rest or destructured
-parameters; overloaded or generic function types.
+`+`, `var`, loose equality, arrays, objects, classes, generics, imports from
+anything but `node:http`, `for`, multi-file programs, bitwise operators,
+`async`; calling anything but a name or a `node:http` member (`f()()`); named
+function expressions; optional, default, rest or destructured parameters;
+overloaded or generic function types; `===` or `console.log` on a function or
+a host value.
+
+**Host members** are recognised by where their symbol is declared, never by
+name and never by the receiver's type. A user's own `createServer` or `end` is
+an ordinary function, and a member a program adds to `ServerResponse` through
+module augmentation is refused: the receiver's type merges across files, but
+the added member has nothing behind it at runtime. The tables in `lower/host.go`
+must list exactly what `types/node-http.d.ts` declares, and a test fails when
+they drift apart.
 
 **Closures** lower to Go function literals, and Go closures capture by
 reference exactly as JavaScript's do, so a captured `let` is read when the

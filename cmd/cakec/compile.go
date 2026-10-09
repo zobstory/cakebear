@@ -83,6 +83,16 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 	}
 
 	if err != nil {
+		// Reported like lowering's refusals: the program is fine, the backend
+		// just cannot emit some of it yet.
+		var unsupported *backend.UnsupportedError
+		if errors.As(err, &unsupported) {
+			for _, u := range unsupported.Nodes {
+				fmt.Fprintf(stderr, "%s: cannot compile yet: %s\n", u.Span, u.What)
+			}
+			fmt.Fprintf(stderr, "cakec: %s the backend does not support yet\n", plural(len(unsupported.Nodes), "construct"))
+			return exitErrors
+		}
 		if errors.Is(err, backend.ErrNoToolchain) {
 			fmt.Fprintln(stderr, "cakec: the Go toolchain is required to build cakebear programs but was not found on PATH")
 			fmt.Fprintln(stderr, "cakec: install Go from https://go.dev/dl and make sure `go` is on PATH")

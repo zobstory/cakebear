@@ -75,13 +75,16 @@ func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
 
 	m := &ir.Module{Name: l.name}
 	for _, stmt := range file.AsNode().Statements() {
-		if stmt.Kind == ast.KindFunctionDeclaration {
+		switch stmt.Kind {
+		case ast.KindFunctionDeclaration:
 			if fn := l.function(stmt); fn != nil {
 				m.Funcs = append(m.Funcs, fn)
 			}
-			continue
+		case ast.KindImportDeclaration:
+			l.importDecl(stmt)
+		default:
+			m.Main = append(m.Main, l.stmt(stmt)...)
 		}
-		m.Main = append(m.Main, l.stmt(stmt)...)
 	}
 
 	if len(l.errs) > 0 {
@@ -150,6 +153,11 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 	case flags&checker.TypeFlagsUndefined != 0:
 		return ir.Undefined
 	default:
+		// Host types first: they are objects with call-able members, and
+		// funcType would refuse them for having properties.
+		if h := l.hostType(t); h != ir.HostNone {
+			return ir.HostOf(h)
+		}
 		return l.funcType(t)
 	}
 }
@@ -341,13 +349,9 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 		}
 		t := l.typeOf(decl.Name())
 		if t == ir.Invalid {
-			// A function literal can say exactly why (async, a rest
-			// parameter, …), which beats blaming the variable's type.
-			if k := decl.Initializer.Kind; (k == ast.KindArrowFunction || k == ast.KindFunctionExpression) &&
-				!l.closureShapeOK(decl.Initializer) {
-				continue
+			if !l.explainInitializer(decl.Initializer) {
+				l.fail(d, "%s has a type the backend cannot represent yet", name)
 			}
-			l.fail(d, "%s has a type the backend cannot represent yet", name)
 			continue
 		}
 		init := l.expr(decl.Initializer)
@@ -359,6 +363,29 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 		})
 	}
 	return out
+}
+
+// explainInitializer reports why a variable's initialiser cannot be stored,
+// for the initialisers that can say more than "has a type the backend cannot
+// represent": a function literal (async, a rest parameter, …) and one of
+// node:http's members used as a value. It reports whether it said anything.
+func (l *lowerer) explainInitializer(init *ast.Node) bool {
+	var name *ast.Node
+	switch init.Kind {
+	case ast.KindArrowFunction, ast.KindFunctionExpression:
+		return !l.closureShapeOK(init)
+	case ast.KindIdentifier:
+		name = init
+	case ast.KindPropertyAccessExpression:
+		name = init.Name()
+	default:
+		return false
+	}
+	if m, found, _ := l.hostMemberOf(l.checker.GetSymbolAtLocation(name)); found {
+		l.failHostValue(init, m)
+		return true
+	}
+	return false
 }
 
 func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stmt {
