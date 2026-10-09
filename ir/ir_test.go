@@ -18,7 +18,7 @@ func TestTypeString(t *testing.T) {
 		{Invalid, "invalid"},
 	} {
 		if got := tt.in.String(); got != tt.want {
-			t.Errorf("Type(%d).String() = %q, want %q", tt.in, got, tt.want)
+			t.Errorf("Type(%d).String() = %q, want %q", tt.in.Kind, got, tt.want)
 		}
 	}
 }
@@ -127,7 +127,7 @@ func TestExtensionTypeNames(t *testing.T) {
 		{Uint64, "u64"}, {Float32, "f32"}, {Base64, "base64"},
 	} {
 		if got := tt.in.String(); got != tt.want {
-			t.Errorf("Type(%d).String() = %q, want %q", tt.in, got, tt.want)
+			t.Errorf("Type(%d).String() = %q, want %q", tt.in.Kind, got, tt.want)
 		}
 	}
 }
@@ -175,5 +175,146 @@ func TestConvertCarriesTargetType(t *testing.T) {
 	}
 	if got := c.ExprSpan(); got != span {
 		t.Errorf("ExprSpan() = %v, want %v", got, span)
+	}
+}
+
+// allPrimitives is every non-function, non-host type, in Kind order.
+var allPrimitives = []Type{
+	Invalid, Number, String, Boolean, Void, Null, Undefined,
+	Int32, Int64, Uint32, Uint64, Float32, Base64,
+}
+
+// An unset Type must read as Invalid: Func.Result and Param.Type rely on the
+// zero value meaning "no type", exactly as the old int enum did.
+func TestZeroTypeIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	var zero Type
+	if zero != Invalid || !zero.Equal(Invalid) {
+		t.Errorf("zero Type = %#v, want Invalid", zero)
+	}
+	if got := zero.String(); got != "invalid" {
+		t.Errorf("zero Type.String() = %q, want %q", got, "invalid")
+	}
+}
+
+func TestTypeEqualPrimitives(t *testing.T) {
+	t.Parallel()
+
+	for i, a := range allPrimitives {
+		for j, b := range allPrimitives {
+			if got, want := a.Equal(b), i == j; got != want {
+				t.Errorf("%v.Equal(%v) = %v, want %v", a, b, got, want)
+			}
+		}
+	}
+}
+
+func TestTypeEqualHost(t *testing.T) {
+	t.Parallel()
+
+	server, req, res := HostOf(HostHTTPServer), HostOf(HostIncomingMessage), HostOf(HostServerResponse)
+
+	if !req.Equal(HostOf(HostIncomingMessage)) {
+		t.Errorf("%v.Equal(same host type) = false, want true", req)
+	}
+	for _, other := range []Type{server, res, Number, FuncType(nil, Void), Invalid} {
+		if req.Equal(other) || other.Equal(req) {
+			t.Errorf("%v.Equal(%v) = true, want false", req, other)
+		}
+	}
+	// A host type is never a primitive, whatever its HostType value is.
+	if HostOf(HostNone).Equal(Invalid) {
+		t.Errorf("HostOf(HostNone).Equal(Invalid) = true, want false")
+	}
+}
+
+// Equal exists because Sig is a pointer: two function types built separately
+// from the same parts are the same type, and == would call them different.
+func TestTypeEqualFunc(t *testing.T) {
+	t.Parallel()
+
+	handler := func() Type {
+		return FuncType([]Type{HostOf(HostIncomingMessage), HostOf(HostServerResponse)}, Void)
+	}
+	a, b := handler(), handler()
+
+	if a == b {
+		t.Fatal("two separately built func types compared == ; the test no longer shows why Equal exists")
+	}
+	if !a.Equal(b) || !b.Equal(a) {
+		t.Errorf("%v.Equal(%v) = false, want true", a, b)
+	}
+
+	higher := func(cb Type) Type { return FuncType([]Type{cb}, Number) }
+
+	for _, tt := range []struct {
+		name  string
+		other Type
+	}{
+		{"fewer params", FuncType([]Type{HostOf(HostIncomingMessage)}, Void)},
+		{"more params", FuncType([]Type{HostOf(HostIncomingMessage), HostOf(HostServerResponse), Number}, Void)},
+		{"param order", FuncType([]Type{HostOf(HostServerResponse), HostOf(HostIncomingMessage)}, Void)},
+		{"param type", FuncType([]Type{HostOf(HostIncomingMessage), HostOf(HostHTTPServer)}, Void)},
+		{"result type", FuncType([]Type{HostOf(HostIncomingMessage), HostOf(HostServerResponse)}, Number)},
+		{"primitive", Number},
+		{"host", HostOf(HostServerResponse)},
+		{"nil signature", Type{Kind: KindFunc}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if a.Equal(tt.other) || tt.other.Equal(a) {
+				t.Errorf("%v.Equal(%v) = true, want false", a, tt.other)
+			}
+		})
+	}
+
+	// Equality recurses: a function that takes a function.
+	if !higher(handler()).Equal(higher(handler())) {
+		t.Error("func taking an equal func is not Equal")
+	}
+	if higher(handler()).Equal(higher(FuncType(nil, Void))) {
+		t.Error("func taking a different func is Equal")
+	}
+
+	// Two function types with no signature at all are the same degenerate type.
+	if !(Type{Kind: KindFunc}).Equal(Type{Kind: KindFunc}) {
+		t.Error("two nil-signature func types are not Equal")
+	}
+	if !FuncType(nil, Void).Equal(FuncType([]Type{}, Void)) {
+		t.Error("nil and empty parameter lists are not Equal")
+	}
+}
+
+func TestFuncAndHostTypesAreNeitherExtensionNorNumeric(t *testing.T) {
+	t.Parallel()
+
+	for _, typ := range []Type{FuncType([]Type{Number}, Number), HostOf(HostHTTPServer)} {
+		if typ.IsExtension() || typ.IsNumeric() {
+			t.Errorf("%v: IsExtension() = %v, IsNumeric() = %v, want both false",
+				typ, typ.IsExtension(), typ.IsNumeric())
+		}
+	}
+}
+
+func TestFuncAndHostTypeStrings(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		in   Type
+		want string
+	}{
+		{FuncType(nil, Void), "() => void"},
+		{FuncType([]Type{Number, String}, Boolean), "(number, string) => boolean"},
+		{FuncType([]Type{FuncType([]Type{Int32}, Void)}, Number), "((i32) => void) => number"},
+		{HostOf(HostHTTPServer), "Server"},
+		{HostOf(HostIncomingMessage), "IncomingMessage"},
+		{HostOf(HostServerResponse), "ServerResponse"},
+		{Type{Kind: KindFunc}, "() => invalid"},
+	} {
+		if got := tt.in.String(); got != tt.want {
+			t.Errorf("String() = %q, want %q", got, tt.want)
+		}
 	}
 }
