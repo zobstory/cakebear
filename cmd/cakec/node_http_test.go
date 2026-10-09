@@ -110,6 +110,48 @@ createServer((req, res) => {
 	}
 }
 
+// Check 9 of the M1 plan: a handler that changes shared state is refused at
+// compile time, with exactly the two diagnostics the target program expects,
+// rather than compiled into a data race.
+func TestHandlerSharedStateRefused(t *testing.T) {
+	t.Parallel()
+
+	path := writeTS(t, "shared.ts", `import { createServer } from "node:http";
+
+let hits: number = 0;
+
+function bump(): void {
+  hits = hits + 1;
+}
+
+const server = createServer((req, res) => {
+  hits = hits + 1;
+  bump();
+  res.end("ok\n");
+});
+
+server.listen(3000);
+`)
+	var stderr bytes.Buffer
+	code := runBuild(buildOptions{files: []string{path}, output: filepath.Join(filepath.Dir(path), "shared")}, &stderr)
+	out := stderr.String()
+	if code != exitErrors {
+		t.Errorf("exit code = %d, want %d\n%s", code, exitErrors, out)
+	}
+	want := []string{
+		"shared.ts:10:3: cannot compile yet: this handler runs on many requests at once, so it can't change `hits`, which they all share",
+		"shared.ts:11:3: cannot compile yet: this handler runs on many requests at once, so it can't call `bump()`, which changes `hits`, shared by them all",
+	}
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Errorf("output missing %q:\n%s", w, out)
+		}
+	}
+	if n := strings.Count(out, "cannot compile yet:"); n != len(want) {
+		t.Errorf("got %d diagnostics, want exactly %d:\n%s", n, len(want), out)
+	}
+}
+
 // The M1 acceptance program, built by cakec and run as a real process, serves
 // HTTP: checks 1 to 5 of the M1 plan. Running the binary rather than calling
 // the runtime also covers the signal handling and the console flushing.
