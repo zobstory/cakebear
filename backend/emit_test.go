@@ -271,7 +271,8 @@ func TestEmitConversion(t *testing.T) {
 		},
 	}}
 
-	if got := Emit(m); !strings.Contains(got, "var n int32 = int32(42.0)") {
+	got := Emit(m)
+	if !strings.Contains(got, "var n int32\n") || !strings.Contains(got, "\tn = int32(42.0)\n") {
 		t.Errorf("conversion did not emit as a Go conversion:\n%s", got)
 	}
 }

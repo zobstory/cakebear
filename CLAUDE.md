@@ -286,8 +286,9 @@ arrow functions and anonymous function expressions as values, with
 function-typed parameters, variables and results; `import` from `node:http`
 or `http` (named, renamed or namespace), and the members its bundled
 declarations list (`createServer`, `listen`, `setHeader`, `writeHead`, `end`,
-`req.url`, `req.method`). Those lower to host operations; the backend emits
-them from M1 steps 6–7, and until then reports each as `cannot compile yet`.
+`req.url`, `req.method`). Those lower to host operations and run on the
+runtime's `node:http` (`backend/runtime/http.go`), where each request is handled
+on its own goroutine.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from
@@ -313,6 +314,13 @@ that declares fewer parameters than its type passes, but Go function types must
 match exactly, so lowering pads the parameters and drops the returned value.
 Each literal records what it captures and whether that binding is mutable,
 which the handler race rule (M1 step 8) builds on.
+
+**Top-level variables** are declared at Go package level and assigned in `main`
+at their place in the source, so top-level functions can use them and side
+effects keep their order (a package-level initialiser would run before any of
+`main`). One difference from JavaScript: reading one before its declaration has
+run, from a function called earlier, gives Go's zero value where JavaScript
+throws a `ReferenceError`.
 
 ## Semantics decisions
 
@@ -351,8 +359,11 @@ the README's compatibility promise currently rules out. **That promise is the
 thing to amend**, and it should be amended before anyone writes async code
 against cakebear rather than after.
 
-*Live in Phase 1:* nothing, but the IR must not assume single-threaded
-execution anywhere.
+*Live since M1:* `node:http` request handlers, the first place cakebear
+observably differs from Node: each request runs on its own goroutine, so a
+CPU-heavy handler no longer holds up the others. The IR must not assume
+single-threaded execution anywhere. ⚠ Until the handler race rule (M1 step 8)
+lands, a handler that writes a shared `let` compiles and races.
 
 Related: because `number` is `float64`, integer-heavy TypeScript will run
 slower than equivalent Go. The refined numeric types (`i32`, `u64`) lowering

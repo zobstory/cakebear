@@ -1,10 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // helloServer is the M1 acceptance program. It also runs unmodified under
@@ -99,35 +110,118 @@ createServer((req, res) => {
 	}
 }
 
-// The whole server lowers, and what remains is reported as the backend's gap,
-// in the same voice as lowering's refusals, rather than as a failed go build.
-// When the runtime and emitter land (M1 steps 6-7) this test is replaced by
-// one that serves requests.
-func TestNodeHTTPServerLowersAndBackendGapIsNamed(t *testing.T) {
+// The M1 acceptance program, built by cakec and run as a real process, serves
+// HTTP: checks 1 to 5 of the M1 plan. Running the binary rather than calling
+// the runtime also covers the signal handling and the console flushing.
+func TestNodeHTTPHelloServes(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("sends SIGINT, which a Windows process cannot receive")
+	}
 
-	path := writeTS(t, "hello.ts", helloServer)
+	port := freePort(t)
+	path := writeTS(t, "hello.ts", strings.ReplaceAll(helloServer, "3000", strconv.Itoa(port)))
+	bin := filepath.Join(filepath.Dir(path), "hello")
 	var stderr bytes.Buffer
-	code := runBuild(buildOptions{files: []string{path}, output: filepath.Join(filepath.Dir(path), "hello"), color: false}, &stderr)
-	out := stderr.String()
+	if code := runBuild(buildOptions{files: []string{path}, output: bin}, &stderr); code != exitOK {
+		t.Fatalf("check 1: build failed (%d):\n%s", code, stderr.String())
+	}
 
-	if code != exitErrors {
-		t.Errorf("exit code = %d, want %d\n%s", code, exitErrors, out)
-	}
-	for _, want := range []string{
-		"hello.ts:3:16: cannot compile yet: the backend cannot emit node:http's createServer yet",
-		"hello.ts:12:1: cannot compile yet: the backend cannot emit node:http's Server.listen yet",
-		"cakec: 2 constructs the backend does not support yet",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q:\n%s", want, out)
+	server := startServer(t, bin)
+
+	// Check 4: the line arrives while the server is up, not when it exits.
+	want := fmt.Sprintf("listening on http://localhost:%d", port)
+	select {
+	case line := <-server.lines:
+		if line != want {
+			t.Fatalf("first line = %q, want %q", line, want)
 		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("check 4: no %q within 10s", want)
 	}
-	// Lowering must not have refused anything: not the import, not the
-	// handler's parameters, not a member call.
-	for _, unwanted := range []string{"go build failed", "import declaration", "cannot represent", "by name"} {
-		if strings.Contains(out, unwanted) {
-			t.Errorf("output contains %q:\n%s", unwanted, out)
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	if status, typ, body := get(t, base+"/"); status != 200 || typ != "text/plain" || body != "hello from cakebear\n" {
+		t.Errorf("check 2: GET / = %d %q %q", status, typ, body)
+	}
+	if _, _, body := get(t, base+"/health"); body != "ok\n" {
+		t.Errorf("check 3: GET /health body = %q, want %q", body, "ok\n")
+	}
+
+	// Check 5: Ctrl-C exits with 130, as Node does.
+	if code := server.interrupt(t); code != 130 {
+		t.Errorf("check 5: exit code after SIGINT = %d, want 130", code)
+	}
+}
+
+type runningServer struct {
+	cmd   *exec.Cmd
+	out   *io.PipeWriter
+	lines chan string
+	done  bool
+}
+
+func startServer(t *testing.T, bin string) *runningServer {
+	t.Helper()
+	pr, pw := io.Pipe()
+	s := &runningServer{cmd: exec.Command(bin), out: pw, lines: make(chan string, 16)}
+	s.cmd.Stdout = pw
+	if err := s.cmd.Start(); err != nil {
+		t.Fatalf("starting %s: %v", bin, err)
+	}
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			s.lines <- sc.Text()
 		}
+	}()
+	t.Cleanup(func() {
+		if !s.done {
+			_ = s.cmd.Process.Kill()
+			_ = s.cmd.Wait()
+			_ = pw.Close()
+		}
+	})
+	return s
+}
+
+// interrupt sends SIGINT and returns the exit code.
+func (s *runningServer) interrupt(t *testing.T) int {
+	t.Helper()
+	if err := s.cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatalf("sending SIGINT: %v", err)
 	}
+	err := s.cmd.Wait()
+	s.done = true
+	_ = s.out.Close()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("after SIGINT, Wait = %v, want an exit error", err)
+	}
+	return exitErr.ExitCode()
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func get(t *testing.T, url string) (status int, contentType, body string) {
+	t.Helper()
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading %s: %v", url, err)
+	}
+	return resp.StatusCode, resp.Header.Get("Content-Type"), string(b)
 }
