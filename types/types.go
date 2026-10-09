@@ -26,14 +26,46 @@ import (
 //go:embed cakebear.d.ts
 var declarations string
 
+//go:embed node-http.d.ts
+var nodeHTTPDeclarations string
+
 // scheme mirrors how upstream serves its bundled lib files. The declarations
 // never exist on disk, so they cannot be edited, shadowed by a file of the same
 // name, or left stale by a partial install.
 const scheme = "cakebear:///"
 
-// DeclarationPath is the virtual path of cakebear's declarations. cakec adds it
-// as a root file of every program.
+// DeclarationPath is the virtual path of cakebear's type extensions.
 func DeclarationPath() string { return scheme + "cakebear.d.ts" }
+
+// NodeHTTPPath is the virtual path of cakebear's node:http declarations.
+func NodeHTTPPath() string { return scheme + "node-http.d.ts" }
+
+// virtualFiles is every declarations file the overlay serves, in the order
+// they become root files. Adding a bundled module is one entry here.
+var virtualFiles = []struct{ path, contents string }{
+	{DeclarationPath(), declarations},
+	{NodeHTTPPath(), nodeHTTPDeclarations},
+}
+
+// RootFiles returns the virtual path of every declarations file. cakec adds
+// all of them as root files of every program, so extensions and bundled
+// modules resolve with no import, reference directive or install.
+func RootFiles() []string {
+	paths := make([]string, len(virtualFiles))
+	for i, f := range virtualFiles {
+		paths[i] = f.path
+	}
+	return paths
+}
+
+func virtualFile(path string) (string, bool) {
+	for _, f := range virtualFiles {
+		if f.path == path {
+			return f.contents, true
+		}
+	}
+	return "", false
+}
 
 // brandProperty is the phantom property carrying an extension's name. Nothing
 // can have it at runtime; it exists only for the checker to compare.
@@ -160,7 +192,7 @@ func describeFloat(v float64) string {
 	}
 }
 
-// Overlay serves cakebear's declarations from a virtual path alongside a real
+// Overlay serves cakebear's declarations from virtual paths alongside a real
 // filesystem, the same way upstream serves its bundled lib files.
 //
 // Embedding vfs.FS forwards every method we do not care about, so this keeps
@@ -175,15 +207,15 @@ type Overlay struct {
 func WrapFS(fs vfs.FS) vfs.FS { return &Overlay{FS: fs} }
 
 func (o *Overlay) FileExists(path string) bool {
-	if path == DeclarationPath() {
+	if _, ok := virtualFile(path); ok {
 		return true
 	}
 	return o.FS.FileExists(path)
 }
 
 func (o *Overlay) ReadFile(path string) (string, bool) {
-	if path == DeclarationPath() {
-		return declarations, true
+	if contents, ok := virtualFile(path); ok {
+		return contents, true
 	}
 	return o.FS.ReadFile(path)
 }

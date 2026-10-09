@@ -29,7 +29,7 @@ func lowerSource(t *testing.T, src string) (*ir.Module, []*Error) {
 
 	cwd := tspath.NormalizePath(dir)
 	// Mirrors what cakec does: cakebear's declarations overlaid on the
-	// bundled lib files, so i32 and base64 resolve here too.
+	// bundled lib files, so i32, base64 and node:http resolve here too.
 	fs := types.WrapFS(bundled.WrapFS(osvfs.FS()))
 	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil, nil)
 
@@ -40,7 +40,7 @@ func lowerSource(t *testing.T, src string) (*ir.Module, []*Error) {
 			Strict: core.TSTrue,
 			NoEmit: core.TSTrue,
 		},
-		[]string{tspath.NormalizePath(path), types.DeclarationPath()},
+		append([]string{tspath.NormalizePath(path)}, types.RootFiles()...),
 		tspath.ComparePathsOptions{UseCaseSensitiveFileNames: fs.UseCaseSensitiveFileNames(), CurrentDirectory: cwd},
 	)
 

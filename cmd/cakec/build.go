@@ -58,9 +58,10 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 
 	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/)
 
-	// cakebear's declarations are a root file of every program, so `i32` and
-	// `base64` resolve without an import or a reference directive.
-	roots = append(roots, cakebeartypes.DeclarationPath())
+	// cakebear's declarations are root files of every program, so `i32`,
+	// `base64` and `node:http` resolve without an import, a reference
+	// directive or an install.
+	roots = append(roots, cakebeartypes.RootFiles()...)
 
 	config := tsoptions.NewParsedCommandLine(
 		compilerOptionsFor(opts),
