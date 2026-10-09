@@ -56,7 +56,12 @@ var ErrNoToolchain = errors.New("the Go toolchain is required to build cakebear 
 // — when the emitter produces something the Go compiler rejects, the source is
 // the only useful thing to look at.
 func Build(m *ir.Module, opts Options) (goSource string, err error) {
-	goSource = Emit(m)
+	goSource, unsupported := emit(m)
+	// Refused before go build: its error would point at generated code the
+	// user never wrote, for a gap that is cakebear's.
+	if len(unsupported) > 0 {
+		return goSource, &UnsupportedError{Nodes: unsupported}
+	}
 
 	if _, err := exec.LookPath("go"); err != nil {
 		return goSource, ErrNoToolchain

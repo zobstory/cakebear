@@ -29,10 +29,19 @@ type emitter struct {
 	// depth is the indentation of the statement being emitted, so a function
 	// literal inside one of its expressions can indent its body to match.
 	depth int
+	// unsupported collects IR this backend cannot emit yet. Build refuses the
+	// module before go build ever sees the placeholder written for each.
+	unsupported []Unsupported
 }
 
-// Emit renders a module as the contents of a Go main package.
+// Emit renders a module as the contents of a Go main package. IR the backend
+// cannot emit yet appears as an #error line; Build reports it properly.
 func Emit(m *ir.Module) string {
+	src, _ := emit(m)
+	return src
+}
+
+func emit(m *ir.Module) (string, []Unsupported) {
 	var e emitter
 
 	// The body is emitted first so usesRuntime is known before the header,
@@ -48,7 +57,7 @@ func Emit(m *ir.Module) string {
 		fmt.Fprintf(&out, "import %s %q\n\n", rtPkg, genModule+"/"+rtDir)
 	}
 	out.WriteString(body)
-	return out.String()
+	return out.String(), sortedUnsupported(e.unsupported)
 }
 
 func (e *emitter) module(m *ir.Module) string {
@@ -169,9 +178,9 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		}
 
 	default:
-		// Unreachable: ir.Stmt is a closed interface. Emitting a compile error
-		// beats emitting silence, because silence would produce a program that
+		// Recorded rather than skipped: silence would produce a program that
 		// builds and quietly does less than the source said.
+		e.unsupported = append(e.unsupported, Unsupported{Span: s.StmtSpan(), What: describeUnsupported(s)})
 		fmt.Fprintf(&e.buf, "%s#error unhandled statement %T\n", pad, s)
 	}
 }
@@ -228,6 +237,7 @@ func (e *emitter) expr(x ir.Expr) string {
 		return fmt.Sprintf("%s.%s(%s)", rtPkg, logFunc(x.Arg.ExprType()), e.expr(x.Arg))
 
 	default:
+		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)
 	}
 }

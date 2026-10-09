@@ -41,6 +41,11 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			l.fail(n, "undefined is not supported yet; the backend has no nullable representation")
 			return nil
 		}
+		// A bundled function such as createServer is not a Go binding.
+		if m, found, _ := l.hostMemberOf(l.checker.GetSymbolAtLocation(n)); found {
+			l.failHostValue(n, m)
+			return nil
+		}
 		t := l.typeOf(n)
 		if t == ir.Invalid {
 			l.fail(n, "%s has a type the backend cannot represent yet", n.Text())
@@ -64,6 +69,9 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 
 	case ast.KindArrowFunction, ast.KindFunctionExpression:
 		return l.closure(n)
+
+	case ast.KindPropertyAccessExpression:
+		return l.property(n)
 
 	default:
 		l.fail(n, "%s is not supported yet", describeKind(n.Kind))
@@ -136,7 +144,8 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 	}
 
 	lt, rt := left.ExprType(), right.ExprType()
-	if lt != rt {
+	// Equal, not ==: two function types built separately differ as pointers.
+	if !lt.Equal(rt) {
 		// Mixed-type `+` is legal TypeScript (`"a" + 1` is a string) but needs
 		// a conversion node the IR does not have yet. Refusing beats emitting
 		// Go that would not compile.
@@ -192,6 +201,11 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 		return ir.Invalid, false
 
 	case ir.OpEqual, ir.OpNotEqual:
+		// Go cannot compare func values, and a host value's identity is the
+		// runtime's business, so === is for primitives only.
+		if operand.Kind == ir.KindFunc || operand.Kind == ir.KindHost {
+			return ir.Invalid, false
+		}
 		return ir.Boolean, true
 
 	case ir.OpAnd, ir.OpOr:
@@ -220,11 +234,22 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		if arg == nil {
 			return nil
 		}
-		if arg.ExprType() == ir.Invalid {
+		switch t := arg.ExprType(); {
+		case t == ir.Invalid:
 			l.fail(n, "console.log cannot print this type yet")
+			return nil
+		case t.Kind == ir.KindFunc:
+			l.fail(n, "console.log cannot print a function yet")
+			return nil
+		case t.Kind == ir.KindHost:
+			l.fail(n, "console.log cannot print a %s yet", t)
 			return nil
 		}
 		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
+	}
+
+	if out, handled := l.hostCall(n, c); handled {
+		return out
 	}
 
 	// A callee is a name: a top-level function, or a parameter or variable

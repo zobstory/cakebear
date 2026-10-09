@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -94,5 +96,38 @@ createServer((req, res) => {
 `
 	if code, out := build(t, writeTS(t, "narrow.ts", src)); code != exitOK {
 		t.Errorf("exit code = %d, want %d\n%s", code, exitOK, out)
+	}
+}
+
+// The whole server lowers, and what remains is reported as the backend's gap,
+// in the same voice as lowering's refusals, rather than as a failed go build.
+// When the runtime and emitter land (M1 steps 6-7) this test is replaced by
+// one that serves requests.
+func TestNodeHTTPServerLowersAndBackendGapIsNamed(t *testing.T) {
+	t.Parallel()
+
+	path := writeTS(t, "hello.ts", helloServer)
+	var stderr bytes.Buffer
+	code := runBuild(buildOptions{files: []string{path}, output: filepath.Join(filepath.Dir(path), "hello"), color: false}, &stderr)
+	out := stderr.String()
+
+	if code != exitErrors {
+		t.Errorf("exit code = %d, want %d\n%s", code, exitErrors, out)
+	}
+	for _, want := range []string{
+		"hello.ts:3:16: cannot compile yet: the backend cannot emit node:http's createServer yet",
+		"hello.ts:12:1: cannot compile yet: the backend cannot emit node:http's Server.listen yet",
+		"cakec: 2 constructs the backend does not support yet",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	// Lowering must not have refused anything: not the import, not the
+	// handler's parameters, not a member call.
+	for _, unwanted := range []string{"go build failed", "import declaration", "cannot represent", "by name"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("output contains %q:\n%s", unwanted, out)
+		}
 	}
 }
