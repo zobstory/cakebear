@@ -152,3 +152,41 @@ func TestDeclarationsAreServedVirtually(t *testing.T) {
 		t.Errorf("declarations do not mention the brand property %s", brandProperty)
 	}
 }
+
+// Every bundled declarations file is a root, is served virtually, and has
+// content: an entry missing from RootFiles would type-check nothing, and an
+// empty one would make every import of it fail.
+func TestEveryRootFileIsServedVirtually(t *testing.T) {
+	t.Parallel()
+
+	roots := RootFiles()
+	seen := map[string]bool{}
+	fs := WrapFS(nil)
+	for _, path := range roots {
+		if seen[path] {
+			t.Errorf("RootFiles() lists %q twice", path)
+		}
+		seen[path] = true
+		if !strings.HasPrefix(path, scheme) {
+			t.Errorf("root %q is not under %q", path, scheme)
+		}
+		if !fs.FileExists(path) {
+			t.Errorf("the overlay does not report root %q as existing", path)
+		}
+		if contents, ok := fs.ReadFile(path); !ok || strings.TrimSpace(contents) == "" {
+			t.Errorf("the overlay serves root %q empty (ok=%v)", path, ok)
+		}
+	}
+	for _, want := range []string{DeclarationPath(), NodeHTTPPath()} {
+		if !seen[want] {
+			t.Errorf("RootFiles() = %v, missing %q", roots, want)
+		}
+	}
+
+	contents, _ := fs.ReadFile(NodeHTTPPath())
+	for _, want := range []string{`declare module "node:http"`, `declare module "http"`} {
+		if !strings.Contains(contents, want) {
+			t.Errorf("node:http declarations are missing %s", want)
+		}
+	}
+}
