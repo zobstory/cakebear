@@ -362,8 +362,29 @@ against cakebear rather than after.
 *Live since M1:* `node:http` request handlers, the first place cakebear
 observably differs from Node: each request runs on its own goroutine, so a
 CPU-heavy handler no longer holds up the others. The IR must not assume
-single-threaded execution anywhere. ⚠ Until the handler race rule (M1 step 8)
-lands, a handler that writes a shared `let` compiles and races.
+single-threaded execution anywhere.
+
+**The handler race rule** (`lower/race.go`) is what keeps that safe. Correct
+TypeScript relies on handlers never overlapping, so `hits = hits + 1` in a
+handler is fine under Node and a data race here. Rather than add locks,
+lowering refuses what could race, as `cannot compile yet`:
+
+- a request handler may not touch a mutable binding declared outside it: a
+  `let`, or an enclosing function's parameter. Reading is refused as well as
+  writing, because the rest of the program can change the binding while
+  handlers run;
+- nor may it call, or pass on, a function that touches one, directly or through
+  the functions it calls (a summary over the file's call graph, recursion
+  included);
+- a handler the rule cannot see into, such as a parameter or a call's result,
+  is refused rather than trusted.
+
+Reading a `const` is allowed. ⚠ **Carry-forward invariant:** that is only safe
+because every M1 `const` holds a primitive, a function or a host value. A
+`const` array or object is still mutable (`xs.push(…)`), so this rule must
+grow when aggregates arrive, before they do, not after. Explicit shared-state
+tools (an atomic counter type in `types/`, say) are how a later milestone
+widens it.
 
 Related: because `number` is `float64`, integer-heavy TypeScript will run
 slower than equivalent Go. The refined numeric types (`i32`, `u64`) lowering
