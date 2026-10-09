@@ -62,6 +62,9 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 	case ast.KindCallExpression:
 		return l.call(n)
 
+	case ast.KindArrowFunction, ast.KindFunctionExpression:
+		return l.closure(n)
+
 	default:
 		l.fail(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
@@ -224,8 +227,10 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
 	}
 
+	// A callee is a name: a top-level function, or a parameter or variable
+	// holding a function value. Go spells calls to both the same way.
 	if c.Expression.Kind != ast.KindIdentifier {
-		l.fail(n, "only calls to top-level functions are supported yet")
+		l.fail(n, "only calls to a function by name are supported yet")
 		return nil
 	}
 

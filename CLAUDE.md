@@ -134,6 +134,19 @@ once.)
 `_submodules/TypeScript` is upstream's conformance corpus. Clone without
 `--recurse-submodules` unless you need it.
 
+## Pull requests
+
+- Assign zob on every PR (`gh pr create --assignee @me`).
+- Merges into `main` are squash merges, and the head branch is deleted on
+  merge. Both are repository settings, so GitHub enforces them.
+- **Exception: a PR that brings in upstream history must be a merge commit.**
+  That is an upstream sync, or the rebase onto `microsoft/TypeScript`. Squashing
+  one drops the upstream parent, so git no longer sees that history as merged
+  and the next sync conflicts on everything. Turn merge commits back on for
+  that PR, then off again.
+- Actions is disabled on this repository, so no checks run on a PR. Run the
+  gates in "Build / test / run" locally and say in the PR what passed.
+
 ## Upstream sync
 
 ```sh
@@ -268,11 +281,24 @@ Supported: `number`, `string`, `boolean`, and cakebear's extensions
 annotations; function declarations with typed parameters and return; arithmetic;
 string concatenation with `+` when both operands are strings; comparisons;
 `===`/`!==`; `&&`/`||`/`!`; unary minus; `if`/`else`; `while`; `return`;
-`console.log` on one primitive argument; calls to top-level functions.
+`console.log` on one primitive argument; calls to a function by name;
+arrow functions and anonymous function expressions as values, with
+function-typed parameters, variables and results.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports, `for`,
-multi-file programs, bitwise operators, `async`.
+multi-file programs, bitwise operators, `async`; calling anything but a name
+(`f()()`); named function expressions; optional, default, rest or destructured
+parameters; overloaded or generic function types.
+
+**Closures** lower to Go function literals, and Go closures capture by
+reference exactly as JavaScript's do, so a captured `let` is read when the
+closure runs. A literal takes the signature its slot expects rather than its
+own: TypeScript accepts `() => 5` where `() => void` is wanted, and a callback
+that declares fewer parameters than its type passes, but Go function types must
+match exactly, so lowering pads the parameters and drops the returned value.
+Each literal records what it captures and whether that binding is mutable,
+which the handler race rule (M1 step 8) builds on.
 
 ## Semantics decisions
 

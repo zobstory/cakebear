@@ -115,13 +115,43 @@ type Unary struct {
 	Span    Span
 }
 
-// Call is a call to a top-level function declared in this module. Phase 1 has
-// no first-class functions, so the callee is a name rather than an expression.
+// Call is a call to a named function: a top-level declaration, or a parameter
+// or variable holding a function value. Go spells both the same way, so the
+// callee stays a name. Calling an arbitrary expression is not in the subset.
 type Call struct {
 	Callee string
 	Args   []Expr
 	Typ    Type
 	Span   Span
+}
+
+// FuncLit is an arrow function or function expression: a function value.
+//
+// Its signature is the one the surrounding code expects, when there is one,
+// rather than the one the literal would infer alone. TypeScript lets `() => 5`
+// stand in for `() => void`, and a callback declare fewer parameters than its
+// type passes; Go function types must match exactly. Lowering settles the
+// difference, so a Param with an empty Name is one the caller passes and the
+// literal ignores.
+type FuncLit struct {
+	Params []Param
+	Result Type
+	Body   []Stmt
+	// Captures are the enclosing bindings the body refers to, in first-use
+	// order. Go closures capture by reference, as JavaScript's do, so the
+	// backend needs nothing from this. It is for the checks that must know what
+	// a function shares with its surroundings: a handler run on many goroutines
+	// at once cannot safely write a binding they all share.
+	Captures []Capture
+	Typ      Type
+	Span     Span
+}
+
+// Capture is one enclosing binding a FuncLit refers to.
+type Capture struct {
+	Name    string
+	Type    Type
+	Mutable bool // let or a parameter, versus const
 }
 
 // ConsoleLog is `console.log(x)` as an intrinsic rather than a method call.
@@ -160,6 +190,7 @@ func (*Ident) isExpr()        {}
 func (*Binary) isExpr()       {}
 func (*Unary) isExpr()        {}
 func (*Call) isExpr()         {}
+func (*FuncLit) isExpr()      {}
 func (*ConsoleLog) isExpr()   {}
 
 func (e *NumberLit) ExprType() Type    { return Number }
@@ -171,6 +202,7 @@ func (e *Ident) ExprType() Type        { return e.Typ }
 func (e *Binary) ExprType() Type       { return e.Typ }
 func (e *Unary) ExprType() Type        { return e.Typ }
 func (e *Call) ExprType() Type         { return e.Typ }
+func (e *FuncLit) ExprType() Type      { return e.Typ }
 func (e *ConsoleLog) ExprType() Type   { return Void }
 
 func (e *NumberLit) ExprSpan() Span    { return e.Span }
@@ -182,4 +214,5 @@ func (e *Ident) ExprSpan() Span        { return e.Span }
 func (e *Binary) ExprSpan() Span       { return e.Span }
 func (e *Unary) ExprSpan() Span        { return e.Span }
 func (e *Call) ExprSpan() Span         { return e.Span }
+func (e *FuncLit) ExprSpan() Span      { return e.Span }
 func (e *ConsoleLog) ExprSpan() Span   { return e.Span }

@@ -26,6 +26,9 @@ type emitter struct {
 	// An unused import is a compile error in Go, so this decides whether the
 	// import gets written at all.
 	usesRuntime bool
+	// depth is the indentation of the statement being emitted, so a function
+	// literal inside one of its expressions can indent its body to match.
+	depth int
 }
 
 // Emit renders a module as the contents of a Go main package.
@@ -112,12 +115,21 @@ func (e *emitter) stmts(stmts []ir.Stmt, depth int) {
 
 func (e *emitter) stmt(s ir.Stmt, depth int) {
 	pad := strings.Repeat("\t", depth)
+	e.depth = depth
 
 	switch s := s.(type) {
 	case *ir.VarDecl:
-		// An explicit type rather than := because TypeScript's annotation is
-		// the authority here, and := would let Go's inference disagree with it.
-		fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), goType(s.Type), e.expr(s.Init))
+		if s.Type.Kind == ir.KindFunc {
+			// Declared before it is assigned, so a function literal can call
+			// itself. Go's scope for `var f = …` starts after the initialiser;
+			// JavaScript's starts at the declaration.
+			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), goType(s.Type))
+			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.expr(s.Init))
+		} else {
+			// An explicit type rather than := because TypeScript's annotation
+			// is the authority here, and := would let Go's inference disagree.
+			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), goType(s.Type), e.expr(s.Init))
+		}
 		// Go rejects unused locals; TypeScript does not. Referencing the
 		// variable keeps a legal TypeScript program from failing to build.
 		fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, mangle(s.Name))
@@ -147,7 +159,14 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		}
 
 	case *ir.ExprStmt:
-		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.expr(s.Expr))
+		switch s.Expr.(type) {
+		case *ir.Call, *ir.ConsoleLog:
+			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.expr(s.Expr))
+		default:
+			// Go accepts only calls as expression statements, TypeScript any
+			// expression: `x => x * 2` in a void slot evaluates and drops.
+			fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, e.expr(s.Expr))
+		}
 
 	default:
 		// Unreachable: ir.Stmt is a closed interface. Emitting a compile error
@@ -201,6 +220,9 @@ func (e *emitter) expr(x ir.Expr) string {
 		}
 		return fmt.Sprintf("%s(%s)", mangle(x.Callee), strings.Join(args, ", "))
 
+	case *ir.FuncLit:
+		return e.funcLit(x)
+
 	case *ir.ConsoleLog:
 		e.usesRuntime = true
 		return fmt.Sprintf("%s.%s(%s)", rtPkg, logFunc(x.Arg.ExprType()), e.expr(x.Arg))
@@ -208,6 +230,25 @@ func (e *emitter) expr(x ir.Expr) string {
 	default:
 		return fmt.Sprintf("#error unhandled expression %T", x)
 	}
+}
+
+// funcLit renders a Go function literal. Go closures capture by reference, as
+// JavaScript's do, so captured bindings need nothing beyond their names.
+func (e *emitter) funcLit(x *ir.FuncLit) string {
+	depth := e.depth
+	params := make([]string, len(x.Params))
+	for i, p := range x.Params {
+		// An empty name is a parameter the literal ignores; mangle gives `_`.
+		params[i] = mangle(p.Name) + " " + goType(p.Type)
+	}
+	body := e.capture(func() { e.stmts(x.Body, depth+1) })
+	e.depth = depth
+
+	result := ""
+	if x.Result != ir.Void {
+		result = " " + goType(x.Result)
+	}
+	return fmt.Sprintf("func(%s)%s {\n%s%s}", strings.Join(params, ", "), result, body, strings.Repeat("\t", depth))
 }
 
 func (e *emitter) binary(x *ir.Binary) string {
@@ -229,6 +270,9 @@ func goFloat(f float64) string {
 }
 
 func goType(t ir.Type) string {
+	if t.Kind == ir.KindFunc {
+		return goFuncType(t.Sig)
+	}
 	switch t {
 	case ir.Number:
 		return "float64"
@@ -253,6 +297,19 @@ func goType(t ir.Type) string {
 	default:
 		return "any"
 	}
+}
+
+// goFuncType spells a function type: `func(float64, string) bool`.
+func goFuncType(sig *ir.Signature) string {
+	params := make([]string, len(sig.Params))
+	for i, p := range sig.Params {
+		params[i] = goType(p)
+	}
+	s := "func(" + strings.Join(params, ", ") + ")"
+	if sig.Result != ir.Void {
+		s += " " + goType(sig.Result)
+	}
+	return s
 }
 
 func logFunc(t ir.Type) string {
