@@ -36,8 +36,8 @@ func TestGoFuncType(t *testing.T) {
 	}
 }
 
-// A function-typed variable is declared before it is assigned, so the literal
-// can call itself, and a parameter the literal ignores is emitted as `_`.
+// A function-typed local is declared before it is assigned, so the literal can
+// call itself, and a parameter the literal ignores is emitted as `_`.
 func TestEmitFuncLit(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +45,7 @@ func TestEmitFuncLit(t *testing.T) {
 	typ := ir.FuncType([]ir.Type{ir.Number, ir.String}, ir.Number)
 	m := &ir.Module{
 		Name: "t",
-		Main: []ir.Stmt{&ir.VarDecl{
+		Funcs: []*ir.Func{{Name: "g", Result: ir.Void, Span: span, Body: []ir.Stmt{&ir.VarDecl{
 			Name: "f", Type: typ, Span: span,
 			Init: &ir.FuncLit{
 				Params: []ir.Param{{Name: "x", Type: ir.Number, Span: span}, {Type: ir.String, Span: span}},
@@ -60,7 +60,7 @@ func TestEmitFuncLit(t *testing.T) {
 				Typ:  typ,
 				Span: span,
 			},
-		}},
+		}}}},
 	}
 
 	got := Emit(m)

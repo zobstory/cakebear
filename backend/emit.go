@@ -32,6 +32,12 @@ type emitter struct {
 	// unsupported collects IR this backend cannot emit yet. Build refuses the
 	// module before go build ever sees the placeholder written for each.
 	unsupported []Unsupported
+	// usesHost records a call into node:http. Such a program ends main with the
+	// runtime's Run, which keeps the process alive while a server listens.
+	usesHost bool
+	// hoisted holds the top-level variables declared at package level. Their
+	// declarations in main become assignments.
+	hoisted map[*ir.VarDecl]bool
 }
 
 // Emit renders a module as the contents of a Go main package. IR the backend
@@ -67,6 +73,20 @@ func (e *emitter) module(m *ir.Module) string {
 	// inside a called function still needs the buffer flushed, and a program
 	// that never logs must not import the runtime, since Go rejects an unused
 	// import.
+	//
+	// Top-level variables are declared at package level, so a top-level
+	// function can use them, and assigned where the source initialises them, so
+	// side effects keep their order. A package-level initialiser would run
+	// before main, ahead of any top-level code written earlier in the file.
+	e.hoisted = map[*ir.VarDecl]bool{}
+	globals := e.capture(func() {
+		for _, s := range m.Main {
+			if d, ok := s.(*ir.VarDecl); ok {
+				fmt.Fprintf(&e.buf, "var %s %s\n", mangle(d.Name), e.typ(d.Type))
+				e.hoisted[d] = true
+			}
+		}
+	})
 	funcs := e.capture(func() {
 		for _, fn := range m.Funcs {
 			e.function(fn)
@@ -78,12 +98,19 @@ func (e *emitter) module(m *ir.Module) string {
 	})
 
 	var out strings.Builder
+	if globals != "" {
+		out.WriteString(globals + "\n")
+	}
 	out.WriteString(funcs)
 	out.WriteString("func main() {\n")
 	if e.usesRuntime {
 		out.WriteString("\tdefer " + rtPkg + ".Flush()\n")
 	}
 	out.WriteString(mainBody)
+	if e.usesHost {
+		// Last, so listen callbacks run after the top-level code, as in Node.
+		out.WriteString("\t" + rtPkg + ".Run()\n")
+	}
 	out.WriteString("}\n")
 	return out.String()
 }
@@ -105,11 +132,11 @@ func (e *emitter) function(fn *ir.Func) {
 		if i > 0 {
 			e.buf.WriteString(", ")
 		}
-		fmt.Fprintf(&e.buf, "%s %s", mangle(p.Name), goType(p.Type))
+		fmt.Fprintf(&e.buf, "%s %s", mangle(p.Name), e.typ(p.Type))
 	}
 	e.buf.WriteString(")")
 	if fn.Result != ir.Void {
-		fmt.Fprintf(&e.buf, " %s", goType(fn.Result))
+		fmt.Fprintf(&e.buf, " %s", e.typ(fn.Result))
 	}
 	e.buf.WriteString(" {\n")
 	e.stmts(fn.Body, 1)
@@ -128,16 +155,21 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 
 	switch s := s.(type) {
 	case *ir.VarDecl:
+		if e.hoisted[s] {
+			// Declared at package level already; see module.
+			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.expr(s.Init))
+			return
+		}
 		if s.Type.Kind == ir.KindFunc {
 			// Declared before it is assigned, so a function literal can call
 			// itself. Go's scope for `var f = …` starts after the initialiser;
 			// JavaScript's starts at the declaration.
-			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), goType(s.Type))
+			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), e.typ(s.Type))
 			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.expr(s.Init))
 		} else {
 			// An explicit type rather than := because TypeScript's annotation
 			// is the authority here, and := would let Go's inference disagree.
-			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), goType(s.Type), e.expr(s.Init))
+			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type), e.expr(s.Init))
 		}
 		// Go rejects unused locals; TypeScript does not. Referencing the
 		// variable keeps a legal TypeScript program from failing to build.
@@ -169,7 +201,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
-		case *ir.Call, *ir.ConsoleLog:
+		case *ir.Call, *ir.ConsoleLog, *ir.HostCall:
 			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.expr(s.Expr))
 		default:
 			// Go accepts only calls as expression statements, TypeScript any
@@ -220,7 +252,7 @@ func (e *emitter) expr(x ir.Expr) string {
 		// A plain Go conversion. Truncation and wrapping follow Go's rules,
 		// which are the machine's; the compile-time range check in types/
 		// catches the literal cases before they get here.
-		return fmt.Sprintf("%s(%s)", goType(x.Typ), e.expr(x.Value))
+		return fmt.Sprintf("%s(%s)", e.typ(x.Typ), e.expr(x.Value))
 
 	case *ir.Call:
 		args := make([]string, len(x.Args))
@@ -231,6 +263,12 @@ func (e *emitter) expr(x ir.Expr) string {
 
 	case *ir.FuncLit:
 		return e.funcLit(x)
+
+	case *ir.HostCall:
+		return e.hostCall(x)
+
+	case *ir.HostProp:
+		return e.hostProp(x)
 
 	case *ir.ConsoleLog:
 		e.usesRuntime = true
@@ -249,14 +287,14 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 	params := make([]string, len(x.Params))
 	for i, p := range x.Params {
 		// An empty name is a parameter the literal ignores; mangle gives `_`.
-		params[i] = mangle(p.Name) + " " + goType(p.Type)
+		params[i] = mangle(p.Name) + " " + e.typ(p.Type)
 	}
 	body := e.capture(func() { e.stmts(x.Body, depth+1) })
 	e.depth = depth
 
 	result := ""
 	if x.Result != ir.Void {
-		result = " " + goType(x.Result)
+		result = " " + e.typ(x.Result)
 	}
 	return fmt.Sprintf("func(%s)%s {\n%s%s}", strings.Join(params, ", "), result, body, strings.Repeat("\t", depth))
 }
@@ -280,8 +318,11 @@ func goFloat(f float64) string {
 }
 
 func goType(t ir.Type) string {
-	if t.Kind == ir.KindFunc {
+	switch t.Kind {
+	case ir.KindFunc:
 		return goFuncType(t.Sig)
+	case ir.KindHost:
+		return goHostType(t.Host)
 	}
 	switch t {
 	case ir.Number:
