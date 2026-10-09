@@ -55,6 +55,11 @@ type lowerer struct {
 	checker *checker.Checker
 	name    string
 	errs    []*Error
+	// funcDepth counts function types being mapped, to stop a recursive one.
+	funcDepth int
+	// discard is set while lowering a function literal that stands in for a
+	// void callback, so its return values are evaluated and dropped.
+	discard bool
 }
 
 // File lowers one checked source file into a module.
@@ -112,9 +117,13 @@ func (l *lowerer) invalid(n *ast.Node, format string, args ...any) {
 	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...), Kind: Invalid})
 }
 
-// typeOf maps a checked TypeScript type onto the Phase-1 type surface.
+// typeOf maps the checked type of a node onto the IR's type surface.
 func (l *lowerer) typeOf(n *ast.Node) ir.Type {
-	t := l.checker.GetTypeAtLocation(n)
+	return l.typeFromType(l.checker.GetTypeAtLocation(n))
+}
+
+// typeFromType maps a checked TypeScript type onto the IR's type surface.
+func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 	if t == nil {
 		return ir.Invalid
 	}
@@ -141,7 +150,7 @@ func (l *lowerer) typeOf(n *ast.Node) ir.Type {
 	case flags&checker.TypeFlagsUndefined != 0:
 		return ir.Undefined
 	default:
-		return ir.Invalid
+		return l.funcType(t)
 	}
 }
 
@@ -272,6 +281,12 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 				return nil
 			}
 		}
+		if l.discard && out.Value != nil {
+			// A void slot: evaluate the value for its effects, then return.
+			value := out.Value
+			out.Value = nil
+			return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
+		}
 		return []ir.Stmt{out}
 
 	case ast.KindBlock:
@@ -326,6 +341,12 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 		}
 		t := l.typeOf(decl.Name())
 		if t == ir.Invalid {
+			// A function literal can say exactly why (async, a rest
+			// parameter, …), which beats blaming the variable's type.
+			if k := decl.Initializer.Kind; (k == ast.KindArrowFunction || k == ast.KindFunctionExpression) &&
+				!l.closureShapeOK(decl.Initializer) {
+				continue
+			}
 			l.fail(d, "%s has a type the backend cannot represent yet", name)
 			continue
 		}
