@@ -16,14 +16,25 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // out is buffered because a program that logs in a loop would otherwise pay a
 // write syscall per line. Flush runs from the generated main via defer.
-var out = bufio.NewWriter(os.Stdout)
+//
+// outMu guards it: request handlers run on many goroutines at once (CLAUDE.md,
+// semantics decision 3), and bufio.Writer is not safe for concurrent use.
+var (
+	outMu sync.Mutex
+	out   = bufio.NewWriter(os.Stdout)
+)
 
 // Flush writes anything still buffered. The generated program defers this.
-func Flush() { _ = out.Flush() }
+func Flush() {
+	outMu.Lock()
+	defer outMu.Unlock()
+	_ = out.Flush()
+}
 
 // NegZero is IEEE-754 negative zero.
 //
@@ -134,7 +145,18 @@ func LogBool(b bool)     { writeLine(BoolToString(b)) }
 func LogNull()           { writeLine("null") }
 func LogUndefined()      { writeLine("undefined") }
 
+// writeLine writes one line of console output.
+//
+// While a server is listening, each line is flushed as it is written. A
+// server's process never reaches the deferred Flush until it exits, so
+// buffering would hold "listening on …" back indefinitely; a batch program
+// keeps the buffer, which is the reason it exists.
 func writeLine(s string) {
+	outMu.Lock()
+	defer outMu.Unlock()
 	_, _ = out.WriteString(s)
 	_ = out.WriteByte('\n')
+	if liveHandles.Load() > 0 {
+		_ = out.Flush()
+	}
 }
