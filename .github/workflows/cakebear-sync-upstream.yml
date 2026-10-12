@@ -1,15 +1,16 @@
 name: cakebear-sync-upstream
 
 # -----------------------------------------------------------------------------
-# Merge microsoft/typescript-go into cakebear once a week and open a PR.
+# Snapshot microsoft/TypeScript's tsc/ into cakebear once a week and open a PR.
 #
-# The cadence is the point. A fork that syncs weekly resolves import-line
-# conflicts in minutes; a fork that syncs after six months resolves them for a
-# day and eventually gets abandoned instead. Finding out on a Monday that a
-# sync breaks the build is the cheapest version of that news.
+# The cadence is the point. A fork that syncs weekly meets upstream's API
+# changes a few at a time; one that syncs after six months meets them all at
+# once and eventually gets abandoned instead. Finding out on a Monday that a
+# sync breaks cakebear's own code is the cheapest version of that news.
 #
-# Upstream will eventually be merged into microsoft/TypeScript and this repo
-# will close. When that happens, change UPSTREAM_URL below and nothing else.
+# Upstream was microsoft/typescript-go until it was archived on 2026-08-20 and
+# moved into microsoft/TypeScript under tsc/. scripts/sync-upstream.sh explains
+# why a sync is now a snapshot rather than a merge.
 # -----------------------------------------------------------------------------
 
 on:
@@ -22,16 +23,14 @@ permissions:
   pull-requests: write
 
 env:
-  UPSTREAM_URL: https://github.com/microsoft/typescript-go.git
+  UPSTREAM_URL: https://github.com/microsoft/TypeScript.git
 
 jobs:
   sync:
-    name: merge upstream/main
+    name: snapshot upstream main
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -43,53 +42,59 @@ jobs:
           git config user.name  "cakebear-sync[bot]"
           git config user.email "cakebear-sync@users.noreply.github.com"
 
-      - name: Add upstream remote
-        run: |
-          git remote add upstream "$UPSTREAM_URL" || git remote set-url upstream "$UPSTREAM_URL"
-          git fetch upstream --no-tags
-
-      - name: Skip if already up to date
+      - name: Find upstream's latest commit
         id: check
         run: |
           set -euo pipefail
-          if git merge-base --is-ancestor upstream/main HEAD; then
+          latest=$(git ls-remote "$UPSTREAM_URL" refs/heads/main | cut -f1)
+          current=$(tr -d '[:space:]' <scripts/upstream-ref)
+          echo "latest=$latest" >>"$GITHUB_OUTPUT"
+          if [ "$latest" = "$current" ]; then
             echo "up-to-date=true" >>"$GITHUB_OUTPUT"
-            echo "Already contains upstream/main; nothing to do."
+            echo "Already at microsoft/TypeScript@${latest:0:9}; nothing to do."
           else
             echo "up-to-date=false" >>"$GITHUB_OUTPUT"
-            echo "behind=$(git rev-list --count HEAD..upstream/main)" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Merge and rewrite module path
+      - name: Snapshot and rewrite module path
         if: steps.check.outputs.up-to-date == 'false'
-        id: merge
+        id: sync
         run: |
           set -euo pipefail
           branch="sync/upstream-$(date -u +%Y%m%d)"
           git switch -c "$branch"
-          scripts/sync-upstream.sh upstream/main
+          before=$(git rev-parse HEAD)
+          scripts/sync-upstream.sh "${{ steps.check.outputs.latest }}"
+          # Most monorepo commits don't touch tsc/: then the script commits
+          # nothing, and there is no PR to open.
+          if [ "$(git rev-parse HEAD)" = "$before" ]; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
           git push --force-with-lease origin "$branch"
+          echo "changed=true" >>"$GITHUB_OUTPUT"
           echo "branch=$branch" >>"$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse --short upstream/main)" >>"$GITHUB_OUTPUT"
 
       - name: Open pull request
-        if: steps.check.outputs.up-to-date == 'false'
+        if: steps.sync.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.check.outputs.latest }}
         run: |
           set -euo pipefail
-          # The golden-rule gate steps aside for this label, and only this label.
+          # cakebear-ci.yml checks a PR with this label against the snapshot
+          # instead of against "touches no upstream file".
           gh label create upstream-sync \
             --color 0E8A16 \
-            --description "Merges microsoft/typescript-go; exempt from the golden-rule gate" \
+            --description "Snapshots microsoft/TypeScript's tsc/; checked against the snapshot" \
             2>/dev/null || true
           gh pr create \
             --base main \
-            --head "${{ steps.merge.outputs.branch }}" \
+            --head "${{ steps.sync.outputs.branch }}" \
             --label upstream-sync \
-            --title "Merge upstream/main (${{ steps.merge.outputs.sha }})" \
+            --title "Sync upstream to microsoft/TypeScript@${SHA:0:9} (tsc/)" \
             --body-file .github/upstream-sync-pr-body.md
 
       - name: Report
-        if: steps.check.outputs.up-to-date == 'true'
-        run: echo "cakebear is level with upstream/main."
+        if: steps.check.outputs.up-to-date == 'true' || steps.sync.outputs.changed == 'false'
+        run: echo "cakebear's upstream tree is level with microsoft/TypeScript main."

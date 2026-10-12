@@ -23,24 +23,22 @@ permissions:
 
 jobs:
   golden-rule:
-    name: golden-rule (no upstream files touched)
+    name: golden-rule (upstream files untouched)
     runs-on: ubuntu-latest
-    # Upstream syncs necessarily touch upstream files. cakebear-sync-upstream.yml
-    # labels those PRs so this gate steps aside for them, and only for them.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Fetch upstream for comparison
-        # The check asks whether upstream actually has each changed file, so it
-        # needs the ref. Without it the check still runs, against the manifest
-        # alone, and says so.
-        run: |
-          git remote add upstream https://github.com/microsoft/typescript-go.git || true
-          git fetch --no-tags --depth=1 upstream main:refs/remotes/upstream/main
+      # An ordinary PR may not change an upstream file at all.
       - name: Check no upstream file was modified
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
         run: scripts/check-upstream-untouched.sh origin/${{ github.base_ref || 'main' }}
+      # A sync changes upstream files by design (cakebear-sync-upstream.yml
+      # labels it), so it is held to something stricter: every upstream file
+      # equals the snapshot scripts/upstream-ref names.
+      - name: Check the upstream tree is the recorded snapshot
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'upstream-sync') }}
+        run: scripts/check-upstream-snapshot.sh
 
   boundary:
     name: boundary (ir/ and backend/ stay extractable)

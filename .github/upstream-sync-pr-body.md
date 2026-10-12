@@ -1,14 +1,10 @@
-Automated weekly sync with `microsoft/typescript-go`.
+Automated weekly sync with microsoft/TypeScript's Go compiler (`tsc/`).
 
-`scripts/sync-upstream.sh` merged `upstream/main`, took upstream's side of every
-conflicted file, and re-ran `scripts/rename-module.sh`. That resolution is only
-correct while the golden rule holds — if this PR shows changes to a file
-cakebear owns, the script would have stopped instead, so review the diff for
-anything outside upstream's tree.
+`scripts/sync-upstream.sh` replaced every upstream file with a snapshot of `tsc/` at the commit in `scripts/upstream-ref`, deleted the upstream files the snapshot no longer has, and re-ran `scripts/rename-module.sh`. It never touches a path in `scripts/owned-paths`, and `go build ./...` passed before it committed.
 
-`go build ./...` passed before the merge was committed.
+That is correct only while the golden rule holds, so CI runs `scripts/check-upstream-snapshot.sh` on this PR: every upstream file must be byte-identical to the snapshot after the module rename.
 
 **Review checklist**
-- [ ] `git show --stat` shows only upstream paths plus module-path lines
+- [ ] `scripts/check-upstream-snapshot.sh` passes
 - [ ] cakebear's own tests still pass against the new frontend
-- [ ] No new upstream package that `cmd/cakec` should be adopting
+- [ ] No new upstream API that `lower/` or `cmd/cakec` should adopt
