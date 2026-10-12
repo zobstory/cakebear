@@ -148,8 +148,35 @@ type FuncLit struct {
 	// literal neither touches a mutable binding it shares with other calls nor
 	// calls anything that does (lower/race.go).
 	Concurrent bool
-	Typ        Type
-	Span       Span
+	// Async marks an `async` arrow or function expression, with Func.Async's
+	// convention: Result is the promise, the Returns in Body carry its element.
+	Async bool
+	Typ   Type
+	Span  Span
+}
+
+// Await is `await v`. Value has a promise type, and Typ is that promise's
+// element: what the expression evaluates to once the promise resolves.
+//
+// It stays an expression, not a split point in its function. That is what
+// keeps the IR free of any one execution model: the Go backend blocks the
+// goroutine running the async function, and a backend that rewrote async
+// functions into state machines would change how Await emits, not the IR.
+// It appears only in an async function's body.
+type Await struct {
+	Value Expr
+	Typ   Type
+	Span  Span
+}
+
+// NewPromise is `new Promise<T>(executor)`. Typ is PromiseOf(T), and
+// Executor is a function value of ExecutorType(T), which the runtime calls
+// once, at once, with the resolve function. Rejection is not modelled: M2
+// refuses reject, and adopting another promise through resolve, in lowering.
+type NewPromise struct {
+	Executor Expr
+	Typ      Type
+	Span     Span
 }
 
 // Capture is one enclosing binding a FuncLit refers to.
@@ -185,6 +212,13 @@ type Convert struct {
 func (*Convert) isExpr()          {}
 func (e *Convert) ExprType() Type { return e.Typ }
 func (e *Convert) ExprSpan() Span { return e.Span }
+
+func (*Await) isExpr()               {}
+func (*NewPromise) isExpr()          {}
+func (e *Await) ExprType() Type      { return e.Typ }
+func (e *NewPromise) ExprType() Type { return e.Typ }
+func (e *Await) ExprSpan() Span      { return e.Span }
+func (e *NewPromise) ExprSpan() Span { return e.Span }
 
 func (*NumberLit) isExpr()    {}
 func (*StringLit) isExpr()    {}

@@ -248,20 +248,34 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **open**
+## Current phase: **M2, async/await**
 
-P0–P5 and M1 are done and nothing is blocked. Reasonable next steps, none
-urgent:
+P0–P5 and M1 are done, and **M2 is in progress**: `async`/`await`, `Promise`
+and `setTimeout`, built on M1's run loop. Its execution model is decided
+(semantics decision 3, as amended), and so far it has refused library globals
+at lowering and added the IR for promises: `ir.KindPromise`, `Async` on `Func`
+and `FuncLit`, `ir.Await` and `ir.NewPromise`. The backend refuses all of them
+by name until its emitter lands. Lowering, the runtime's scheduler, emission
+and end-to-end checks follow.
 
-- **M2:** `async`/`await`, `Promise` and `setTimeout`, built on M1's run loop.
-  The decision to make when it starts: whether an `async` function runs as its
-  own goroutine (semantics decision 3) or as a state machine resumed on the
-  loop. The race rule then applies at `await` resumption points too.
+After M2, none urgent:
+
+- **`cakec` as a superset of `tsc`.** The end goal is tight integration with
+  TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
+  `--watch`, `--build`) and adds native builds. It cannot be done by adding
+  commands to `cmd/tsc`, which is upstream's: a sync replaces it wholesale.
+  But upstream's `cmd/tsc/main.go` is a thin wrapper around
+  `execute.CommandLine`, so `cakec` can make the same call for anything that
+  is not a cakebear command. Native settings go in a top-level `"cakebear"`
+  block of `tsconfig.json`, which `tsc` ignores. Inside `compilerOptions`, an
+  unknown key is TS5023. Both were measured 2026-10-12. `execute` has no plugin
+  or emit hook, and its `OnProgram` callback switches upstream into test mode,
+  so native builds keep constructing their own Program. This replaces the
+  earlier "`tsconfig.json` support" item.
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
   for most real programs, and aggregates must extend the race rule first.
 - Multi-file programs, which need an import graph in the IR.
-- `tsconfig.json` support, so `cakec` can build a real project.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
@@ -407,11 +421,25 @@ int32/uint32 coercion (`a | b` becomes `float64(int32(a) | int32(b))`), and
 the runtime implements it. This is why `console.log` is a runtime call rather
 than a direct `fmt.Println`.
 
-**3. `async`/`await` maps to goroutines, genuinely in parallel.** JS async is
-concurrent but never parallel, so correct TypeScript cannot race; goroutines
-can. We take the parallel mapping: it is what the M:N scheduler note always
-implied, and pretending to be an event loop would throw away most of the
-performance that justifies compiling TypeScript at all.
+**3. `async`/`await` maps to goroutines: parallel across requests, in Node's
+order within one.** JS async is concurrent but never parallel, so correct
+TypeScript cannot race; goroutines can. We keep the goroutines, which is what
+the M:N scheduler note always implied, and pretending to be one event loop for
+the whole process would throw away most of the performance that justifies
+compiling TypeScript at all.
+
+*Amended for M2 (decided 2026-10-12).* The original wording, "genuinely in
+parallel", is narrowed by **domains**: the main program is one, and each
+request handler invocation is another. Every `async` call gets its own
+goroutine, but within a domain only one runs at a time, handed a token in the
+order Node's microtask and timer queues would run them. So async code inside
+one request, or inside main, keeps Node's ordering exactly and cannot race with
+itself, while separate requests still run in parallel. An `async` call runs
+synchronously up to its first `await`, as in JavaScript. Fully free goroutines
+were rejected because `sleep.ts`-style ordering would race. State machines on a
+loop were rejected for now because they need a whole-IR transform: `await`
+stays an IR expression (`ir.Await`), so they remain a possible backend-only
+change later. The cost is roughly 224 ns per `await`, against Node's 32 ns.
 
 This makes cakebear a language that differs from TypeScript at runtime. The
 README's compatibility promise ("compared against Node for behavioural

@@ -127,6 +127,9 @@ func (e *emitter) capture(emit func()) string {
 }
 
 func (e *emitter) function(fn *ir.Func) {
+	if fn.Async {
+		e.refuseAsync(fn.Span, "function "+fn.Name)
+	}
 	fmt.Fprintf(&e.buf, "func %s(", mangle(fn.Name))
 	for i, p := range fn.Params {
 		if i > 0 {
@@ -283,6 +286,9 @@ func (e *emitter) expr(x ir.Expr) string {
 // funcLit renders a Go function literal. Go closures capture by reference, as
 // JavaScript's do, so captured bindings need nothing beyond their names.
 func (e *emitter) funcLit(x *ir.FuncLit) string {
+	if x.Async {
+		e.refuseAsync(x.Span, "function value")
+	}
 	depth := e.depth
 	params := make([]string, len(x.Params))
 	for i, p := range x.Params {

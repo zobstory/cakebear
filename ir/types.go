@@ -4,9 +4,10 @@ import "strings"
 
 // Kind says which family a Type belongs to.
 //
-// It is today's primitive enum, widened by KindFunc and KindHost. The order is
-// load-bearing in one place: IsExtension tests the KindInt32..KindBase64 range,
-// so new kinds are appended after KindBase64 rather than inserted before it.
+// It is today's primitive enum, widened by KindFunc, KindHost and KindPromise.
+// The order is load-bearing in one place: IsExtension tests the
+// KindInt32..KindBase64 range, so new kinds are appended after KindBase64
+// rather than inserted before it.
 type Kind int
 
 const (
@@ -33,6 +34,9 @@ const (
 	// KindHost is a value owned by the host runtime, such as a Node HTTP
 	// request. Host says which one.
 	KindHost
+	// KindPromise is TypeScript's own Promise<T>, not a bundled copy. Elem is
+	// T, what the promise resolves to; Promise<void> has Elem Void.
+	KindPromise
 )
 
 // HostType names a value the host runtime owns, such as the object a Node
@@ -91,14 +95,15 @@ func (s *Signature) Equal(o *Signature) bool {
 // and lower/ refuses anything outside it rather than guessing.
 //
 // Only the field that Kind selects is meaningful: Host for KindHost, Sig for
-// KindFunc, neither for a primitive. The primitives are package-level values
-// (Number, String, ...), so `t == ir.Number` and `switch t { case ir.Number: }`
-// keep working. Between two function types == compares the Sig pointers, so use
-// Equal there.
+// KindFunc, Elem for KindPromise, none for a primitive. The primitives are
+// package-level values (Number, String, ...), so `t == ir.Number` and
+// `switch t { case ir.Number: }` keep working. Between two function or promise
+// types == compares the pointers, so use Equal there.
 type Type struct {
 	Kind Kind
 	Host HostType   // KindHost only
 	Sig  *Signature // KindFunc only
+	Elem *Type      // KindPromise only
 }
 
 var (
@@ -129,12 +134,38 @@ func HostOf(h HostType) Type {
 	return Type{Kind: KindHost, Host: h}
 }
 
+// PromiseOf returns Promise<elem>.
+func PromiseOf(elem Type) Type {
+	return Type{Kind: KindPromise, Elem: &elem}
+}
+
+// ResolveType is the type of a Promise executor's resolve parameter, for a
+// promise of elem: `(elem) => void`, or `() => void` for Promise<void>.
+//
+// TypeScript types it `(value: T | PromiseLike<T>) => void`. The union is
+// there for adopting another promise, which M2 refuses, so what is left is a
+// plain function, the shape that lets `setTimeout(resolve, ms)` type-check
+// against a `() => void` callback.
+func ResolveType(elem Type) Type {
+	if elem == Void {
+		return FuncType(nil, Void)
+	}
+	return FuncType([]Type{elem}, Void)
+}
+
+// ExecutorType is the type of the function `new Promise` takes, for a promise
+// of elem: `(resolve) => void`.
+func ExecutorType(elem Type) Type {
+	return FuncType([]Type{ResolveType(elem)}, Void)
+}
+
 // Equal reports whether t and u are the same type, comparing structurally.
 //
 // Primitives are equal when their kinds are. Host types are equal when they
 // name the same HostType. Function types are equal when their parameters and
 // results are, however the two Signatures were built; == would compare the
-// pointers and call two identical signatures different.
+// pointers and call two identical signatures different. Promise types are
+// equal when their element types are, for the same reason.
 func (t Type) Equal(u Type) bool {
 	if t.Kind != u.Kind {
 		return false
@@ -144,6 +175,11 @@ func (t Type) Equal(u Type) bool {
 		return t.Host == u.Host
 	case KindFunc:
 		return t.Sig.Equal(u.Sig)
+	case KindPromise:
+		if t.Elem == nil || u.Elem == nil {
+			return t.Elem == u.Elem
+		}
+		return t.Elem.Equal(*u.Elem)
 	default:
 		return true
 	}
@@ -191,6 +227,11 @@ func (t Type) String() string {
 		return t.Sig.String()
 	case KindHost:
 		return t.Host.String()
+	case KindPromise:
+		if t.Elem == nil {
+			return "Promise<invalid>"
+		}
+		return "Promise<" + t.Elem.String() + ">"
 	default:
 		return "invalid"
 	}

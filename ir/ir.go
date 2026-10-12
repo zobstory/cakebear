@@ -49,9 +49,15 @@ type Module struct {
 type Func struct {
 	Name   string
 	Params []Param
+	// Result is the type a caller gets. For an async function that is the
+	// promise, PromiseOf(T), while the Returns in Body carry T itself: an
+	// async function's `return v` resolves the promise with v.
 	Result Type
 	Body   []Stmt
-	Span   Span
+	// Async marks an `async` function. Calling one runs its body up to the
+	// first Await before the caller continues, as in JavaScript.
+	Async bool
+	Span  Span
 }
 
 type Param struct {
