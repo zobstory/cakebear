@@ -73,7 +73,7 @@ func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
 	l := &lowerer{
 		file:    file,
 		checker: c,
-		name:    strings.TrimSuffix(filepath.Base(file.FileName()), filepath.Ext(file.FileName())),
+		name:    strings.TrimSuffix(filepath.Base(string(file.FileName())), filepath.Ext(string(file.FileName()))),
 	}
 
 	m := &ir.Module{Name: l.name}
@@ -104,7 +104,7 @@ func (l *lowerer) span(n *ast.Node) ir.Span {
 	end := n.End()
 	line, col := lineAndColumn(l.file, pos)
 	return ir.Span{
-		File:  l.file.FileName(),
+		File:  string(l.file.FileName()),
 		Start: pos,
 		End:   end,
 		Line:  line + 1,
@@ -112,14 +112,14 @@ func (l *lowerer) span(n *ast.Node) ir.Span {
 	}
 }
 
-// fail records a construct the backend does not support yet.
-func (l *lowerer) fail(n *ast.Node, format string, args ...any) {
+// failf records a construct the backend does not support yet.
+func (l *lowerer) failf(n *ast.Node, format string, args ...any) {
 	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...), Kind: Unsupported})
 }
 
-// invalid records a genuine error in the source, which no later phase will make
+// invalidf records a genuine error in the source, which no later phase will make
 // legal.
-func (l *lowerer) invalid(n *ast.Node, format string, args ...any) {
+func (l *lowerer) invalidf(n *ast.Node, format string, args ...any) {
 	l.errs = append(l.errs, &Error{Span: l.span(n), Msg: fmt.Sprintf(format, args...), Kind: Invalid})
 }
 
@@ -189,11 +189,11 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 	decl := n.AsFunctionDeclaration()
 
 	if decl.Name() == nil {
-		l.fail(n, "a function declaration needs a name")
+		l.failf(n, "a function declaration needs a name")
 		return nil
 	}
 	if decl.Body == nil {
-		l.fail(n, "function %s has no body; overload signatures are not supported yet", decl.Name().Text())
+		l.failf(n, "function %s has no body; overload signatures are not supported yet", decl.Name().Text())
 		return nil
 	}
 
@@ -203,12 +203,12 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 		for _, p := range decl.Parameters.Nodes {
 			param := p.AsParameterDeclaration()
 			if param.Name() == nil || param.Name().Kind != ast.KindIdentifier {
-				l.fail(p, "destructured parameters are not supported yet")
+				l.failf(p, "destructured parameters are not supported yet")
 				continue
 			}
 			t := l.typeOf(p)
 			if t == ir.Invalid {
-				l.fail(p, "parameter %s has a type the backend cannot represent yet", param.Name().Text())
+				l.failf(p, "parameter %s has a type the backend cannot represent yet", param.Name().Text())
 				continue
 			}
 			fn.Params = append(fn.Params, ir.Param{
@@ -223,7 +223,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 	if decl.Type != nil {
 		fn.Result = l.typeOf(decl.Type)
 		if fn.Result == ir.Invalid {
-			l.fail(decl.Type, "function %s returns a type the backend cannot represent yet", fn.Name)
+			l.failf(decl.Type, "function %s returns a type the backend cannot represent yet", fn.Name)
 		}
 	}
 
@@ -307,7 +307,7 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		return nil
 
 	default:
-		l.fail(n, "%s is not supported yet", describeKind(n.Kind))
+		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
 	}
 }
@@ -334,7 +334,7 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 	// than emit something with subtly different scoping, refuse it.
 	mutable := declList.Flags&ast.NodeFlagsConst == 0
 	if declList.Flags&(ast.NodeFlagsConst|ast.NodeFlagsLet) == 0 {
-		l.fail(n, "`var` is not supported; use `const` or `let`")
+		l.failf(n, "`var` is not supported; use `const` or `let`")
 		return nil
 	}
 
@@ -342,18 +342,18 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 	for _, d := range declList.Declarations.Nodes {
 		decl := d.AsVariableDeclaration()
 		if decl.Name() == nil || decl.Name().Kind != ast.KindIdentifier {
-			l.fail(d, "destructuring is not supported yet")
+			l.failf(d, "destructuring is not supported yet")
 			continue
 		}
 		name := decl.Name().Text()
 		if decl.Initializer == nil {
-			l.fail(d, "%s needs an initialiser; declarations without one are not supported yet", name)
+			l.failf(d, "%s needs an initialiser; declarations without one are not supported yet", name)
 			continue
 		}
 		t := l.typeOf(decl.Name())
 		if t == ir.Invalid {
 			if !l.explainInitializer(decl.Initializer) {
-				l.fail(d, "%s has a type the backend cannot represent yet", name)
+				l.failf(d, "%s has a type the backend cannot represent yet", name)
 			}
 			continue
 		}
@@ -390,7 +390,7 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 		return true
 	}
 	if init.Kind == ast.KindIdentifier && l.libraryName(init) {
-		l.fail(init, "%s is a library global cakebear does not implement yet", init.Text())
+		l.failf(init, "%s is a library global cakebear does not implement yet", init.Text())
 		return true
 	}
 	return false
@@ -398,7 +398,7 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 
 func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stmt {
 	if bin.Left.Kind != ast.KindIdentifier {
-		l.fail(stmt, "only assignment to a simple variable is supported yet")
+		l.failf(stmt, "only assignment to a simple variable is supported yet")
 		return nil
 	}
 	value := l.expr(bin.Right)

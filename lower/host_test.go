@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zobstory/cakebear/internal/ast"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/types"
 )
@@ -219,7 +220,7 @@ func TestHostTablesCoverDeclarations(t *testing.T) {
 	t.Parallel()
 
 	program, _ := checkSource(t, "export {};\n")
-	file := program.GetSourceFile(types.NodeHTTPPath())
+	file := program.GetSourceFile(tspath.RootedFilePath(types.NodeHTTPPath()))
 	if file == nil {
 		t.Fatal("the bundled node:http declarations are not in the program")
 	}

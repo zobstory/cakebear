@@ -21,11 +21,9 @@ func report(diags []*ast.Diagnostic, cwd string, opts buildOptions, w io.Writer)
 	}
 
 	formatOpts := &diagnosticwriter.FormattingOptions{
-		NewLine: "\n",
-		ComparePathsOptions: tspath.ComparePathsOptions{
-			UseCaseSensitiveFileNames: true,
-			CurrentDirectory:          cwd,
-		},
+		NewLine:          "\n",
+		CaseSensitivity:  tspath.CaseSensitive,
+		CurrentDirectory: tspath.RootedDirectoryPathFromAbsolute(cwd),
 	}
 
 	written := diagnosticwriter.FromASTDiagnostics(diags)

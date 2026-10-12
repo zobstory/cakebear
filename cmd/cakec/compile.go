@@ -126,7 +126,7 @@ func userFiles(program *compiler.Program, opts buildOptions) []*ast.SourceFile {
 
 	var out []*ast.SourceFile
 	for _, f := range program.GetSourceFiles() {
-		name := strings.ToLower(filepath.ToSlash(f.FileName()))
+		name := strings.ToLower(filepath.ToSlash(string(f.FileName())))
 		if wanted[name] {
 			out = append(out, f)
 		}

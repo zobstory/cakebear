@@ -107,18 +107,18 @@ func (l *lowerer) closure(n *ast.Node) ir.Expr {
 func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 	switch flags := ast.GetFunctionFlags(n); {
 	case flags&ast.FunctionFlagsAsync != 0:
-		l.fail(n, "async functions are not supported yet")
+		l.failf(n, "async functions are not supported yet")
 		return false
 	case flags&ast.FunctionFlagsGenerator != 0:
-		l.fail(n, "generator functions are not supported yet")
+		l.failf(n, "generator functions are not supported yet")
 		return false
 	}
 	if n.Kind == ast.KindFunctionExpression && n.Name() != nil {
-		l.fail(n, "named function expressions are not supported yet")
+		l.failf(n, "named function expressions are not supported yet")
 		return false
 	}
 	if len(n.TypeParameters()) != 0 {
-		l.fail(n, "generic functions are not supported yet")
+		l.failf(n, "generic functions are not supported yet")
 		return false
 	}
 	ok := true
@@ -126,16 +126,16 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 		param := p.AsParameterDeclaration()
 		switch {
 		case param.Name() == nil || param.Name().Kind != ast.KindIdentifier:
-			l.fail(p, "destructured parameters are not supported yet")
+			l.failf(p, "destructured parameters are not supported yet")
 			ok = false
 		case param.Name().Text() == "this":
-			l.fail(p, "a this parameter is not supported yet")
+			l.failf(p, "a this parameter is not supported yet")
 			ok = false
 		case param.DotDotDotToken != nil:
-			l.fail(p, "rest parameters are not supported yet")
+			l.failf(p, "rest parameters are not supported yet")
 			ok = false
 		case param.QuestionToken != nil || param.Initializer != nil:
-			l.fail(p, "optional and default parameters are not supported yet")
+			l.failf(p, "optional and default parameters are not supported yet")
 			ok = false
 		}
 	}
@@ -146,11 +146,11 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 func (l *lowerer) failClosureType(n *ast.Node) {
 	for _, p := range n.Parameters() {
 		if !storable(l.typeOf(p)) {
-			l.fail(p, "parameter %s has a type the backend cannot represent yet", p.Name().Text())
+			l.failf(p, "parameter %s has a type the backend cannot represent yet", p.Name().Text())
 			return
 		}
 	}
-	l.fail(n, "this function returns a type the backend cannot represent yet")
+	l.failf(n, "this function returns a type the backend cannot represent yet")
 }
 
 // fitsSlot checks that a literal can be emitted with the slot's signature.
@@ -163,18 +163,18 @@ func (l *lowerer) failClosureType(n *ast.Node) {
 func (l *lowerer) fitsSlot(n *ast.Node, own, slot *ir.Signature) bool {
 	declared := n.Parameters()
 	if len(own.Params) > len(slot.Params) {
-		l.fail(n, "this function takes %d parameters where %d are passed", len(own.Params), len(slot.Params))
+		l.failf(n, "this function takes %d parameters where %d are passed", len(own.Params), len(slot.Params))
 		return false
 	}
 	for i, pt := range own.Params {
 		if !pt.Equal(slot.Params[i]) {
-			l.fail(declared[i], "parameter %s is %s here but the caller passes %s; converting between them is not supported yet",
+			l.failf(declared[i], "parameter %s is %s here but the caller passes %s; converting between them is not supported yet",
 				declared[i].Name().Text(), pt, slot.Params[i])
 			return false
 		}
 	}
 	if slot.Result != ir.Void && !own.Result.Equal(slot.Result) {
-		l.fail(n, "this function returns %s where %s is expected; converting between them is not supported yet",
+		l.failf(n, "this function returns %s where %s is expected; converting between them is not supported yet",
 			own.Result, slot.Result)
 		return false
 	}
@@ -228,8 +228,8 @@ func (l *lowerer) captures(fn *ast.Node) []ir.Capture {
 }
 
 func (l *lowerer) capture(fn, id *ast.Node, sym *ast.Symbol) (ir.Capture, bool) {
-	decl := sym.ValueDeclaration
-	if sym.Flags&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != l.file {
+	decl := sym.ValueDeclaration()
+	if sym.Flags()&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != l.file {
 		return ir.Capture{}, false
 	}
 	if decl.Pos() >= fn.Pos() && decl.End() <= fn.End() {

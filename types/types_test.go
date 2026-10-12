@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 func TestIsExtension(t *testing.T) {
@@ -136,10 +138,10 @@ func TestDeclarationsAreServedVirtually(t *testing.T) {
 	}
 
 	fs := WrapFS(nil)
-	if !fs.FileExists(path) {
+	if !fs.FileExists(tspath.RootedFilePath(path)) {
 		t.Error("the overlay does not report its own declarations as existing")
 	}
-	contents, ok := fs.ReadFile(path)
+	contents, ok := fs.ReadFile(tspath.RootedFilePath(path))
 	if !ok {
 		t.Fatal("the overlay could not read its own declarations")
 	}
@@ -160,14 +162,14 @@ func TestEveryRootFileIsServedVirtually(t *testing.T) {
 	t.Parallel()
 
 	roots := RootFiles()
-	seen := map[string]bool{}
+	seen := map[tspath.RootedFilePath]bool{}
 	fs := WrapFS(nil)
 	for _, path := range roots {
 		if seen[path] {
 			t.Errorf("RootFiles() lists %q twice", path)
 		}
 		seen[path] = true
-		if !strings.HasPrefix(path, scheme) {
+		if !strings.HasPrefix(string(path), scheme) {
 			t.Errorf("root %q is not under %q", path, scheme)
 		}
 		if !fs.FileExists(path) {
@@ -178,12 +180,12 @@ func TestEveryRootFileIsServedVirtually(t *testing.T) {
 		}
 	}
 	for _, want := range []string{DeclarationPath(), NodeHTTPPath()} {
-		if !seen[want] {
+		if !seen[tspath.RootedFilePath(want)] {
 			t.Errorf("RootFiles() = %v, missing %q", roots, want)
 		}
 	}
 
-	contents, _ := fs.ReadFile(NodeHTTPPath())
+	contents, _ := fs.ReadFile(tspath.RootedFilePath(NodeHTTPPath()))
 	for _, want := range []string{`declare module "node:http"`, `declare module "http"`} {
 		if !strings.Contains(contents, want) {
 			t.Errorf("node:http declarations are missing %s", want)
