@@ -71,6 +71,7 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 		KeepGoSource: opts.emitGo,
 		GOOS:         opts.goos,
 		GOARCH:       opts.goarch,
+		Race:         opts.race,
 	})
 
 	if opts.emitGo {

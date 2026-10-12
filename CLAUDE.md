@@ -6,10 +6,8 @@ cakebear is a permanent fork of [microsoft/typescript-go][tsgo]. Their frontend 
 scanner, parser, binder, checker — is ours by merge. Where upstream emits
 JavaScript, we lower to Go and shell out to `go build`.
 
-> **Note:** `README.md` is from late 2023 and describes a Rust implementation
-> that no longer exists. Trust this file over the README until the README is
-> rewritten. Full migration plan and rationale:
-> <https://claude.ai/code/artifact/485fa63c-f984-4648-87a8-bb0b9ddbb4aa>
+> The plan and rationale for moving from the original Rust implementation to
+> this fork: <https://claude.ai/code/artifact/485fa63c-f984-4648-87a8-bb0b9ddbb4aa>
 
 [tsgo]: https://github.com/microsoft/typescript-go
 
@@ -27,7 +25,10 @@ the pipeline requires no edit inside their tree.
 Hold this line and the only merge conflicts possible are import-path lines,
 which `scripts/sync-upstream.sh` resolves mechanically. Break it once and every
 future sync gets more expensive. CI enforces it (`golden-rule` job); the check
-is `scripts/check-upstream-untouched.sh`.
+is `scripts/check-upstream-untouched.sh`. It compares committed history only,
+so it passes vacuously on uncommitted work, and against a stale local `main` it
+counts files that are already merged. Run it after committing, against
+`origin/main`.
 
 If you genuinely need upstream behaviour to differ, that is a discussion before
 it is a diff.
@@ -108,6 +109,7 @@ go build ./...                        # whole fork; ~1.5 min cold
 go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
 go run ./cmd/tsgo --version           # upstream CLI still works
 bin/cakec build examples/basic/main.ts
+bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
 scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
@@ -115,7 +117,7 @@ scripts/owned-go-packages.sh          # the packages that are ours
 go test $(scripts/owned-go-packages.sh)
 
 python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
-scripts/check-upstream-untouched.sh main      # the golden rule
+scripts/check-upstream-untouched.sh origin/main  # the golden rule; commit first
 scripts/check-boundary.sh                     # ir/ and backend/ stay liftable
 scripts/check-workflows.sh                    # our workflow YAML actually parses
 # Relative patterns, not owned-go-packages.sh: that prints import paths, which
@@ -205,19 +207,29 @@ is why workload B is 491 files rather than 3000.
 
 ## Current phase: **open**
 
-P0–P5 are done and nothing is blocked. Reasonable next steps, none urgent:
+P0–P5 and M1 are done and nothing is blocked. Reasonable next steps, none
+urgent:
 
+- **M2:** `async`/`await`, `Promise` and `setTimeout`, built on M1's run loop.
+  The decision to make when it starts: whether an `async` function runs as its
+  own goroutine (semantics decision 3) or as a state machine resumed on the
+  loop. The race rule then applies at `await` resumption points too.
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
-  for most real programs.
+  for most real programs, and aggregates must extend the race rule first.
 - Multi-file programs, which need an import graph in the IR.
 - `tsconfig.json` support, so `cakec` can build a real project.
-- Push. Nothing has been pushed to GitHub yet, and upstream's `ci.yml` will fire
-  its full matrix on the first push unless Actions is disabled first.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
-**P4** IR, Go emission and native binaries, **P5** cakebear's type extensions.
+**P4** IR, Go emission and native binaries, **P5** cakebear's type extensions,
+**M1** a `node:http` server on goroutines: closures, `node:http` lowering, the
+runtime and its run loop, and the handler race rule.
+
+The repository is on GitHub. Actions is disabled there, so pushes and PRs run
+nothing. Before enabling it, note that upstream's `ci.yml` and `codeql.yml` fire
+their full matrix on every PR to `main`. `cakebear-ci.yml` is the workflow that
+checks our code.
 
 ### On extracting the backend into its own module
 
@@ -354,10 +366,10 @@ can. We take the parallel mapping: it is what the M:N scheduler note always
 implied, and pretending to be an event loop would throw away most of the
 performance that justifies compiling TypeScript at all.
 
-This makes cakebear a language that differs from TypeScript at runtime, which
-the README's compatibility promise currently rules out. **That promise is the
-thing to amend**, and it should be amended before anyone writes async code
-against cakebear rather than after.
+This makes cakebear a language that differs from TypeScript at runtime. The
+README's compatibility promise ("compared against Node for behavioural
+equivalence") was amended in M1 to say so, and to point at the differences
+listed below.
 
 *Live since M1:* `node:http` request handlers, the first place cakebear
 observably differs from Node: each request runs on its own goroutine, so a
@@ -385,6 +397,26 @@ because every M1 `const` holds a primitive, a function or a host value. A
 grow when aggregates arrive, before they do, not after. Explicit shared-state
 tools (an atomic counter type in `types/`, say) are how a later milestone
 widens it.
+
+**Accepted differences from Node** (M1 plan, D5). Each is deliberate. Anything
+not listed here that behaves differently is a bug.
+
+| Behaviour | Node | cakebear |
+|---|---|---|
+| A CPU-heavy request handler | blocks every other request | the others are still served (8 `fib(38)` requests: ~1.3× one, vs Node's ~7.7×) |
+| `console.log` order across requests | one at a time, per event-loop turn | interleaved, nondeterministic (each line whole) |
+| A handler returns without `res.end()` | the request hangs until it times out | an empty 200, plus a one-line warning on stderr |
+| A handler does what Node throws for (headers after they were sent, a bad status code, writing after `end`) | the uncaught exception kills the process | a panic with Node's message; `net/http` drops only that connection |
+| Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
+| `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
+| Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value |
+| Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
+| Ctrl-C / SIGTERM | exit 130 / 143 | exit 130 / 143, after flushing output |
+| The listen callback and the first request | the callback runs first | the same: serving starts after the callback |
+
+Not observable to the M1 programs and not yet compared: keep-alive timeouts,
+the `Date` header, and when a response is chunked rather than given a
+`Content-Length`. Add a row when one matters.
 
 Related: because `number` is `float64`, integer-heavy TypeScript will run
 slower than equivalent Go. The refined numeric types (`i32`, `u64`) lowering
