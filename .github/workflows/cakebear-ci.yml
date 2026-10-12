@@ -121,8 +121,13 @@ jobs:
         if: steps.pkgs.outputs.empty == 'false'
         uses: golangci/golangci-lint-action@v6
         with:
-          # Config is upstream's .golangci.yml, inherited by the fork.
-          args: --timeout=10m ./cmd/cakec/... ./ir/... ./backend/... ./runtime/... ./types/...
+          # Pinned so CI lints with what gets run locally. It must be built
+          # with a Go at least as new as go.mod's, or it refuses to load the
+          # module: v2.14.0 is built with go1.27.0, which upstream needs.
+          version: v2.14.0
+          # cakebear's own config. Upstream's lives at the monorepo root,
+          # outside the tsc/ tree cakebear syncs.
+          args: --timeout=10m --config .golangci.cakebear.yml ./cmd/cakec/... ./lower/... ./types/... ./ir/... ./backend/...
       - name: Skip
         if: steps.pkgs.outputs.empty == 'true'
         run: echo "No cakebear-owned packages yet — nothing to lint."

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Enforce the golden rule: a change may not touch an upstream file.
 #
-# cakebear is a fork of microsoft/typescript-go. Our merge cost is directly
-# proportional to our diff against upstream, so every cakebear behaviour goes
-# in a new file under a path listed in scripts/owned-paths. Hooking the
-# pipeline never requires editing their tree -- cmd/cakec builds its own
+# cakebear is a fork of microsoft/TypeScript's tsc/. A sync replaces every
+# upstream file with the new snapshot, so a change made inside their tree is
+# silently lost on the next one. Every cakebear behaviour goes in a new file
+# under a path listed in scripts/owned-paths. Hooking the pipeline never
+# requires editing their tree -- cmd/cakec builds its own
 # Program rather than routing through internal/execute, precisely so that
 # stays true.
 #
 # Upstream syncs legitimately touch upstream files. scripts/sync-upstream.sh
-# produces those, and the CI job skips this check for them.
+# produces those; CI holds them to scripts/check-upstream-snapshot.sh instead.
 #
 # Usage: scripts/check-upstream-untouched.sh [base-ref]   (default: origin/main)
 set -euo pipefail
@@ -51,9 +52,10 @@ done
   echo "${#violations[@]} upstream file(s) modified:"
   printf '  %s\n' "${violations[@]}"
   echo
-  echo "cakebear must not edit microsoft/typescript-go's tree. Put the change in"
-  echo "cmd/cakec, ir, backend, runtime or types instead. If you genuinely need"
-  echo "upstream behaviour to differ, that is a discussion before it is a diff."
+  echo "cakebear must not edit upstream's tree. Put the change in a path listed"
+  echo "in scripts/owned-paths (cmd/cakec, lower, ir, backend, types) instead."
+  echo "If you genuinely need upstream behaviour to differ, that is a discussion"
+  echo "before it is a diff."
 } >&2
 
 exit 1
