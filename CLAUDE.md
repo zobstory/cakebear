@@ -308,7 +308,9 @@ anything but `node:http`, `for`, multi-file programs, bitwise operators,
 `async`; calling anything but a name or a `node:http` member (`f()()`); named
 function expressions; optional, default, rest or destructured parameters;
 overloaded or generic function types; `===` or `console.log` on a function or
-a host value.
+a host value; the standard library's globals (`parseInt`, `NaN`, `isNaN`,
+`setTimeout`, …), which lowering refuses by name because only TypeScript's libs
+declare them. A program's own function of the same name is unaffected.
 
 **Host members** are recognised by where their symbol is declared, never by
 name and never by the receiver's type. A user's own `createServer` or `end` is

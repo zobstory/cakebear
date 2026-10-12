@@ -46,6 +46,10 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			l.failHostValue(n, m)
 			return nil
 		}
+		if l.libraryName(n) {
+			l.fail(n, "%s is a library global cakebear does not implement yet", n.Text())
+			return nil
+		}
 		t := l.typeOf(n)
 		if t == ir.Invalid {
 			l.fail(n, "%s has a type the backend cannot represent yet", n.Text())
@@ -271,6 +275,11 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return l.convert(n, c, brand)
 	}
 
+	if l.libraryName(c.Expression) {
+		l.fail(n, "%s is a library function cakebear does not implement yet", c.Expression.Text())
+		return nil
+	}
+
 	call := &ir.Call{Callee: c.Expression.Text(), Typ: l.typeOf(n), Span: l.span(n)}
 	if c.Arguments != nil {
 		for _, a := range c.Arguments.Nodes {
@@ -282,6 +291,33 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		}
 	}
 	return call
+}
+
+// libraryName reports whether n names something declared only outside the
+// program: in TypeScript's libs (parseInt, NaN, setTimeout) or one of
+// cakebear's bundled files. Those have Go behind them only where lowering maps
+// them explicitly (console.log, node:http, the extension conversions, all
+// checked before this), so a plain reference would emit an undefined Go name
+// and fail inside go build.
+func (l *lowerer) libraryName(n *ast.Node) bool {
+	sym := l.checker.GetSymbolAtLocation(n)
+	if sym == nil {
+		return false
+	}
+	if sym.Flags&ast.SymbolFlagsAlias != 0 {
+		if target := l.checker.GetAliasedSymbol(sym); target != nil {
+			sym = target
+		}
+	}
+	if len(sym.Declarations) == 0 {
+		return false
+	}
+	for _, d := range sym.Declarations {
+		if ast.GetSourceFileOfNode(d) == l.file {
+			return false // the program's own, such as a function named parseInt
+		}
+	}
+	return true
 }
 
 // conversionBrand reports which extension a callee converts to, or "" when the
