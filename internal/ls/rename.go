@@ -16,6 +16,7 @@ import (
 	"github.com/zobstory/cakebear/internal/ls/lsutil"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/module"
+	"github.com/zobstory/cakebear/internal/spanmap"
 	"github.com/zobstory/cakebear/internal/tspath"
 )
 
@@ -26,13 +27,43 @@ type RenameInfo struct {
 	LocalizedErrorMessage string
 	DisplayName           string
 	TriggerSpan           lsproto.Range
-	FileToRename          string
-	NewFileName           string
+	FileToRename          tspath.RootedPath
+	NewFileName           tspath.RootedPath
+}
+
+type mappedRenameEdit struct {
+	uri  lsproto.DocumentUri
+	edit *lsproto.TextEdit
+}
+
+type renameEditKey struct {
+	uri       lsproto.DocumentUri
+	textRange lsproto.Range
+}
+
+func deduplicateRenameEdits(mappedEdits []mappedRenameEdit) (map[lsproto.DocumentUri][]*lsproto.TextEdit, bool) {
+	editTexts := make(map[renameEditKey]string)
+	uniqueEdits := make([]mappedRenameEdit, 0, len(mappedEdits))
+	for _, mappedEdit := range mappedEdits {
+		key := renameEditKey{uri: mappedEdit.uri, textRange: mappedEdit.edit.Range}
+		if existingText, ok := editTexts[key]; ok {
+			if existingText != mappedEdit.edit.NewText {
+				return nil, false
+			}
+			continue
+		}
+		editTexts[key] = mappedEdit.edit.NewText
+		uniqueEdits = append(uniqueEdits, mappedEdit)
+	}
+	changes := make(map[lsproto.DocumentUri][]*lsproto.TextEdit)
+	for _, mappedEdit := range uniqueEdits {
+		changes[mappedEdit.uri] = append(changes[mappedEdit.uri], mappedEdit.edit)
+	}
+	return changes, true
 }
 
 func (l *LanguageService) ProvideRename(ctx context.Context, params *lsproto.RenameParams, orchestrator CrossProjectOrchestrator) (lsproto.WorkspaceEditOrNull, error) {
-	return handleCrossProject(
-		l,
+	return l.handleCrossProject(
 		ctx,
 		params,
 		orchestrator,
@@ -41,19 +72,24 @@ func (l *LanguageService) ProvideRename(ctx context.Context, params *lsproto.Ren
 		true,  /*isRename*/
 		false, /*implementations*/
 		symbolEntryTransformOptions{},
+		nil, /*defaultProjectData*/
 	)
 }
 
 func (l *LanguageService) GetRenameInfo(ctx context.Context, newName string, documentURI lsproto.DocumentUri, position lsproto.Position) RenameInfo {
 	program, sourceFile := l.getProgramAndFile(documentURI)
-	pos := int(l.converters.LineAndCharacterToPosition(sourceFile, position))
-
-	node := astnav.GetTouchingPropertyName(sourceFile, pos)
-	node = getAdjustedLocation(node, true /*forRename*/, sourceFile)
-
-	if nodeIsEligibleForRename(node) {
-		if renameInfo, ok := l.getRenameInfoForNode(ctx, newName, node, sourceFile, program); ok {
-			return renameInfo
+	positions := l.converters.FromLSPPositionForSourceFile(sourceFile, position, spanmap.FeatureRename)
+	for _, mapped := range positions {
+		if !mapped.Fidelity.IsExact() {
+			continue
+		}
+		sourceFile := mapped.Script
+		node := astnav.GetTouchingPropertyName(sourceFile, int(mapped.Position))
+		node = getAdjustedLocation(node, true /*forRename*/, sourceFile)
+		if nodeIsEligibleForRename(node) {
+			if renameInfo, ok := l.getRenameInfoForNode(ctx, newName, node, sourceFile, program); ok {
+				return renameInfo
+			}
 		}
 	}
 	return getRenameInfoError(ctx, diagnostics.You_cannot_rename_this_element)
@@ -75,29 +111,57 @@ func (l *LanguageService) symbolAndEntriesToRename(ctx context.Context, params *
 	}
 
 	entries := core.FlatMap(data.SymbolsAndEntries, func(s *SymbolAndEntries) []*ReferenceEntry { return s.references })
-	changes := make(map[lsproto.DocumentUri][]*lsproto.TextEdit)
+	var mappedEdits []mappedRenameEdit
 	ch, done := program.GetTypeChecker(ctx)
 	defer done()
 
 	quotePreference := lsutil.GetQuotePreference(sourceFile, l.UserPreferences())
-	useAliasesForRename := l.UserPreferences().UseAliasesForRename.IsTrueOrUnknown()
+	useAliasesForRename := l.UserPreferences().ProvidePrefixAndSuffixTextForRename.IsTrueOrUnknown()
 
 	for _, entry := range entries {
 		uri := l.getFileNameOfEntry(entry)
 		if l.UserPreferences().AllowRenameOfImportPath != core.TSTrue && entry.node != nil && ast.IsStringLiteralLike(entry.node) && ast.TryGetImportFromModuleSpecifier(entry.node) != nil {
 			continue
 		}
+		rng, ok := l.renameEditRange(entry)
+		if !ok {
+			// The occurrence lies outside a verbatim span of a content-mapped file, so it cannot be
+			// written back to the original text. Skip it and keep renaming the remaining occurrences.
+			continue
+		}
 		textEdit := &lsproto.TextEdit{
-			Range:   l.getRangeOfEntry(entry),
+			Range:   rng,
 			NewText: l.getTextForRename(data.OriginalNode, entry, params.NewName, ch, quotePreference, useAliasesForRename),
 		}
-		changes[uri] = append(changes[uri], textEdit)
+		mappedEdits = append(mappedEdits, mappedRenameEdit{uri: uri, edit: textEdit})
+	}
+	changes, ok := deduplicateRenameEdits(mappedEdits)
+	if !ok {
+		return lsproto.WorkspaceEditOrNull{}, nil
 	}
 	return lsproto.WorkspaceEditOrNull{
 		WorkspaceEdit: &lsproto.WorkspaceEdit{
 			Changes: &changes,
 		},
 	}, nil
+}
+
+// renameEditRange returns the LSP range at which a rename occurrence should be edited. For occurrences in
+// content-mapped files it maps the transformed range strictly, returning ok=false when the occurrence is
+// not fully within a single verbatim span, so the caller can skip an edit that cannot be applied to the
+// original text.
+func (l *LanguageService) renameEditRange(entry *ReferenceEntry) (lsproto.Range, bool) {
+	l.resolveEntry(entry)
+	if entry.node == nil {
+		location, fidelity := l.sourceFileRangeToLSPLocation(entry.sourceFile, *entry.textRange)
+		return location.Range, fidelity.IsExact()
+	}
+	sourceFile := ast.GetSourceFileOfNode(entry.node)
+	if sourceFile == nil || sourceFile.SpanMap() == nil {
+		return l.getRangeOfEntry(entry), true
+	}
+	lspRange, fidelity := l.converters.ToLSPRange(sourceFile, *entry.textRange)
+	return lspRange, fidelity.IsExact()
 }
 
 // getRenameInfoForNode performs detailed validation for a rename operation on a specific node.
@@ -124,7 +188,7 @@ func (l *LanguageService) getRenameInfoForNode(ctx context.Context, newName stri
 	}
 
 	// Only allow a symbol to be renamed if it actually has at least one declaration.
-	if len(symbol.Declarations) == 0 {
+	if len(symbol.Declarations()) == 0 {
 		return RenameInfo{}, false
 	}
 
@@ -143,6 +207,9 @@ func (l *LanguageService) getRenameInfoForNode(ctx context.Context, newName stri
 }
 
 func nodeIsEligibleForRename(node *ast.Node) bool {
+	if node == nil {
+		return false
+	}
 	switch node.Kind {
 	case ast.KindIdentifier,
 		ast.KindPrivateIdentifier,
@@ -160,14 +227,14 @@ func nodeIsEligibleForRename(node *ast.Node) bool {
 // renameBlockedReason returns a non-nil diagnostic message if the rename should be blocked
 // because the symbol is a library definition, a default keyword, or would cross node_modules boundaries.
 func (l *LanguageService) renameBlockedReason(sourceFile *ast.SourceFile, node *ast.Node, symbol *ast.Symbol, ch *checker.Checker, program *compiler.Program) *diagnostics.Message {
-	for _, declaration := range symbol.Declarations {
+	for _, declaration := range symbol.Declarations() {
 		if isDefinedInLibraryFile(program, declaration) {
 			return diagnostics.You_cannot_rename_elements_that_are_defined_in_the_standard_TypeScript_library
 		}
 	}
 
 	// Cannot rename `default` as in `import { default as foo } from "./someModule"`
-	if ast.IsIdentifier(node) && node.Text() == "default" && symbol.Parent != nil && symbol.Parent.Flags&ast.SymbolFlagsModule != 0 {
+	if ast.IsIdentifier(node) && node.Text() == "default" && symbol.Parent() != nil && symbol.Parent().Flags()&ast.SymbolFlagsModule != 0 {
 		return diagnostics.You_cannot_rename_this_element
 	}
 
@@ -181,25 +248,25 @@ func (l *LanguageService) renameBlockedReason(sourceFile *ast.SourceFile, node *
 // isDefinedInLibraryFile checks if a declaration is from a default library file (e.g., lib.d.ts).
 func isDefinedInLibraryFile(program *compiler.Program, declaration *ast.Node) bool {
 	declSourceFile := ast.GetSourceFileOfNode(declaration)
-	return program.IsSourceFileDefaultLibrary(declSourceFile.Path()) && tspath.IsDeclarationFileName(declSourceFile.FileName())
+	return program.IsSourceFileDefaultLibrary(declSourceFile.PathKey()) && declSourceFile.FileName().IsDeclarationFile()
 }
 
 // wouldRenameInOtherNodeModules checks if renaming the symbol would affect node_modules.
 func wouldRenameInOtherNodeModules(originalFile *ast.SourceFile, symbol *ast.Symbol, ch *checker.Checker, preferences lsutil.UserPreferences) *diagnostics.Message {
 	sym := symbol
-	if !preferences.UseAliasesForRename.IsTrueOrUnknown() && sym.Flags&ast.SymbolFlagsAlias != 0 {
-		importSpecifier := core.Find(sym.Declarations, ast.IsImportSpecifier)
+	if !preferences.ProvidePrefixAndSuffixTextForRename.IsTrueOrUnknown() && sym.Flags()&ast.SymbolFlagsAlias != 0 {
+		importSpecifier := core.Find(sym.Declarations(), ast.IsImportSpecifier)
 		if importSpecifier != nil && importSpecifier.AsImportSpecifier().PropertyName == nil {
 			sym = ch.GetAliasedSymbol(sym)
 		}
 	}
 
-	declarations := sym.Declarations
+	declarations := sym.Declarations()
 	if len(declarations) == 0 {
 		return nil
 	}
 
-	originalPackage := module.ParseNodeModuleFromPath(originalFile.FileName(), false /*isFolder*/)
+	originalPackage := module.NodeModulePackageRootForFile(originalFile.FileName())
 	if originalPackage == "" {
 		// Original source file is not in node_modules.
 		for _, declaration := range declarations {
@@ -212,7 +279,7 @@ func wouldRenameInOtherNodeModules(originalFile *ast.SourceFile, symbol *ast.Sym
 
 	// Original source file is in node_modules.
 	for _, declaration := range declarations {
-		declPackage := module.ParseNodeModuleFromPath(ast.GetSourceFileOfNode(declaration).FileName(), false /*isFolder*/)
+		declPackage := module.NodeModulePackageRootForFile(ast.GetSourceFileOfNode(declaration).FileName())
 		if declPackage != "" && declPackage != originalPackage {
 			return diagnostics.You_cannot_rename_elements_that_are_defined_in_another_node_modules_folder
 		}
@@ -241,21 +308,18 @@ func (l *LanguageService) getRenameInfoForModule(ctx context.Context, newName st
 		return getRenameInfoError(ctx, diagnostics.File_rename_is_not_supported_by_the_editor), true
 	}
 
-	moduleSourceFile := core.Find(moduleSymbol.Declarations, ast.IsSourceFile)
+	moduleSourceFile := core.Find(moduleSymbol.Declarations(), ast.IsSourceFile)
 	if moduleSourceFile == nil {
 		return RenameInfo{}, false
 	}
 
 	fileName := moduleSourceFile.AsSourceFile().FileName()
-	withoutIndex := ""
+	var withoutIndex tspath.RootedPath
 	if !strings.HasSuffix(specifier.Text(), "/index") && !strings.HasSuffix(specifier.Text(), "/index.js") {
-		candidate := tspath.RemoveFileExtension(fileName)
-		if trimmed, ok := strings.CutSuffix(candidate, "/index"); ok {
-			withoutIndex = trimmed
-		}
+		withoutIndex = tryRemoveIndexFileName(fileName)
 	}
 
-	displayName := fileName
+	displayName := fileName.AsPath()
 	if withoutIndex != "" {
 		displayName = withoutIndex
 	}
@@ -266,32 +330,48 @@ func (l *LanguageService) getRenameInfoForModule(ctx context.Context, newName st
 	start := astnav.GetStartOfNode(specifier, sourceFile, false /*includeJSDoc*/) + 1 + indexAfterLastSlash
 	length := len(specifier.Text()) - indexAfterLastSlash
 
+	triggerSpan, fidelity := l.converters.ToLSPRange(sourceFile, core.NewTextRange(start, start+length))
+	if !fidelity.IsExact() {
+		return RenameInfo{}, false
+	}
 	return RenameInfo{
 		CanRename:    true,
 		DisplayName:  specifier.Text()[indexAfterLastSlash:],
-		TriggerSpan:  l.converters.ToLSPRange(sourceFile, core.NewTextRange(start, start+length)),
+		TriggerSpan:  triggerSpan,
 		FileToRename: displayName,
 		NewFileName:  newFileName,
 	}, true
 }
 
+func tryRemoveIndexFileName(fileName tspath.RootedFilePath) tspath.RootedPath {
+	if tspath.RemoveFileExtension(fileName.BaseName()) == "index" {
+		root, relative := fileName.RootAndRelativePath()
+		if (root == "/" || root.AsPath().IsDynamic()) && tspath.RemoveFileExtension(relative) == "index" {
+			return ""
+		}
+		return fileName.Directory().AsPath()
+	}
+	return ""
+}
+
 // Adjust the new name based on the old path that an import specifier resolves to.
 // For example, if specifier "a.js" resolves to file a.ts, renaming "a.js" -> "b.js" should mean file rename a.ts -> b.ts.
-func (l *LanguageService) getNewFileNameForModuleRename(oldPath, specifierText, newName string) string {
-	newPath := tspath.CombinePaths(tspath.GetDirectoryPath(oldPath), newName)
-	ignoreCase := !l.host.UseCaseSensitiveFileNames()
+func (l *LanguageService) getNewFileNameForModuleRename(oldPath tspath.RootedPath, specifierText, newName string) tspath.RootedPath {
+	oldFileName := tspath.RootedFilePathFromPath(oldPath)
+	newPath := oldPath.Directory().ResolveFile(newName)
+	caseSensitivity := l.host.CaseSensitivity()
 	var oldExt string
-	if tspath.IsDeclarationFileName(oldPath) {
-		oldExt = tspath.GetDeclarationFileExtension(oldPath)
+	if oldFileName.IsDeclarationFile() {
+		oldExt = oldFileName.DeclarationFileExtension()
 	} else {
-		oldExt = tspath.GetAnyExtensionFromPath(oldPath, nil /*extensions*/, ignoreCase)
+		oldExt = oldFileName.AnyExtension(nil /*extensions*/, caseSensitivity)
 	}
-	if !tspath.HasExtension(newPath) {
-		newPath = newPath + oldExt
-	} else if tspath.GetAnyExtensionFromPath(newPath, nil /*extensions*/, ignoreCase) == tspath.GetAnyExtensionFromPath(specifierText, nil /*extensions*/, ignoreCase) {
-		newPath = tspath.ChangeAnyExtension(newPath, oldExt, nil /*extensions*/, ignoreCase)
+	if !newPath.HasExtension() {
+		newPath = newPath.AppendSuffix(oldExt)
+	} else if newPath.AnyExtension(nil /*extensions*/, caseSensitivity) == tspath.GetAnyExtensionFromPath(specifierText, nil /*extensions*/, caseSensitivity) {
+		newPath = newPath.ChangeAnyExtension(oldExt, nil /*extensions*/, caseSensitivity)
 	}
-	return newPath
+	return newPath.AsPath()
 }
 
 func (l *LanguageService) getTextForRename(originalNode *ast.Node, entry *ReferenceEntry, newText string, ch *checker.Checker, quotePreference lsutil.QuotePreference, useAliasesForRename bool) string {
@@ -327,7 +407,7 @@ func (l *LanguageService) getTextForRename(originalNode *ast.Node, entry *Refere
 			} else {
 				originalSymbol = ch.GetSymbolAtLocation(originalNode)
 			}
-			if originalSymbol != nil && slices.Contains(originalSymbol.Declarations, parent) {
+			if originalSymbol != nil && slices.Contains(originalSymbol.Declarations(), parent) {
 				return name + " as " + newText
 			}
 			return newText
@@ -371,9 +451,13 @@ func getRenameInfoSuccess(node *ast.Node, sourceFile *ast.SourceFile, displayNam
 		start++
 		end--
 	}
+	triggerSpan, fidelity := converters.ToLSPRange(sourceFile, core.NewTextRange(start, end))
+	if !fidelity.IsExact() {
+		return RenameInfo{CanRename: false}
+	}
 	return RenameInfo{
 		CanRename:   true,
 		DisplayName: displayName,
-		TriggerSpan: converters.ToLSPRange(sourceFile, core.NewTextRange(start, end)),
+		TriggerSpan: triggerSpan,
 	}
 }

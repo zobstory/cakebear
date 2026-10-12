@@ -56,6 +56,9 @@ type PrintHandlers struct {
 	// A hook used by the Printer when generating unique names to avoid collisions with
 	// globally defined names that exist outside of the current source file.
 	HasGlobalName func(name string) bool
+	// MapSourcePosition composes source-map positions before they reach the generator.
+	// Returning ok=false emits a generated-only mapping.
+	MapSourcePosition func(source sourcemap.Source, pos int) (mappedSource sourcemap.Source, mappedPos int, ok bool)
 
 	// !!!
 	////// A hook used by the Printer to provide notifications prior to emitting a node. A
@@ -2178,9 +2181,11 @@ func (p *Printer) emitMappedType(node *ast.MappedTypeNode) {
 			p.writePunctuation("?")
 		}
 	}
-	p.writePunctuation(":")
-	p.writeSpace()
-	p.emitTypeNodeOutsideExtends(node.Type)
+	if node.Type != nil {
+		p.writePunctuation(":")
+		p.writeSpace()
+		p.emitTypeNodeOutsideExtends(node.Type)
+	}
 	p.writeTrailingSemicolon()
 	if node.Members != nil {
 		if len(node.Members.Nodes) > 0 {
@@ -2807,7 +2812,6 @@ func (p *Printer) getBinaryExpressionPrecedence(node *ast.BinaryExpression) (lef
 		// No need to parenthesize the right operand when the binary operator and
 		// operand are both ,:
 		//  x,(a,b)     => x,a,b
-		break
 	case ast.OperatorPrecedenceAssignment:
 		// assignment is right-associative
 		leftPrec = ast.OperatorPrecedenceConditional
@@ -2820,17 +2824,14 @@ func (p *Printer) getBinaryExpressionPrecedence(node *ast.BinaryExpression) (lef
 		// No need to parenthesize the right operand when the binary operator and
 		// operand are both | due to the associative property of mathematics:
 		//  x|(a|b)     => x|a|b
-		break
 	case ast.OperatorPrecedenceBitwiseXOR:
 		// No need to parenthesize the right operand when the binary operator and
 		// operand are both ^ due to the associative property of mathematics:
 		//  x^(a^b)     => x^a^b
-		break
 	case ast.OperatorPrecedenceBitwiseAND:
 		// No need to parenthesize the right operand when the binary operator and
 		// operand are both & due to the associative property of mathematics:
 		//  x&(a&b)     => x&a&b
-		break
 	case ast.OperatorPrecedenceEquality:
 		rightPrec = ast.OperatorPrecedenceRelational
 	case ast.OperatorPrecedenceRelational:
@@ -3013,8 +3014,8 @@ func (p *Printer) emitNonNullExpression(node *ast.NonNullExpression) {
 
 func (p *Printer) emitMetaProperty(node *ast.MetaProperty) {
 	state := p.enterNode(node.AsNode())
-	p.emitToken(node.KeywordToken, node.Pos(), WriteKindPunctuation, node.AsNode())
-	p.writePunctuation(".")
+	pos := p.emitToken(node.KeywordToken, node.Pos(), WriteKindPunctuation, node.AsNode())
+	p.emitToken(ast.KindDotToken, pos, WriteKindPunctuation, node.AsNode())
 	p.emitIdentifierName(node.Name().AsIdentifier())
 	p.exitNode(node.AsNode(), state)
 }
@@ -3311,7 +3312,7 @@ func (p *Printer) emitExpression(node *ast.Expression, precedence ast.OperatorPr
 	case ast.KindSyntheticExpression:
 		panic("SyntheticExpression should never be printed.")
 	case ast.KindMissingDeclaration:
-		break
+		// Missing declarations do not emit an expression.
 
 	// JSX
 	case ast.KindJsxElement:
@@ -3837,6 +3838,12 @@ func (p *Printer) emitModuleDeclaration(node *ast.ModuleDeclaration) {
 		p.emitNestedModuleName(module.Name())
 		body = module.Body
 	}
+	if node.Attributes != nil {
+		p.writeSpace()
+		p.writeKeyword("with")
+		p.writeSpace()
+		p.emitTypeNode(node.Attributes, ast.TypePrecedenceNonArray)
+	}
 	if body == nil {
 		p.writeTrailingSemicolon()
 	} else {
@@ -4208,7 +4215,7 @@ func (p *Printer) emitStatement(node *ast.Statement) {
 	case ast.KindModuleDeclaration:
 		p.emitModuleDeclaration(node.AsModuleDeclaration())
 	case ast.KindMissingDeclaration:
-		break
+		// Missing declarations do not emit a statement.
 
 	// Import/Export Statements
 	case ast.KindNamespaceExportDeclaration:
@@ -4868,7 +4875,7 @@ func (p *Printer) hasTrailingComma(parentNode *ast.Node, children *ast.NodeList)
 func (p *Printer) writeDelimiter(format ListFormat) {
 	switch format & LFDelimitersMask {
 	case LFNone:
-		break
+		// no delimiter for this format
 	case LFCommaDelimited:
 		p.writePunctuation(",")
 	case LFBarDelimited:
@@ -5814,7 +5821,7 @@ func (p *Printer) setSourceMapSource(source sourcemap.Source) {
 		return
 	}
 
-	p.sourceMapSourceIsJson = tspath.FileExtensionIs(source.FileName(), tspath.ExtensionJson)
+	p.sourceMapSourceIsJson = source.FileName().ExtensionIs(tspath.ExtensionJson)
 	if p.sourceMapSourceIsJson {
 		return
 	}
@@ -5835,11 +5842,38 @@ func (p *Printer) emitPos(pos int) {
 		return
 	}
 
-	sourceLine, sourceCharacter := p.sourceMapLineCharCache.getLineAndCharacter(pos)
+	source := p.sourceMapSource
+	sourceIndex := p.sourceMapSourceIndex
+	lineCharCache := p.sourceMapLineCharCache
+	if p.MapSourcePosition != nil {
+		mappedSource, mappedPos, ok := p.MapSourcePosition(source, pos)
+		if !ok {
+			if err := p.sourceMapGenerator.AddGeneratedMapping(p.writer.GetLine(), p.writer.GetColumn()); err != nil {
+				panic(err)
+			}
+			return
+		}
+		pos = mappedPos
+		if mappedSource != source {
+			savedSource := p.sourceMapSource
+			savedSourceIndex := p.sourceMapSourceIndex
+			savedSourceIsJson := p.sourceMapSourceIsJson
+			savedLineCharCache := p.sourceMapLineCharCache
+			p.setSourceMapSource(mappedSource)
+			sourceIndex = p.sourceMapSourceIndex
+			lineCharCache = p.sourceMapLineCharCache
+			p.sourceMapSource = savedSource
+			p.sourceMapSourceIndex = savedSourceIndex
+			p.sourceMapSourceIsJson = savedSourceIsJson
+			p.sourceMapLineCharCache = savedLineCharCache
+		}
+	}
+
+	sourceLine, sourceCharacter := lineCharCache.getLineAndCharacter(pos)
 	if err := p.sourceMapGenerator.AddSourceMapping(
 		p.writer.GetLine(),
 		p.writer.GetColumn(),
-		p.sourceMapSourceIndex,
+		sourceIndex,
 		sourceLine,
 		sourceCharacter,
 	); err != nil {

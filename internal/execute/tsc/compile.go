@@ -1,12 +1,17 @@
 package tsc
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/collections"
 	"github.com/zobstory/cakebear/internal/compiler"
+	"github.com/zobstory/cakebear/internal/contentmapper"
+	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/diagnostics"
 	"github.com/zobstory/cakebear/internal/execute/incremental"
 	"github.com/zobstory/cakebear/internal/locale"
@@ -16,15 +21,30 @@ import (
 
 type System interface {
 	Writer() io.Writer
+	ErrorWriter() io.Writer
 	FS() vfs.FS
-	DefaultLibraryPath() string
-	GetCurrentDirectory() string
+	DefaultLibraryPath() tspath.RootedDirectoryPath
+	GetCurrentDirectory() tspath.RootedDirectoryPath
 	WriteOutputIsTTY() bool
 	GetWidthOfTerminal() int
-	GetEnvironmentVariable(name string) string
+	GetEnvironmentVariable(name string) (string, bool)
+	Spawn(command []string, dir string, stderr io.Writer) (io.ReadWriteCloser, error)
 
 	Now() time.Time
 	SinceStart() time.Duration
+}
+
+func newContentMapperLogger(sys System) contentmapper.Logger {
+	if value, _ := sys.GetEnvironmentVariable("TS_CONTENT_MAPPER_DEBUG"); value == "" {
+		return nil
+	}
+	writer := sys.ErrorWriter()
+	var mu sync.Mutex
+	return func(message string) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintln(writer, message)
+	}
 }
 
 type ExitStatus int
@@ -49,7 +69,7 @@ type CommandLineResult struct {
 
 type CommandLineTesting interface {
 	// Ensure that all emitted files are timestamped in order to ensure they are deterministic for test baseline
-	OnEmittedFiles(result *compiler.EmitResult, mTimesCache *collections.SyncMap[tspath.Path, time.Time])
+	OnEmittedFiles(result *compiler.EmitResult, mTimesCache *collections.SyncMap[tspath.PathKey, time.Time])
 	OnListFilesStart(w io.Writer)
 	OnListFilesEnd(w io.Writer)
 	OnStatisticsStart(w io.Writer)
@@ -62,9 +82,24 @@ type CommandLineTesting interface {
 	OnProgram(program *incremental.Program)
 }
 
+// NewContentMapperHost creates a content mapper host when content mappers are enabled via the
+// --runExternalCode flag, spawning mapper processes through the system's Spawn. It returns
+// nil otherwise, in which case no content-mapped files can be loaded. The caller owns the host and must
+// Close it when the compilation session ends.
+func NewContentMapperHost(ctx context.Context, sys System, options *core.CompilerOptions) contentmapper.Host {
+	if !options.RunExternalCode.IsTrue() {
+		return nil
+	}
+	diagnosticLocale, _ := locale.Parse(options.Locale)
+	return contentmapper.NewHostWithOptions(ctx, sys, diagnosticLocale, contentmapper.HostOptions{
+		Logger: newContentMapperLogger(sys),
+	})
+}
+
 type CompileTimes struct {
 	ConfigTime         time.Duration
 	ParseTime          time.Duration
+	ContentMapperTimes contentmapper.Timings
 	bindTime           time.Duration
 	checkTime          time.Duration
 	totalTime          time.Duration

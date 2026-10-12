@@ -38,8 +38,9 @@ background, the project has done its job.
 
 ## How it works
 
-cakebear is a **fork of [microsoft/typescript-go][tsgo]**, Microsoft's Go port
-of the TypeScript compiler. The scanner, parser, binder and type checker are
+cakebear is a **fork of [Microsoft's Go TypeScript compiler][tsc]**, the
+`tsc/` directory of microsoft/TypeScript (formerly microsoft/typescript-go). The
+scanner, parser, binder and type checker are
 theirs — a complete, conformance-tested implementation of a type system that
 would otherwise take years to write. Where upstream emits JavaScript, cakebear
 lowers to Go source and invokes the Go toolchain:
@@ -61,7 +62,7 @@ frontend noticing.
 Type checking inherits upstream's parallelism: a goroutine per file for parsing,
 and a pool of checkers (`--checkers`, default 4) over a shared immutable AST.
 
-[tsgo]: https://github.com/microsoft/typescript-go
+[tsc]: https://github.com/microsoft/TypeScript/tree/main/tsc
 
 ## Usage
 
@@ -172,5 +173,5 @@ decisions, guardrails, and what phase the project is in.
 
 ## License
 
-Apache-2.0, inherited from `microsoft/typescript-go`. See [`LICENSE`](LICENSE)
+Apache-2.0, inherited from `microsoft/TypeScript`. See [`LICENSE`](LICENSE)
 and [`NOTICE.txt`](NOTICE.txt).

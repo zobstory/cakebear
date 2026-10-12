@@ -2,13 +2,21 @@
 
 A compiler that takes **TypeScript** and produces a **single native binary**.
 
-cakebear is a permanent fork of [microsoft/typescript-go][tsgo]. Their frontend —
-scanner, parser, binder, checker — is ours by merge. Where upstream emits
-JavaScript, we lower to Go and shell out to `go build`.
+cakebear is a permanent fork of the Go compiler in [microsoft/TypeScript][ts],
+the `tsc/` directory of that repository. Their frontend — scanner, parser,
+binder, checker — is ours by snapshot. Where upstream emits JavaScript, we lower
+to Go and shell out to `go build`.
+
+Upstream was [microsoft/typescript-go][tsgo] until Microsoft archived it in
+August 2026 and moved the code into the main TypeScript repository. cakebear
+was rebased onto `tsc/` in October 2026. That history was rewritten during the
+move, so the two share no commits, and syncs are snapshots rather than merges
+(see "Upstream sync").
 
 > The plan and rationale for moving from the original Rust implementation to
 > this fork: <https://claude.ai/code/artifact/485fa63c-f984-4648-87a8-bb0b9ddbb4aa>
 
+[ts]: https://github.com/microsoft/TypeScript/tree/main/tsc
 [tsgo]: https://github.com/microsoft/typescript-go
 
 ## The golden rule
@@ -22,13 +30,14 @@ a new file under a path listed in `scripts/owned-paths`. In particular
 emit — it never routes through `internal/execute`, precisely so that hooking
 the pipeline requires no edit inside their tree.
 
-Hold this line and the only merge conflicts possible are import-path lines,
-which `scripts/sync-upstream.sh` resolves mechanically. Break it once and every
-future sync gets more expensive. CI enforces it (`golden-rule` job); the check
-is `scripts/check-upstream-untouched.sh`. It compares committed history only,
-so it passes vacuously on uncommitted work, and against a stale local `main` it
-counts files that are already merged. Run it after committing, against
-`origin/main`.
+Hold this line and a sync is mechanical: `scripts/sync-upstream.sh` replaces
+every upstream file with the new snapshot and rewrites the module path, and
+nothing of ours is lost because nothing of ours lives in their files. Break it
+once and the next sync silently deletes the change. CI enforces it
+(`golden-rule` job); the check is `scripts/check-upstream-untouched.sh`. It
+compares committed history only, so it passes vacuously on uncommitted work,
+and against a stale local `main` it counts files that are already merged. Run
+it after committing, against `origin/main`.
 
 If you genuinely need upstream behaviour to differ, that is a discussion before
 it is a diff.
@@ -39,8 +48,12 @@ it is a diff.
   `internal/` rule — everything we need lives under `internal/`, so it cannot
   be imported across modules, and upstream marks its public API as not ready.
   Inside the module it is all available.
-- **Module path:** `github.com/zobstory/cakebear`. Rewritten from upstream's on
-  every sync by `scripts/rename-module.sh`.
+- **Module path:** `github.com/zobstory/cakebear`. Rewritten from upstream's
+  (`github.com/microsoft/TypeScript/tsc`) on every sync by
+  `scripts/rename-module.sh`.
+- **Go version:** whatever upstream's `go.mod` says, currently **1.27**. Go
+  1.27 added generic methods and upstream uses them, so older toolchains, and
+  older `gofmt` and `golangci-lint` binaries, fail to parse the tree.
 - **License:** Apache-2.0, inherited. Keep `LICENSE` and `NOTICE.txt` intact.
 - **Backend:** lower IR to **Go source**, then invoke `go build`. This buys GC,
   an M:N scheduler for `async`/`await`, static single-binary output and
@@ -60,8 +73,9 @@ Upstream's tree, plus five directories upstream will never create:
 ```
 cakebear/
 ├── internal/       UPSTREAM  scanner, parser, binder, checker, program, LSP
-├── cmd/tsgo/       UPSTREAM  their CLI — keep it working, it is a free
+├── cmd/tsc/        UPSTREAM  their CLI — keep it working, it is a free
 │                             regression check that a sync didn't break the frontend
+├── testdata/       UPSTREAM  baselines and the conformance corpus (tests/cases/)
 ├── cmd/cakec/      OURS      the cakebear CLI
 ├── ir/             OURS      lowered IR: pure data, stdlib imports only
 ├── lower/          OURS      checked AST → ir; the only package seeing both worlds
@@ -107,7 +121,7 @@ counts.
 ```sh
 go build ./...                        # whole fork; ~1.5 min cold
 go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
-go run ./cmd/tsgo --version           # upstream CLI still works
+go run ./cmd/tsc --version            # upstream CLI still works
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
@@ -118,64 +132,89 @@ go test $(scripts/owned-go-packages.sh)
 
 python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
 scripts/check-upstream-untouched.sh origin/main  # the golden rule; commit first
+scripts/check-upstream-snapshot.sh            # upstream tree == scripts/upstream-ref
 scripts/check-boundary.sh                     # ir/ and backend/ stay liftable
 scripts/check-workflows.sh                    # our workflow YAML actually parses
 # Relative patterns, not owned-go-packages.sh: that prints import paths, which
 # golangci-lint cannot resolve -- it reports "0 issues" having linted nothing.
+# Needs v2.14.0 or later: a binary built with Go older than go.mod's refuses
+# the module outright.
 golangci-lint run --config .golangci.cakebear.yml \
   ./cmd/cakec/... ./lower/... ./types/... ./ir/... ./backend/...
 ```
 
-**Always build binaries into `bin/`.** A bare `go build ./cmd/cakec` drops a
-`cakec` executable at the repo root, which is not ignored — and we cannot add it
-to `.gitignore`, because that is an upstream file. `/bin` is already in
-upstream's ignore list, so `-o bin/` is the convention that needs no edit to
-their tree. (The `golden-rule` gate catches this if you forget; it already has
-once.)
+**Always build binaries into `bin/`.** `/bin` is ignored. A bare
+`go build ./cmd/cakec` or `./cmd/tsc` drops an executable at the repo root
+instead. `.gitignore` covers `/cakec` and `/tsc` as a backstop, but `-o bin/`
+keeps the root clean.
 
-`_submodules/TypeScript` is upstream's conformance corpus. Clone without
-`--recurse-submodules` unless you need it.
+`testdata/tests/cases/` is upstream's conformance corpus: about 12,400 `.ts`
+cases across `compiler/` and `conformance/`. It arrives with every sync now.
+Under typescript-go it was a submodule that nobody cloned.
 
 ## Pull requests
 
 - Assign zob on every PR (`gh pr create --assignee @me`).
 - Merges into `main` are squash merges, and the head branch is deleted on
-  merge. Both are repository settings, so GitHub enforces them.
-- **Exception: a PR that brings in upstream history must be a merge commit.**
-  That is an upstream sync, or the rebase onto `microsoft/TypeScript`. Squashing
-  one drops the upstream parent, so git no longer sees that history as merged
-  and the next sync conflicts on everything. Turn merge commits back on for
-  that PR, then off again.
+  merge. Both are repository settings, so GitHub enforces them. Upstream syncs
+  squash like everything else: a snapshot carries no upstream parent to
+  preserve.
+- A sync PR carries the `upstream-sync` label. That label switches CI's
+  golden-rule job from "no upstream file changed" to "every upstream file
+  matches `scripts/upstream-ref`".
 - Actions is disabled on this repository, so no checks run on a PR. Run the
   gates in "Build / test / run" locally and say in the PR what passed.
 
 ## Upstream sync
 
 ```sh
-scripts/sync-upstream.sh              # merges upstream/main, rewrites module path
+scripts/sync-upstream.sh [ref]        # snapshot microsoft/TypeScript@ref:tsc/ (default main)
+scripts/check-upstream-snapshot.sh    # prove the tree still matches scripts/upstream-ref
 ```
 
-It takes upstream's side of every conflicted file and re-runs the module rename
-— correct only because of the golden rule. If it finds a conflict in a file we
-own, it stops and hands it to you rather than guessing.
+A sync is a snapshot, not a merge. The script sparse-fetches `tsc/` at the
+given ref and deletes every file not listed in `scripts/owned-paths`. It then
+copies the snapshot in, plus the monorepo's root `NOTICE.txt`, rewrites the
+module path and records the commit in `scripts/upstream-ref`. Finally it builds
+and commits. The wholesale replace is correct only because of the golden rule.
+If upstream ever ships a file at a path we own, the script stops and lists it
+rather than choosing a side.
 
-Lint uses `.golangci.cakebear.yml`, not upstream's `.golangci.yml`. Theirs
-enables `customlint`, a plugin that only exists in a binary built from their
-`.custom-gcl.yml`, so pointing at it fails before linting a single file. Ours is
-their linter set minus that plugin, minus `depguard` (their import graph) and
-minus `modernize` (absent from the pinned version). The golangci-lint version is
-pinned in CI so it matches what gets run locally.
+There is no merge because there is no shared history: typescript-go's commits
+were rewritten when they moved under `tsc/`. A side effect is that `git log` on
+an upstream file shows cakebear's sync commits, not upstream's authors. To find
+when a change landed upstream, look in microsoft/TypeScript.
 
-One trap worth knowing: upstream's `.gitignore` has a blanket `*.txt` rule, and
-`scripts/owned-paths` went untracked for five phases when it was named
-`owned-paths.txt`. Every guardrail script reads that manifest, so a fresh
-checkout would have failed all of them. We cannot add a negation — `.gitignore`
-is an upstream file — so the manifest is deliberately extensionless. Run
-`git status --ignored` before assuming a new file is committed.
+`check-upstream-snapshot.sh` re-fetches the recorded commit, applies the same
+rename, and compares every upstream file by content. It reports missing, extra
+and changed files separately, which makes it the review for a sync PR: a diff of
+67,000 files cannot be read, but this check can be trusted.
 
-`.github/workflows/cakebear-sync-upstream.yml` runs this weekly and opens a
-labelled PR. Keep the cadence: weekly syncs conflict for minutes, six-monthly
-syncs conflict for a day and eventually get abandoned.
+A sync's real cost is upstream API churn in owned code, not conflicts. The
+rebase hit three kinds. `ast.Symbol` fields became methods. File paths became
+`tspath.RootedFilePath`, which reached the `vfs.FS` interface and
+`GetSourceFile`. And the signatures of `NewCompilerHost`,
+`NewParsedCommandLine` and `diagnosticwriter.FormattingOptions` changed.
+`go build ./...` inside the sync is what surfaces this.
+
+Lint uses `.golangci.cakebear.yml`. Upstream's `.golangci.yml` is at the
+monorepo root, outside `tsc/`, and it needs `customlint`, a plugin that only
+exists in a binary built from their `.custom-gcl.yml`. Ours is their linter set
+minus the rules about their own codebase. The header lists them, and why
+`modernize` is still off. CI pins golangci-lint to v2.14.0 so it matches what
+gets run locally.
+
+`.gitignore` and `.gitattributes` are cakebear's own and listed in
+`scripts/owned-paths`. Upstream's are at the monorepo root, which no sync
+copies. The manifest is still extensionless: upstream's old `.gitignore` had a
+blanket `*.txt` rule, and when the manifest was `owned-paths.txt` it went
+untracked for five phases. Run `git status --ignored` before assuming a new
+file is committed.
+
+`.github/workflows/cakebear-sync-upstream.yml` runs weekly. It compares
+upstream's `main` to `scripts/upstream-ref`, syncs to that exact commit, and
+opens a PR labelled `upstream-sync`. Keep the cadence. A week of API churn is a
+small fix, and six months of it is a rebase.
 
 ## Parallelism baseline
 
@@ -200,10 +239,14 @@ honest read is that parallelism is working and scaling stops paying past 4
 checkers at these sizes.
 
 The gap in this baseline is a genuinely large corpus of checkable `.ts`.
-`_submodules/TypeScript` is the obvious candidate and is not cloned. Copying
-`.d.ts` files to `.ts` does not work as a substitute: most of their content
-(ambient declarations, bodyless overloads) is not legal in a `.ts` file, which
-is why workload B is 491 files rather than 3000.
+When this was measured, upstream's corpus was an uncloned submodule. Since the
+rebase it is in the tree at `testdata/tests/cases/` (about 12,400 `.ts`), but
+it has not been benchmarked yet, and many cases are deliberately erroneous or
+multi-file, so it needs filtering first. Copying `.d.ts` files to `.ts` does
+not work as a substitute: most of their content (ambient declarations,
+bodyless overloads) is not legal in a `.ts` file, which is why workload B is
+491 files rather than 3000. The table also predates the rebase onto
+`microsoft/TypeScript`, so re-measure before comparing against it.
 
 ## Current phase: **open**
 
@@ -224,12 +267,14 @@ Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
 **P4** IR, Go emission and native binaries, **P5** cakebear's type extensions,
 **M1** a `node:http` server on goroutines: closures, `node:http` lowering, the
-runtime and its run loop, and the handler race rule.
+runtime and its run loop, and the handler race rule. Upstream then moved, and
+cakebear was rebased onto `microsoft/TypeScript`'s `tsc/` with snapshot syncs.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
-nothing. Before enabling it, note that upstream's `ci.yml` and `codeql.yml` fire
-their full matrix on every PR to `main`. `cakebear-ci.yml` is the workflow that
-checks our code.
+nothing. The only workflows in the tree are cakebear's own:
+`cakebear-ci.yml` checks our code and `cakebear-sync-upstream.yml` opens the
+weekly sync. Upstream's workflows live at the monorepo root and are not synced,
+so enabling Actions no longer fires their matrix.
 
 ### On extracting the backend into its own module
 

@@ -39,7 +39,7 @@ type Fix struct {
 
 	ModuleSpecifierKind      modulespecifiers.ResultKind
 	IsReExport               bool
-	ModuleFileName           string
+	ModuleFileName           tspath.RootedFilePath
 	TypeOnlyAliasDeclaration *ast.Declaration
 }
 
@@ -50,6 +50,9 @@ type addToExistingImportFix struct {
 	namedImport   *newImportBinding
 }
 
+// Edits produces the text edits and a human-readable description for the fix. The returned bool is false
+// when the fix targets a content-mapped file and any edit could not be placed within a single verbatim
+// span, meaning it cannot be safely applied to the original text and the caller should discard it.
 func (f *Fix) Edits(
 	ctx context.Context,
 	file *ast.SourceFile,
@@ -57,20 +60,22 @@ func (f *Fix) Edits(
 	formatOptions lsutil.FormatCodeSettings,
 	converters *lsconv.Converters,
 	preferences lsutil.UserPreferences,
-) ([]*lsproto.TextEdit, string) {
+) ([]*lsproto.TextEdit, string, bool) {
 	locale := locale.FromContext(ctx)
 	tracker := change.NewTracker(ctx, compilerOptions, formatOptions, converters)
 	switch f.Kind {
 	case lsproto.AutoImportFixKindUseNamespace:
 		description := addNamespaceQualifier(f, tracker, file, locale)
-		return tracker.GetChanges()[file.FileName()], description
+		edits, safe := fileEdits(tracker, file)
+		return edits, description, safe
 	case lsproto.AutoImportFixKindAddToExisting:
 		if len(file.Imports()) <= int(f.ImportIndex) {
 			panic("import index out of range")
 		}
 		existingFix := getAddToExistingImportFix(file, f)
 		addToExistingImport(tracker, file, existingFix.importClauseOrBindingPattern, existingFix.defaultImport, core.SingleElementSlice(existingFix.namedImport), preferences)
-		return tracker.GetChanges()[file.FileName()], diagnostics.Update_import_from_0.Localize(locale, f.ModuleSpecifier)
+		edits, safe := fileEdits(tracker, file)
+		return edits, diagnostics.Update_import_from_0.Localize(locale, f.ModuleSpecifier), safe
 	case lsproto.AutoImportFixKindAddNew:
 		var declarations []*ast.Statement
 		defaultImport := core.IfElse(f.ImportKind == lsproto.ImportKindDefault, &newImportBinding{name: f.Name, addAsTypeOnly: f.AddAsTypeOnly}, nil)
@@ -101,21 +106,33 @@ func (f *Fix) Edits(
 		// if qualification != nil {
 		// 	addNamespaceQualifier(tracker, file, qualification)
 		// }
-		return tracker.GetChanges()[file.FileName()], diagnostics.Add_import_from_0.Localize(locale, f.ModuleSpecifier)
+		edits, safe := fileEdits(tracker, file)
+		return edits, diagnostics.Add_import_from_0.Localize(locale, f.ModuleSpecifier), safe
 	case lsproto.AutoImportFixKindPromoteTypeOnly:
 		promotedDeclaration := promoteFromTypeOnly(tracker, f.TypeOnlyAliasDeclaration, compilerOptions, file, preferences)
 		if promotedDeclaration.Kind == ast.KindImportSpecifier {
 			moduleSpec := getModuleSpecifierText(promotedDeclaration.Parent.Parent)
-			return tracker.GetChanges()[file.FileName()], diagnostics.Remove_type_from_import_of_0_from_1.Localize(locale, f.Name, moduleSpec)
+			edits, safe := fileEdits(tracker, file)
+			return edits, diagnostics.Remove_type_from_import_of_0_from_1.Localize(locale, f.Name, moduleSpec), safe
 		}
 		moduleSpec := getModuleSpecifierText(promotedDeclaration)
-		return tracker.GetChanges()[file.FileName()], diagnostics.Remove_type_from_import_declaration_from_0.Localize(locale, moduleSpec)
+		edits, safe := fileEdits(tracker, file)
+		return edits, diagnostics.Remove_type_from_import_declaration_from_0.Localize(locale, moduleSpec), safe
 	case lsproto.AutoImportFixKindJsdocTypeImport:
 		description := addImportType(f, file, preferences, tracker, locale)
-		return tracker.GetChanges()[file.FileName()], description
+		edits, safe := fileEdits(tracker, file)
+		return edits, description, safe
 	default:
 		panic("unimplemented fix edit")
 	}
+}
+
+// fileEdits returns the edits recorded for file, along with whether they are safe to apply. GetChanges
+// drops the edits of any content-mapped file that cannot be faithfully mapped back to the original text,
+// so an empty result with safe == false means the fix could not be represented and must be discarded.
+func fileEdits(tracker *change.Tracker, file *ast.SourceFile) (edits []*lsproto.TextEdit, safe bool) {
+	changes, unmappable := tracker.GetChanges()
+	return changes[file.OriginalFileName()], len(unmappable) == 0
 }
 
 func addImportType(f *Fix, file *ast.SourceFile, preferences lsutil.UserPreferences, tracker *change.Tracker, locale locale.Locale) string {
@@ -534,13 +551,13 @@ func makeImport(ct *change.Tracker, defaultImport *ast.IdentifierNode, namedImpo
 	return ct.NodeFactory.NewImportDeclaration( /*modifiers*/ nil, importClause, moduleSpecifier, nil /*attributes*/)
 }
 
-func (v *View) GetFixes(ctx context.Context, export *Export, forJSX bool, isValidTypeOnlyUseSite bool, usagePosition *lsproto.Position) []*Fix {
+func (v *View) GetFixes(export *Export, forJSX bool, isValidTypeOnlyUseSite bool, usagePosition *lsproto.Position) []*Fix {
 	var fixes []*Fix
-	if namespaceFix := v.tryUseExistingNamespaceImport(ctx, export, usagePosition); namespaceFix != nil {
+	if namespaceFix := v.tryUseExistingNamespaceImport(export, usagePosition); namespaceFix != nil {
 		fixes = append(fixes, namespaceFix)
 	}
 
-	if fix := v.tryAddToExistingImport(ctx, export, isValidTypeOnlyUseSite); fix != nil {
+	if fix := v.tryAddToExistingImport(export, isValidTypeOnlyUseSite); fix != nil {
 		return append(fixes, fix)
 	}
 
@@ -555,7 +572,7 @@ func (v *View) GetFixes(ctx context.Context, export *Export, forJSX bool, isVali
 	}
 
 	// Check if we need a JSDoc import type fix (for JS files with type-only imports)
-	isJs := tspath.HasJSFileExtension(v.importingFile.FileName())
+	isJs := v.importingFile.FileName().HasJSFileExtension()
 	importedSymbolHasValueMeaning := export.Flags&ast.SymbolFlagsValue != 0 || export.IsUnresolvedAlias()
 	if !importedSymbolHasValueMeaning && isJs && usagePosition != nil {
 		// For pure types in JS files, use JSDoc import type syntax
@@ -563,7 +580,7 @@ func (v *View) GetFixes(ctx context.Context, export *Export, forJSX bool, isVali
 			{
 				AutoImportFix: &lsproto.AutoImportFix{
 					Kind:            lsproto.AutoImportFixKindJsdocTypeImport,
-					ModuleSpecifier: moduleSpecifier,
+					ModuleSpecifier: moduleSpecifier.AsString(),
 					Name:            export.Name(),
 					UsagePosition:   usagePosition,
 				},
@@ -591,7 +608,7 @@ func (v *View) GetFixes(ctx context.Context, export *Export, forJSX bool, isVali
 		AutoImportFix: &lsproto.AutoImportFix{
 			Kind:            lsproto.AutoImportFixKindAddNew,
 			ImportKind:      importKind,
-			ModuleSpecifier: moduleSpecifier,
+			ModuleSpecifier: moduleSpecifier.AsString(),
 			Name:            name,
 			UseRequire:      v.shouldUseRequire(),
 			AddAsTypeOnly:   addAsTypeOnly,
@@ -616,7 +633,7 @@ func getAddAsTypeOnly(isValidTypeOnlyUseSite bool, export *Export, compilerOptio
 	return lsproto.AddAsTypeOnlyAllowed
 }
 
-func (v *View) tryUseExistingNamespaceImport(ctx context.Context, export *Export, usagePosition *lsproto.Position) *Fix {
+func (v *View) tryUseExistingNamespaceImport(export *Export, usagePosition *lsproto.Position) *Fix {
 	if usagePosition == nil {
 		return nil
 	}
@@ -625,7 +642,7 @@ func (v *View) tryUseExistingNamespaceImport(ctx context.Context, export *Export
 		return nil
 	}
 
-	existingImports := v.getExistingImports(ctx)
+	existingImports := v.getExistingImports()
 	matchingDeclarations := existingImports.Get(export.ModuleID)
 	for _, existingImport := range matchingDeclarations {
 		namespacePrefix := getNamespaceLikeImportText(existingImport.node)
@@ -671,11 +688,10 @@ func getNamespaceLikeImportText(declaration *ast.Node) string {
 }
 
 func (v *View) tryAddToExistingImport(
-	ctx context.Context,
 	export *Export,
 	isValidTypeOnlyUseSite bool,
 ) *Fix {
-	existingImports := v.getExistingImports(ctx)
+	existingImports := v.getExistingImports()
 	matchingDeclarations := existingImports.Get(export.ModuleID)
 	if len(matchingDeclarations) == 0 {
 		return nil
@@ -732,6 +748,9 @@ func (v *View) tryAddToExistingImport(
 			continue
 		}
 		importClause := importClauseNode.AsImportClause()
+		if importClause.PhaseModifier == ast.KindSourceKeyword {
+			continue
+		}
 
 		namedBindings := importClause.NamedBindings
 		// A type-only import may not have both a default and named imports, so the only way a name can
@@ -827,27 +846,25 @@ type existingImport struct {
 	index           int
 }
 
-func (v *View) getExistingImports(ctx context.Context) *collections.MultiMap[ModuleID, existingImport] {
+func (v *View) getExistingImports() *collections.MultiMap[ModuleID, existingImport] {
 	if v.existingImports != nil {
 		return v.existingImports
 	}
 
 	result := collections.NewMultiMapWithSizeHint[ModuleID, existingImport](len(v.importingFile.Imports()))
-	ch, done := v.program.GetTypeChecker(ctx)
-	defer done()
 
 	for i, moduleSpecifier := range v.importingFile.Imports() {
 		node := ast.TryGetImportFromModuleSpecifier(moduleSpecifier)
 		if node == nil {
 			panic("error: did not expect node kind " + moduleSpecifier.Kind.String())
 		} else if ast.IsVariableDeclarationInitializedToRequire(node.Parent) {
-			if moduleSymbol := ch.ResolveExternalModuleName(moduleSpecifier); moduleSymbol != nil {
+			if moduleSymbol := v.checker.ResolveExternalModuleName(moduleSpecifier, nil /*importAttributesType*/); moduleSymbol != nil {
 				if moduleID, _, ok := tryGetModuleIDAndFileNameOfModuleSymbol(moduleSymbol); ok {
 					result.Add(moduleID, existingImport{node: node.Parent, moduleSpecifier: moduleSpecifier.Text(), index: i})
 				}
 			}
 		} else if node.Kind == ast.KindImportDeclaration || node.Kind == ast.KindImportEqualsDeclaration || node.Kind == ast.KindJSDocImportTag {
-			if moduleSymbol := ch.GetSymbolAtLocation(moduleSpecifier); moduleSymbol != nil {
+			if moduleSymbol := v.checker.GetSymbolAtLocation(moduleSpecifier); moduleSymbol != nil {
 				if moduleID, _, ok := tryGetModuleIDAndFileNameOfModuleSymbol(moduleSymbol); ok {
 					result.Add(moduleID, existingImport{node: node, moduleSpecifier: moduleSpecifier.Text(), index: i})
 				}
@@ -932,7 +949,7 @@ func detectSyntaxIndicators(file *ast.SourceFile, options *core.CompilerOptions)
 
 func (v *View) computeShouldUseRequire() bool {
 	// 1. TypeScript files don't use require variable declarations
-	if !tspath.HasJSFileExtension(v.importingFile.FileName()) {
+	if !v.importingFile.FileName().HasJSFileExtension() {
 		return false
 	}
 
@@ -1020,8 +1037,8 @@ func (v *View) compareModuleSpecifiersForRanking(a, b *Fix) int {
 	}
 	if a.ModuleSpecifierKind == modulespecifiers.ResultKindRelative && b.ModuleSpecifierKind == modulespecifiers.ResultKindRelative {
 		if comparison := core.CompareBooleans(
-			isFixPossiblyReExportingImportingFile(a, v.importingFile.FileName()),
-			isFixPossiblyReExportingImportingFile(b, v.importingFile.FileName()),
+			isFixPossiblyReExportingImportingFile(a, v.importingFile.FileName(), v.program.CaseSensitivity()),
+			isFixPossiblyReExportingImportingFile(b, v.importingFile.FileName(), v.program.CaseSensitivity()),
 		); comparison != 0 {
 			return comparison
 		}
@@ -1076,22 +1093,16 @@ func (v *View) compareNodeCoreModuleSpecifiers(a, b string, importingFile *ast.S
 // E.g., do not `import { Foo } from ".."` when you could `import { Foo } from "../Foo"`.
 // This can produce false positives or negatives if re-exports cross into sibling directories
 // (e.g. `export * from "../whatever"`) or are not named "index". Technically this should do
-// a tspath.Path comparison, but it's not worth it to run a heuristic in such a hot path.
-func isFixPossiblyReExportingImportingFile(fix *Fix, importingFileName string) bool {
+// a tspath.PathKey comparison, but it's not worth it to run a heuristic in such a hot path.
+func isFixPossiblyReExportingImportingFile(fix *Fix, importingFileName tspath.RootedFilePath, caseSensitivity tspath.CaseSensitivity) bool {
 	if fix.IsReExport && isIndexFileName(fix.ModuleFileName) {
-		reExportDir := tspath.GetDirectoryPath(fix.ModuleFileName)
-		return strings.HasPrefix(importingFileName, reExportDir)
+		return caseSensitivity.StartsWithDirectory(importingFileName, fix.ModuleFileName.Directory())
 	}
 	return false
 }
 
-func isIndexFileName(fileName string) bool {
-	lastSlash := strings.LastIndexByte(fileName, '/')
-	if lastSlash < 0 || len(fileName) <= lastSlash+1 {
-		return false
-	}
-	fileName = fileName[lastSlash+1:]
-	switch fileName {
+func isIndexFileName(fileName tspath.RootedFilePath) bool {
+	switch fileName.BaseName() {
 	case "index.js", "index.jsx", "index.d.ts", "index.ts", "index.tsx":
 		return true
 	}

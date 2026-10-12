@@ -10,7 +10,7 @@ import (
 	"github.com/zobstory/cakebear/internal/json"
 )
 
-// Meta model version 3.17.0
+// Meta model version 3.18.0
 
 // Structures
 
@@ -269,29 +269,6 @@ type ColorPresentation struct {
 var _ json.UnmarshalerFrom = (*ColorPresentation)(nil)
 
 func (s *ColorPresentation) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
-
-type WorkDoneProgressOptions struct {
-	WorkDoneProgress *bool `json:"workDoneProgress,omitzero"`
-}
-
-var _ json.UnmarshalerFrom = (*WorkDoneProgressOptions)(nil)
-
-func (s *WorkDoneProgressOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
-
-// General text document registration options.
-type TextDocumentRegistrationOptions struct {
-	// A document selector to identify the scope of the registration. If set to null
-	// the document selector provided on the client side will be used.
-	DocumentSelector DocumentSelectorOrNull `json:"documentSelector" lsp:"required"`
-}
-
-var _ json.UnmarshalerFrom = (*TextDocumentRegistrationOptions)(nil)
-
-func (s *TextDocumentRegistrationOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
 	return unmarshalStruct(s, dec)
 }
 
@@ -1890,6 +1867,19 @@ func (s *DidOpenTextDocumentParams) UnmarshalJSONFrom(dec *json.Decoder) error {
 	return unmarshalStruct(s, dec)
 }
 
+// General text document registration options.
+type TextDocumentRegistrationOptions struct {
+	// A document selector to identify the scope of the registration. If set to null
+	// the document selector provided on the client side will be used.
+	DocumentSelector DocumentSelectorOrNull `json:"documentSelector" lsp:"required"`
+}
+
+var _ json.UnmarshalerFrom = (*TextDocumentRegistrationOptions)(nil)
+
+func (s *TextDocumentRegistrationOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
 // The change text document notification's parameters.
 type DidChangeTextDocumentParams struct {
 	// The document that did change. The version number points
@@ -2922,7 +2912,7 @@ type CodeAction struct {
 
 	// Tags for this code action.
 	//
-	// Since: 3.18.0 - proposed
+	// Since: 3.18.0
 	Tags *[]CodeActionTag `json:"tags,omitzero"`
 }
 
@@ -4009,8 +3999,8 @@ func (s *LinkedEditingRangeOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
 //
 // Since: 3.16.0
 type FileCreate struct {
-	// A file:// URI for the location of the file/folder being created.
-	Uri string `json:"uri" lsp:"required"`
+	// A URI for the location of the file/folder being created.
+	Uri DocumentUri `json:"uri" lsp:"required"`
 }
 
 var _ json.UnmarshalerFrom = (*FileCreate)(nil)
@@ -4160,11 +4150,11 @@ func (s *FileOperationFilter) UnmarshalJSONFrom(dec *json.Decoder) error {
 //
 // Since: 3.16.0
 type FileRename struct {
-	// A file:// URI for the original location of the file/folder being renamed.
-	OldUri string `json:"oldUri" lsp:"required"`
+	// A URI for the original location of the file/folder being renamed.
+	OldUri DocumentUri `json:"oldUri" lsp:"required"`
 
-	// A file:// URI for the new location of the file/folder being renamed.
-	NewUri string `json:"newUri" lsp:"required"`
+	// A URI for the new location of the file/folder being renamed.
+	NewUri DocumentUri `json:"newUri" lsp:"required"`
 }
 
 var _ json.UnmarshalerFrom = (*FileRename)(nil)
@@ -4177,8 +4167,8 @@ func (s *FileRename) UnmarshalJSONFrom(dec *json.Decoder) error {
 //
 // Since: 3.16.0
 type FileDelete struct {
-	// A file:// URI for the location of the file/folder being deleted.
-	Uri string `json:"uri" lsp:"required"`
+	// A URI for the location of the file/folder being deleted.
+	Uri DocumentUri `json:"uri" lsp:"required"`
 }
 
 var _ json.UnmarshalerFrom = (*FileDelete)(nil)
@@ -4629,7 +4619,7 @@ type RegisterOptions struct {
 	TextDocumentImplementation       *ImplementationRegistrationOptions
 	TextDocumentTypeDefinition       *TypeDefinitionRegistrationOptions
 	TextDocumentDocumentColor        *DocumentColorRegistrationOptions
-	TextDocumentColorPresentation    *ColorPresentationRegistrationOptions
+	TextDocumentColorPresentation    *DocumentColorRegistrationOptions
 	TextDocumentFoldingRange         *FoldingRangeRegistrationOptions
 	TextDocumentDeclaration          *DeclarationRegistrationOptions
 	TextDocumentSelectionRange       *SelectionRangeRegistrationOptions
@@ -4943,7 +4933,7 @@ func (s *Registration) UnmarshalJSONFrom(dec *json.Decoder) error {
 			}
 			s.RegisterOptions.TextDocumentDocumentColor = &v
 		case MethodTextDocumentColorPresentation:
-			var v ColorPresentationRegistrationOptions
+			var v DocumentColorRegistrationOptions
 			if err := json.Unmarshal(rawRegisterOptions, &v); err != nil {
 				return err
 			}
@@ -6216,6 +6206,16 @@ func (s *WorkspaceEditMetadata) UnmarshalJSONFrom(dec *json.Decoder) error {
 	return unmarshalStruct(s, dec)
 }
 
+type WorkDoneProgressOptions struct {
+	WorkDoneProgress *bool `json:"workDoneProgress,omitzero"`
+}
+
+var _ json.UnmarshalerFrom = (*WorkDoneProgressOptions)(nil)
+
+func (s *WorkDoneProgressOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
 // Since: 3.16.0
 type SemanticTokensLegend struct {
 	// The token types a server uses.
@@ -7172,78 +7172,6 @@ func (s *RelativePattern) UnmarshalJSONFrom(dec *json.Decoder) error {
 	return unmarshalStruct(s, dec)
 }
 
-// A document filter where `language` is required field.
-//
-// Since: 3.18.0
-type TextDocumentFilterLanguage struct {
-	// A language id, like `typescript`.
-	Language string `json:"language" lsp:"required"`
-
-	// A Uri scheme, like `file` or `untitled`.
-	Scheme *string `json:"scheme,omitzero"`
-
-	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
-	//
-	// Since: 3.18.0 - support for relative patterns. Whether clients support
-	// relative patterns depends on the client capability
-	// `textDocuments.filters.relativePatternSupport`.
-	Pattern *PatternOrRelativePattern `json:"pattern,omitzero"`
-}
-
-var _ json.UnmarshalerFrom = (*TextDocumentFilterLanguage)(nil)
-
-func (s *TextDocumentFilterLanguage) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
-
-// A document filter where `scheme` is required field.
-//
-// Since: 3.18.0
-type TextDocumentFilterScheme struct {
-	// A language id, like `typescript`.
-	Language *string `json:"language,omitzero"`
-
-	// A Uri scheme, like `file` or `untitled`.
-	Scheme string `json:"scheme" lsp:"required"`
-
-	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
-	//
-	// Since: 3.18.0 - support for relative patterns. Whether clients support
-	// relative patterns depends on the client capability
-	// `textDocuments.filters.relativePatternSupport`.
-	Pattern *PatternOrRelativePattern `json:"pattern,omitzero"`
-}
-
-var _ json.UnmarshalerFrom = (*TextDocumentFilterScheme)(nil)
-
-func (s *TextDocumentFilterScheme) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
-
-// A document filter where `pattern` is required field.
-//
-// Since: 3.18.0
-type TextDocumentFilterPattern struct {
-	// A language id, like `typescript`.
-	Language *string `json:"language,omitzero"`
-
-	// A Uri scheme, like `file` or `untitled`.
-	Scheme *string `json:"scheme,omitzero"`
-
-	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
-	//
-	// Since: 3.18.0 - support for relative patterns. Whether clients support
-	// relative patterns depends on the client capability
-	// `textDocuments.filters.relativePatternSupport`.
-	Pattern PatternOrRelativePattern `json:"pattern" lsp:"required"`
-}
-
-var _ json.UnmarshalerFrom = (*TextDocumentFilterPattern)(nil)
-
-func (s *TextDocumentFilterPattern) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
-
 type WorkspaceEditClientCapabilities struct {
 	// The client supports versioned document changes in `WorkspaceEdit`s
 	DocumentChanges *bool `json:"documentChanges,omitzero"`
@@ -7820,7 +7748,7 @@ type CodeActionClientCapabilities struct {
 	// Client supports the tag property on a code action. Clients
 	// supporting tags have to handle unknown tags gracefully.
 	//
-	// Since: 3.18.0 - proposed
+	// Since: 3.18.0
 	TagSupport *CodeActionTagOptions `json:"tagSupport,omitzero"`
 }
 
@@ -8330,6 +8258,78 @@ func (s *MarkdownClientCapabilities) UnmarshalJSONFrom(dec *json.Decoder) error 
 	return unmarshalStruct(s, dec)
 }
 
+// A document filter where `language` is required field.
+//
+// Since: 3.18.0
+type TextDocumentFilterLanguage struct {
+	// A language id, like `typescript`.
+	Language string `json:"language" lsp:"required"`
+
+	// A Uri scheme, like `file` or `untitled`.
+	Scheme *string `json:"scheme,omitzero"`
+
+	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
+	//
+	// Since: 3.18.0 - support for relative patterns. Whether clients support
+	// relative patterns depends on the client capability
+	// `textDocuments.filters.relativePatternSupport`.
+	Pattern *PatternOrRelativePattern `json:"pattern,omitzero"`
+}
+
+var _ json.UnmarshalerFrom = (*TextDocumentFilterLanguage)(nil)
+
+func (s *TextDocumentFilterLanguage) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// A document filter where `scheme` is required field.
+//
+// Since: 3.18.0
+type TextDocumentFilterScheme struct {
+	// A language id, like `typescript`.
+	Language *string `json:"language,omitzero"`
+
+	// A Uri scheme, like `file` or `untitled`.
+	Scheme string `json:"scheme" lsp:"required"`
+
+	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
+	//
+	// Since: 3.18.0 - support for relative patterns. Whether clients support
+	// relative patterns depends on the client capability
+	// `textDocuments.filters.relativePatternSupport`.
+	Pattern *PatternOrRelativePattern `json:"pattern,omitzero"`
+}
+
+var _ json.UnmarshalerFrom = (*TextDocumentFilterScheme)(nil)
+
+func (s *TextDocumentFilterScheme) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// A document filter where `pattern` is required field.
+//
+// Since: 3.18.0
+type TextDocumentFilterPattern struct {
+	// A language id, like `typescript`.
+	Language *string `json:"language,omitzero"`
+
+	// A Uri scheme, like `file` or `untitled`.
+	Scheme *string `json:"scheme,omitzero"`
+
+	// A glob pattern, like **​ .{ts,js}. See TextDocumentFilter for examples.
+	//
+	// Since: 3.18.0 - support for relative patterns. Whether clients support
+	// relative patterns depends on the client capability
+	// `textDocuments.filters.relativePatternSupport`.
+	Pattern PatternOrRelativePattern `json:"pattern" lsp:"required"`
+}
+
+var _ json.UnmarshalerFrom = (*TextDocumentFilterPattern)(nil)
+
+func (s *TextDocumentFilterPattern) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
 // Since: 3.18.0
 type ChangeAnnotationsSupportOptions struct {
 	// Whether the client groups edits with equal labels into tree nodes,
@@ -8560,7 +8560,7 @@ func (s *ClientCodeActionResolveOptions) UnmarshalJSONFrom(dec *json.Decoder) er
 	return unmarshalStruct(s, dec)
 }
 
-// Since: 3.18.0 - proposed
+// Since: 3.18.0
 type CodeActionTagOptions struct {
 	// The tags supported by the client.
 	ValueSet []CodeActionTag `json:"valueSet" lsp:"required"`
@@ -8794,6 +8794,9 @@ type InitializationOptions struct {
 	// The initial log verbosity level, matching the client's output channel log level at startup. Subsequent changes are sent via custom/setLogVerbosity.
 	LogVerbosity *LogVerbosity `json:"logVerbosity,omitzero"`
 
+	// RunExternalCode allows configured content mappers to launch external plugin processes. The client should set this only for trusted workspaces. It mirrors the --runExternalCode CLI flag.
+	RunExternalCode *bool `json:"runExternalCode,omitzero"`
+
 	// The level at which we track flaky diagnostics, if at all.
 	TrackFlakyDiagnostics *DiagnosticFlakeLogLevel `json:"trackFlakyDiagnostics,omitzero"`
 }
@@ -8841,6 +8844,9 @@ type CompletionItemData struct {
 	// The position where the completion was requested.
 	Position int32 `json:"position,omitzero" lsp:"nullable"`
 
+	// Zero-based index into the canonical file's supplemental source files. Absent when the completion was requested in the canonical file.
+	SupplementalFileIndex *int32 `json:"supplementalFileIndex,omitzero"`
+
 	// Special source value for disambiguation.
 	Source string `json:"source,omitzero" lsp:"nullable"`
 
@@ -8865,6 +8871,12 @@ type CodeLensData struct {
 
 	// The document in which the code lens and its range are located.
 	Uri DocumentUri `json:"uri" lsp:"required"`
+
+	// The position of the code lens declaration in its virtual source file.
+	Position int32 `json:"position" lsp:"required"`
+
+	// Zero-based index into the canonical file's supplemental source files. Absent for the canonical source file.
+	SupplementalFileIndex *int32 `json:"supplementalFileIndex,omitzero"`
 }
 
 var _ json.UnmarshalerFrom = (*CodeLensData)(nil)
@@ -9095,6 +9107,81 @@ type ProjectInfoResult struct {
 var _ json.UnmarshalerFrom = (*ProjectInfoResult)(nil)
 
 func (s *ProjectInfoResult) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// Inline content mapper manifest supplied by a contributing extension.
+type ContentMapperManifest struct {
+	// Human-readable mapper name.
+	Name string `json:"name" lsp:"required"`
+
+	// Mapper version.
+	Version *string `json:"version,omitzero"`
+
+	// Executable and arguments used to start the mapper.
+	Exec []string `json:"exec" lsp:"required"`
+
+	// Absolute working directory for the mapper process.
+	Cwd *string `json:"cwd,omitzero"`
+
+	// Compiler option names forwarded to the mapper.
+	CompilerOptions *[]string `json:"compilerOptions,omitzero"`
+
+	// Whether the mapper uses project-scoped dynamic configuration.
+	DynamicConfig *bool `json:"dynamicConfig,omitzero"`
+}
+
+var _ json.UnmarshalerFrom = (*ContentMapperManifest)(nil)
+
+func (s *ContentMapperManifest) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// Content mapper configuration contributed to inferred projects.
+type InferredProjectContentMapperContribution struct {
+	// Options supplied to transforms in inferred projects.
+	Options *map[string]any `json:"options,omitzero"`
+
+	// Inline manifest for the mapper contributed to inferred projects.
+	Manifest *ContentMapperManifest `json:"manifest" lsp:"required"`
+}
+
+var _ json.UnmarshalerFrom = (*InferredProjectContentMapperContribution)(nil)
+
+func (s *InferredProjectContentMapperContribution) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// One extension-provided content mapper contribution.
+type ContentMapperContribution struct {
+	// Unique identifier of the contributor extension.
+	ContributorId string `json:"contributorId" lsp:"required"`
+
+	// File extensions handled by this content mapper.
+	Extensions []string `json:"extensions" lsp:"required"`
+
+	// When present, contributes this mapper to inferred projects.
+	InferredProjectContribution *InferredProjectContentMapperContribution `json:"inferredProjectContribution,omitzero"`
+}
+
+var _ json.UnmarshalerFrom = (*ContentMapperContribution)(nil)
+
+func (s *ContentMapperContribution) UnmarshalJSONFrom(dec *json.Decoder) error {
+	return unmarshalStruct(s, dec)
+}
+
+// Parameters for the custom/setContentMapperContributions request.
+type SetContentMapperContributionsParams struct {
+	// Complete replacement set of active extension contributions.
+	Contributions []*ContentMapperContribution `json:"contributions" lsp:"required"`
+
+	// Currently open documents matching contributed extensions.
+	OpenDocuments []TextDocumentIdentifier `json:"openDocuments" lsp:"required"`
+}
+
+var _ json.UnmarshalerFrom = (*SetContentMapperContributionsParams)(nil)
+
+func (s *SetContentMapperContributionsParams) UnmarshalJSONFrom(dec *json.Decoder) error {
 	return unmarshalStruct(s, dec)
 }
 
@@ -9419,21 +9506,6 @@ type DiagnosticData struct{}
 
 // CompletionItemDefaultsData is a placeholder for custom data preserved on a CompletionItemDefaults.
 type CompletionItemDefaultsData struct{}
-
-// Registration options for textDocument/colorPresentation.
-type ColorPresentationRegistrationOptions struct {
-	WorkDoneProgress *bool `json:"workDoneProgress,omitzero"`
-
-	// A document selector to identify the scope of the registration. If set to null
-	// the document selector provided on the client side will be used.
-	DocumentSelector DocumentSelectorOrNull `json:"documentSelector" lsp:"required"`
-}
-
-var _ json.UnmarshalerFrom = (*ColorPresentationRegistrationOptions)(nil)
-
-func (s *ColorPresentationRegistrationOptions) UnmarshalJSONFrom(dec *json.Decoder) error {
-	return unmarshalStruct(s, dec)
-}
 
 // Enumerations
 
@@ -10021,7 +10093,7 @@ const (
 
 // Code action tags are extra annotations that tweak the behavior of a code action.
 //
-// Since: 3.18.0 - proposed
+// Since: 3.18.0
 type CodeActionTag uint32
 
 const (
@@ -11023,6 +11095,8 @@ const (
 	MethodCustomInitializeAPISession Method = "custom/initializeAPISession"
 	// Returns project information (e.g. the tsconfig.json path) for a given text document.
 	MethodCustomProjectInfo Method = "custom/projectInfo"
+	// Replaces extension content mapper contributions and discovers configured mappers for matching open documents.
+	MethodCustomSetContentMapperContributions Method = "custom/setContentMapperContributions"
 	// Request to get source definitions for a position.
 	MethodCustomTextDocumentSourceDefinition Method = "custom/textDocument/sourceDefinition"
 	// Request to get document highlights across multiple files.
@@ -11572,6 +11646,12 @@ type CustomProjectInfoResponse = *ProjectInfoResult
 // Type mapping info for `custom/projectInfo`
 var CustomProjectInfoInfo = RequestInfo[*ProjectInfoParams, CustomProjectInfoResponse]{Method: MethodCustomProjectInfo}
 
+// Response type for `custom/setContentMapperContributions`
+type CustomSetContentMapperContributionsResponse = Null
+
+// Type mapping info for `custom/setContentMapperContributions`
+var CustomSetContentMapperContributionsInfo = RequestInfo[*SetContentMapperContributionsParams, CustomSetContentMapperContributionsResponse]{Method: MethodCustomSetContentMapperContributions}
+
 // Response type for `custom/textDocument/sourceDefinition`
 type CustomTextDocumentSourceDefinitionResponse = *LocationOrLocationsOrDefinitionLinksOrNull
 
@@ -11802,23 +11882,19 @@ var _ json.UnmarshalerFrom = (*TextDocumentEditOrCreateFileOrRenameFileOrDeleteF
 func (o *TextDocumentEditOrCreateFileOrRenameFileOrDeleteFile) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = TextDocumentEditOrCreateFileOrRenameFileOrDeleteFile{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "TextDocumentEditOrCreateFileOrRenameFileOrDeleteFile", "kind")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "kind")) {
+	switch string(state.discriminatorValue) {
 	case `"rename"`:
-		o.RenameFile = new(RenameFile)
-		return json.Unmarshal(data, o.RenameFile)
+		return unmarshalDiscriminatedArm(state, &o.RenameFile)
 	case `"create"`:
-		o.CreateFile = new(CreateFile)
-		return json.Unmarshal(data, o.CreateFile)
+		return unmarshalDiscriminatedArm(state, &o.CreateFile)
 	case `"delete"`:
-		o.DeleteFile = new(DeleteFile)
-		return json.Unmarshal(data, o.DeleteFile)
+		return unmarshalDiscriminatedArm(state, &o.DeleteFile)
 	default:
-		o.TextDocumentEdit = new(TextDocumentEdit)
-		return json.Unmarshal(data, o.TextDocumentEdit)
+		return unmarshalDiscriminatedArm(state, &o.TextDocumentEdit)
 	}
 }
 
@@ -11894,19 +11970,18 @@ var _ json.UnmarshalerFrom = (*WorkspaceFullDocumentDiagnosticReportOrUnchangedD
 func (o *WorkspaceFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = WorkspaceFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "WorkspaceFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", "kind")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "kind")) {
+	switch string(state.discriminatorValue) {
 	case `"full"`:
-		o.FullDocumentDiagnosticReport = new(WorkspaceFullDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.FullDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.FullDocumentDiagnosticReport)
 	case `"unchanged"`:
-		o.UnchangedDocumentDiagnosticReport = new(WorkspaceUnchangedDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.UnchangedDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.UnchangedDocumentDiagnosticReport)
+	default:
+		return state.invalidDiscriminator()
 	}
-	return errInvalidValue("WorkspaceFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", data)
 }
 
 type StringOrStringValue struct {
@@ -12279,22 +12354,20 @@ var _ json.UnmarshalerFrom = (*WorkDoneProgressBeginOrReportOrEnd)(nil)
 func (o *WorkDoneProgressBeginOrReportOrEnd) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = WorkDoneProgressBeginOrReportOrEnd{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "WorkDoneProgressBeginOrReportOrEnd", "kind")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "kind")) {
+	switch string(state.discriminatorValue) {
 	case `"begin"`:
-		o.Begin = new(WorkDoneProgressBegin)
-		return json.Unmarshal(data, o.Begin)
+		return unmarshalDiscriminatedArm(state, &o.Begin)
 	case `"report"`:
-		o.Report = new(WorkDoneProgressReport)
-		return json.Unmarshal(data, o.Report)
+		return unmarshalDiscriminatedArm(state, &o.Report)
 	case `"end"`:
-		o.End = new(WorkDoneProgressEnd)
-		return json.Unmarshal(data, o.End)
+		return unmarshalDiscriminatedArm(state, &o.End)
+	default:
+		return state.invalidDiscriminator()
 	}
-	return errInvalidValue("WorkDoneProgressBeginOrReportOrEnd", data)
 }
 
 type TextEditOrAnnotatedTextEditOrSnippetTextEdit struct {
@@ -12347,19 +12420,18 @@ var _ json.UnmarshalerFrom = (*FullDocumentDiagnosticReportOrUnchangedDocumentDi
 func (o *FullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = FullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "FullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", "kind")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "kind")) {
+	switch string(state.discriminatorValue) {
 	case `"full"`:
-		o.FullDocumentDiagnosticReport = new(FullDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.FullDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.FullDocumentDiagnosticReport)
 	case `"unchanged"`:
-		o.UnchangedDocumentDiagnosticReport = new(UnchangedDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.UnchangedDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.UnchangedDocumentDiagnosticReport)
+	default:
+		return state.invalidDiscriminator()
 	}
-	return errInvalidValue("FullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", data)
 }
 
 type TextDocumentSyncOptionsOrKind struct {
@@ -13501,22 +13573,20 @@ var _ json.UnmarshalerFrom = (*VSImageElementOrClassifiedTextElementOrContainerE
 func (o *VSImageElementOrClassifiedTextElementOrContainerElement) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = VSImageElementOrClassifiedTextElementOrContainerElement{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "VSImageElementOrClassifiedTextElementOrContainerElement", "_vs_type")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "_vs_type")) {
+	switch string(state.discriminatorValue) {
 	case `"ContainerElement"`:
-		o.ContainerElement = new(VSContainerElement)
-		return json.Unmarshal(data, o.ContainerElement)
+		return unmarshalDiscriminatedArm(state, &o.ContainerElement)
 	case `"ImageElement"`:
-		o.ImageElement = new(VSImageElement)
-		return json.Unmarshal(data, o.ImageElement)
+		return unmarshalDiscriminatedArm(state, &o.ImageElement)
 	case `"ClassifiedTextElement"`:
-		o.ClassifiedTextElement = new(VSClassifiedTextElement)
-		return json.Unmarshal(data, o.ClassifiedTextElement)
+		return unmarshalDiscriminatedArm(state, &o.ClassifiedTextElement)
+	default:
+		return state.invalidDiscriminator()
 	}
-	return errInvalidValue("VSImageElementOrClassifiedTextElementOrContainerElement", data)
 }
 
 type LocationOrLocationsOrDefinitionLinksOrNull struct {
@@ -13996,19 +14066,18 @@ var _ json.UnmarshalerFrom = (*RelatedFullDocumentDiagnosticReportOrUnchangedDoc
 func (o *RelatedFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport) UnmarshalJSONFrom(dec *json.Decoder) error {
 	*o = RelatedFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport{}
 
-	data, err := dec.ReadValue()
+	state, err := scanDiscriminatedStruct(dec, "RelatedFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", "kind")
 	if err != nil {
 		return err
 	}
-	switch string(jsonObjectRawField(data, "kind")) {
+	switch string(state.discriminatorValue) {
 	case `"full"`:
-		o.FullDocumentDiagnosticReport = new(RelatedFullDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.FullDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.FullDocumentDiagnosticReport)
 	case `"unchanged"`:
-		o.UnchangedDocumentDiagnosticReport = new(RelatedUnchangedDocumentDiagnosticReport)
-		return json.Unmarshal(data, o.UnchangedDocumentDiagnosticReport)
+		return unmarshalDiscriminatedArm(state, &o.UnchangedDocumentDiagnosticReport)
+	default:
+		return state.invalidDiscriminator()
 	}
-	return errInvalidValue("RelatedFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport", data)
 }
 
 type InlineCompletionListOrItemsOrNull struct {
@@ -14612,22 +14681,20 @@ func (o *RequestFailureTelemetryEventOrPerformanceStatsTelemetryEventOrProjectIn
 		_, err := dec.ReadToken()
 		return err
 	case '{':
-		data, err := dec.ReadValue()
+		state, err := scanDiscriminatedStruct(dec, "RequestFailureTelemetryEventOrPerformanceStatsTelemetryEventOrProjectInfoTelemetryEventOrNull", "eventName")
 		if err != nil {
 			return err
 		}
-		switch string(jsonObjectRawField(data, "eventName")) {
+		switch string(state.discriminatorValue) {
 		case `"languageServer.projectInfo"`:
-			o.ProjectInfoTelemetryEvent = new(ProjectInfoTelemetryEvent)
-			return json.Unmarshal(data, o.ProjectInfoTelemetryEvent)
+			return unmarshalDiscriminatedArm(state, &o.ProjectInfoTelemetryEvent)
 		case `"languageServer.errorResponse"`:
-			o.RequestFailureTelemetryEvent = new(RequestFailureTelemetryEvent)
-			return json.Unmarshal(data, o.RequestFailureTelemetryEvent)
+			return unmarshalDiscriminatedArm(state, &o.RequestFailureTelemetryEvent)
 		case `"languageServer.performanceStats"`:
-			o.PerformanceStatsTelemetryEvent = new(PerformanceStatsTelemetryEvent)
-			return json.Unmarshal(data, o.PerformanceStatsTelemetryEvent)
+			return unmarshalDiscriminatedArm(state, &o.PerformanceStatsTelemetryEvent)
+		default:
+			return state.invalidDiscriminator()
 		}
-		return errInvalidValue("RequestFailureTelemetryEventOrPerformanceStatsTelemetryEventOrProjectInfoTelemetryEventOrNull", data)
 	default:
 		return errInvalidKind("RequestFailureTelemetryEventOrPerformanceStatsTelemetryEventOrProjectInfoTelemetryEventOrNull", dec.PeekKind())
 	}
@@ -16308,7 +16375,7 @@ func (v *ClientCodeActionResolveOptions) resolve() ResolvedClientCodeActionResol
 // ResolvedCodeActionTagOptions is a resolved version of CodeActionTagOptions with all optional fields
 // converted to non-pointer values for easier access.
 //
-// Since: 3.18.0 - proposed
+// Since: 3.18.0
 type ResolvedCodeActionTagOptions struct {
 	// The tags supported by the client.
 	ValueSet []CodeActionTag `json:"valueSet,omitzero"`
@@ -16371,7 +16438,7 @@ type ResolvedCodeActionClientCapabilities struct {
 	// Client supports the tag property on a code action. Clients
 	// supporting tags have to handle unknown tags gracefully.
 	//
-	// Since: 3.18.0 - proposed
+	// Since: 3.18.0
 	TagSupport ResolvedCodeActionTagOptions `json:"tagSupport,omitzero"`
 }
 

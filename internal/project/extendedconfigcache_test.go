@@ -12,7 +12,6 @@ import (
 	"github.com/zobstory/cakebear/internal/project/logging"
 	"github.com/zobstory/cakebear/internal/tsoptions"
 	"github.com/zobstory/cakebear/internal/tspath"
-	"github.com/zobstory/cakebear/internal/vfs"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 	"gotest.tools/v3/assert"
 )
@@ -24,6 +23,10 @@ func (noopClient) WatchFiles(ctx context.Context, id WatcherID, watchers []*lspr
 }
 
 func (noopClient) UnwatchFiles(ctx context.Context, id WatcherID) error { return nil }
+
+func (noopClient) RegisterContentMapperExtensions(ctx context.Context, extensions []string) error {
+	return nil
+}
 
 func (noopClient) RefreshDiagnostics(ctx context.Context) error { return nil }
 
@@ -60,7 +63,7 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 	}
 
 	setup := func(files map[string]any) *Session {
-		fsFromMap := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
+		fsFromMap := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 		fs := bundled.WrapFS(fsFromMap)
 		session := NewSession(&SessionInit{
 			BackgroundCtx: context.Background(),
@@ -94,7 +97,7 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 		openUntitled(session)
 	}
 
-	ownerCount := func(session *Session, path tspath.Path) int {
+	ownerCount := func(session *Session, path tspath.PathKey) int {
 		entry, ok := session.extendedConfigCache.entries.Load(path)
 		if !ok {
 			return 0
@@ -104,19 +107,19 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 
 	assertNoEntry := func(t *testing.T, session *Session, fileName string) {
 		t.Helper()
-		path := session.toPath(fileName)
+		path := session.fs.CaseSensitivity().PathKey(tspath.RootedPath(tspath.RootedFilePathFromNormalized(fileName)))
 		_, ok := session.extendedConfigCache.entries.Load(path)
 		assert.Equal(t, ok, false)
 	}
 
-	expectedExtendedOwnerCounts := func(session *Session, snapshot *Snapshot) map[tspath.Path]int {
-		result := make(map[tspath.Path]int)
+	expectedExtendedOwnerCounts := func(session *Session, snapshot *Snapshot) map[tspath.PathKey]int {
+		result := make(map[tspath.PathKey]int)
 		for _, cfg := range snapshot.ConfigFileRegistry.configs {
 			if cfg.commandLine == nil || cfg.commandLine.ConfigFile == nil {
 				continue
 			}
 			for _, file := range cfg.commandLine.ExtendedSourceFiles() {
-				result[session.toPath(file)]++
+				result[session.fs.CaseSensitivity().PathKey(tspath.RootedPath(file))]++
 			}
 		}
 		return result
@@ -197,19 +200,17 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 		// This test intentionally bypasses the project system's ExtendedConfigCache so we can
 		// observe how ExtendedSourceFiles behaves when the same underlying file is referenced
 		// with different casing on a case-insensitive FS.
-		fsFromMap := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
+		fsFromMap := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 		fs := bundled.WrapFS(fsFromMap)
 
-		// Minimal ParseConfigHost implementation.
-		h := &testParseConfigHost{fs: fs, cwd: "/"}
-		cmd, diags := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, h, nil /*extendedConfigCache*/)
+		cmd, diags := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, fs, nil /*extendedConfigCache*/)
 		assert.Equal(t, len(diags), 0)
 		assert.Assert(t, cmd != nil)
 
 		extended := cmd.ExtendedSourceFiles()
 		assert.Equal(t, len(extended), 2)
-		assert.Equal(t, extended[0], "/project/Shared.json")
-		assert.Equal(t, extended[1], "/project/shared.json")
+		assert.Equal(t, extended[0], tspath.RootedFilePath("/project/Shared.json"))
+		assert.Equal(t, extended[1], tspath.RootedFilePath("/project/shared.json"))
 	})
 
 	t.Run("project system dedupes case-only extends via cache", func(t *testing.T) {
@@ -233,7 +234,7 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 		assert.Assert(t, config != nil)
 		extended := config.ExtendedSourceFiles()
 		assert.Equal(t, len(extended), 1)
-		assert.Equal(t, session.toPath(extended[0]), session.toPath("/project/shared.json"))
+		assert.Equal(t, session.fs.CaseSensitivity().PathKey(tspath.RootedPath(extended[0])), session.fs.CaseSensitivity().PathKey(tspath.RootedPath(tspath.RootedFilePath("/project/shared.json"))))
 	})
 
 	t.Run("transitive extended config ownership with new project", func(t *testing.T) {
@@ -308,12 +309,3 @@ func TestExtendedConfigCacheOwnership(t *testing.T) {
 		assert.NilError(t, err)
 	})
 }
-
-type testParseConfigHost struct {
-	fs  vfs.FS
-	cwd string
-}
-
-func (h *testParseConfigHost) FS() vfs.FS { return h.fs }
-
-func (h *testParseConfigHost) GetCurrentDirectory() string { return h.cwd }

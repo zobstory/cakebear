@@ -7,6 +7,7 @@ import (
 
 	"github.com/zobstory/cakebear/internal/json"
 	"github.com/zobstory/cakebear/internal/tracing"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 	"gotest.tools/v3/assert"
 )
@@ -16,7 +17,7 @@ func TestTracerPushPreservesEndArgMutations(t *testing.T) {
 
 	fsys := vfstest.FromMap(fstest.MapFS{
 		"/trace": &fstest.MapFile{Mode: fs.ModeDir},
-	}, true)
+	}, tspath.CaseSensitive)
 
 	tr, err := tracing.StartTracing(fsys, "/trace", "", true /*deterministic*/)
 	assert.NilError(t, err)

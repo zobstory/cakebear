@@ -1,0 +1,21 @@
+package fourslash_test
+
+import (
+	"testing"
+
+	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/fourslash"
+	"github.com/zobstory/cakebear/internal/ls/lsutil"
+	"github.com/zobstory/cakebear/internal/testutil"
+)
+
+func TestInlayHintsQuotePreference2(t *testing.T) {
+	t.Parallel()
+	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
+	const content = `const a1: "'" = "'";
+const b1: "\\" = "\\";
+export function fn(a = a1, b = b1) {}`
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
+	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{QuotePreference: lsutil.QuotePreference("single"), IncludeInlayFunctionParameterTypeHints: core.TSTrue})
+}

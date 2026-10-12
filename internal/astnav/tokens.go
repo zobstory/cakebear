@@ -2,6 +2,7 @@ package astnav
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/core"
@@ -63,9 +64,20 @@ func getTokenAtPosition(
 	// When scanning in between nodes for token, we should only scan up to the start of `nodeAfterLeft`.
 	var nodeAfterLeft *ast.Node
 
+	getIncludedPrecedingToken := func(subtree *ast.Node) *ast.Node {
+		child := FindPrecedingTokenEx(sourceFile, position, subtree, false /*excludeJSDoc*/)
+		if child != nil && child.End() == position && includePrecedingTokenAtEndPosition(child) {
+			return child
+		}
+		return nil
+	}
+
 	testNode := func(node *ast.Node) int {
 		if node.Kind != ast.KindEndOfFile && node.End() == position &&
 			includePrecedingTokenAtEndPosition != nil && node.Flags&ast.NodeFlagsReparsed == 0 {
+			if prevSubtree != nil && getIncludedPrecedingToken(prevSubtree) != nil {
+				return 0
+			}
 			prevSubtree = node
 		}
 
@@ -131,9 +143,9 @@ func getTokenAtPosition(
 			if nodeList.End() == position && includePrecedingTokenAtEndPosition != nil {
 				left = nodeList.End()
 				nodeAfterLeft = nil
-				for i := len(nodeList.Nodes) - 1; i >= 0; i-- {
-					if nodeList.Nodes[i].Flags&ast.NodeFlagsReparsed == 0 {
-						prevSubtree = nodeList.Nodes[i]
+				for _, v := range slices.Backward(nodeList.Nodes) {
+					if v.Flags&ast.NodeFlagsReparsed == 0 {
+						prevSubtree = v
 						break
 					}
 				}
@@ -191,8 +203,7 @@ func getTokenAtPosition(
 		// Check if the rightmost token of prevSubtree should be returned based on the
 		// `includePrecedingTokenAtEndPosition` callback.
 		if prevSubtree != nil {
-			child := FindPrecedingTokenEx(sourceFile, position, prevSubtree, false /*excludeJSDoc*/)
-			if child != nil && child.End() == position && includePrecedingTokenAtEndPosition(child) {
+			if child := getIncludedPrecedingToken(prevSubtree); child != nil {
 				// Optimization: includePrecedingTokenAtEndPosition only ever returns true
 				// for real AST nodes, so we don't run the scanner here.
 				return child
@@ -406,9 +417,9 @@ func FindPrecedingTokenEx(sourceFile *ast.SourceFile, position int, startNode *a
 					// Find jsdoc preceding the foundChild.
 					var jsDoc *ast.Node
 					nodeJSDoc := n.JSDoc(sourceFile)
-					for i := len(nodeJSDoc) - 1; i >= 0; i-- {
-						if nodeJSDoc[i].Pos() >= foundChild.Pos() {
-							jsDoc = nodeJSDoc[i]
+					for _, n := range slices.Backward(nodeJSDoc) {
+						if n.Pos() >= foundChild.Pos() {
+							jsDoc = n
 							break
 						}
 					}

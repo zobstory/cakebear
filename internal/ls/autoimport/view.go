@@ -1,12 +1,11 @@
 package autoimport
 
 import (
-	"context"
 	"slices"
-	"strings"
 	"unicode"
 
 	"github.com/zobstory/cakebear/internal/ast"
+	"github.com/zobstory/cakebear/internal/checker"
 	"github.com/zobstory/cakebear/internal/collections"
 	"github.com/zobstory/cakebear/internal/compiler"
 	"github.com/zobstory/cakebear/internal/core"
@@ -19,11 +18,13 @@ import (
 )
 
 type View struct {
-	registry      *Registry
-	importingFile *ast.SourceFile
-	program       *compiler.Program
-	preferences   modulespecifiers.UserPreferences
-	projectKey    tspath.Path
+	registry          *Registry
+	importingFile     *ast.SourceFile
+	importingFilePath tspath.PathKey
+	program           *compiler.Program
+	checker           *checker.Checker
+	preferences       modulespecifiers.UserPreferences
+	projectID         ProjectID
 
 	allowedEndings                   []modulespecifiers.ModuleSpecifierEnding
 	conditions                       *collections.Set[string]
@@ -32,13 +33,19 @@ type View struct {
 	shouldUseRequireForFixes         *bool
 }
 
-func NewView(registry *Registry, importingFile *ast.SourceFile, projectKey tspath.Path, program *compiler.Program, preferences modulespecifiers.UserPreferences) *View {
+func NewView(registry *Registry, importingFile *ast.SourceFile, projectID ProjectID, program *compiler.Program, typeChecker *checker.Checker, preferences modulespecifiers.UserPreferences) *View {
+	importingFilePath := importingFile.PathKey()
+	if canonical := importingFile.CanonicalSourceFile(); canonical != nil {
+		importingFilePath = canonical.PathKey()
+	}
 	return &View{
-		registry:      registry,
-		importingFile: importingFile,
-		program:       program,
-		projectKey:    projectKey,
-		preferences:   preferences,
+		registry:          registry,
+		importingFile:     importingFile,
+		importingFilePath: importingFilePath,
+		program:           program,
+		checker:           typeChecker,
+		projectID:         projectID,
+		preferences:       preferences,
 		conditions: collections.NewSetFromItems(
 			module.GetConditions(program.Options(),
 				program.GetDefaultResolutionModeForFile(importingFile))...,
@@ -100,11 +107,11 @@ func (v *View) SearchByExportID(id ExportID) []*Export {
 func (v *View) search(searchFn func(*RegistryBucket) []*Export) []*Export {
 	var results []*Export
 
-	if bucket, ok := v.registry.projects[v.projectKey]; ok {
+	if bucket, ok := v.registry.projects[v.projectID]; ok {
 		exports := searchFn(bucket)
 		results = slices.Grow(results, len(exports))
 		for _, e := range exports {
-			if string(e.ModuleID) == string(v.importingFile.Path()) {
+			if modulePath, ok := e.ModuleID.AsPathKey(); ok && modulePath == v.importingFile.PathKey() {
 				// Don't auto-import from the importing file itself
 				continue
 			}
@@ -117,7 +124,7 @@ func (v *View) search(searchFn func(*RegistryBucket) []*Export) []*Export {
 	// plus packages that are directly imported by the project's program files.
 	// If no package.json is found, allowedPackages remains nil and all packages are allowed.
 	var allowedPackages *collections.Set[string]
-	tspath.ForEachAncestorDirectoryPath(v.importingFile.Path().GetDirectoryPath(), func(dirPath tspath.Path) (result any, stop bool) {
+	v.importingFile.PathKey().Parent().ForEachAncestorDirectory(func(dirPath tspath.PathKey) (result any, stop bool) {
 		if dir, ok := v.registry.directories[dirPath]; ok {
 			if pj := dir.packageJson; pj.Exists() && pj.Contents.Parseable {
 				// Initialize to empty set if this is the first package.json we've seen
@@ -131,13 +138,13 @@ func (v *View) search(searchFn func(*RegistryBucket) []*Export) []*Export {
 	})
 	// If we found at least one package.json, also include packages directly imported by the project
 	if allowedPackages != nil {
-		if bucket, ok := v.registry.projects[v.projectKey]; ok {
+		if bucket, ok := v.registry.projects[v.projectID]; ok {
 			allowedPackages = allowedPackages.UnionedWith(bucket.ResolvedPackageNames)
 		}
 	}
 
 	excludePackages := &collections.Set[string]{}
-	tspath.ForEachAncestorDirectoryPath(v.importingFile.Path().GetDirectoryPath(), func(dirPath tspath.Path) (result any, stop bool) {
+	v.importingFile.PathKey().Parent().ForEachAncestorDirectory(func(dirPath tspath.PathKey) (result any, stop bool) {
 		if nodeModulesBucket, ok := v.registry.nodeModules[dirPath]; ok {
 			exports := searchFn(nodeModulesBucket)
 			results = slices.Grow(results, len(exports))
@@ -169,7 +176,7 @@ type FixAndExport struct {
 	Export *Export
 }
 
-func (v *View) GetCompletions(ctx context.Context, prefix string, position lsproto.Position, forJSX bool, isTypeOnlyLocation bool) []*FixAndExport {
+func (v *View) GetCompletions(prefix string, position lsproto.Position, forJSX bool, isTypeOnlyLocation bool) []*FixAndExport {
 	results := v.Search(prefix, QueryKindWordPrefix)
 
 	type exportGroupKey struct {
@@ -196,7 +203,7 @@ outer:
 			name:                       name,
 			ambientModuleOrPackageName: core.FirstNonZero(e.AmbientModuleName(), e.PackageName),
 		}
-		if e.PackageName == "@types/node" || strings.Contains(string(e.Path), "/node_modules/@types/node/") {
+		if e.PackageName == "@types/node" || e.Path.ContainsLowercaseDirectorySequence("/node_modules/@types/node/") {
 			if _, ok := core.UnprefixedNodeCoreModules[key.ambientModuleOrPackageName]; ok {
 				// Group URI-style and non-URI style node core modules together so the ranking logic
 				// is allowed to drop one if an explicit preference is detected.
@@ -209,6 +216,7 @@ outer:
 					grouped[key] = slices.Replace(existing, i, i+1, &Export{
 						ExportID:                   e.ExportID,
 						ModuleFileName:             e.ModuleFileName,
+						UnresolvedModuleSpecifier:  e.UnresolvedModuleSpecifier,
 						PackageName:                e.PackageName,
 						IsTypeOnly:                 e.IsTypeOnly || ex.IsTypeOnly,
 						Syntax:                     min(e.Syntax, ex.Syntax),
@@ -234,7 +242,7 @@ outer:
 	for _, exps := range grouped {
 		fixesForGroup := make([]*FixAndExport, 0, len(exps))
 		for _, e := range exps {
-			for _, fix := range v.GetFixes(ctx, e, forJSX, isTypeOnlyLocation, &position) {
+			for _, fix := range v.GetFixes(e, forJSX, isTypeOnlyLocation, &position) {
 				fixesForGroup = append(fixesForGroup, &FixAndExport{
 					Fix:    fix,
 					Export: e,

@@ -51,7 +51,7 @@ var hostProps = map[hostMember]ir.HostProperty{
 
 func inBundledHTTP(decl *ast.Node) bool {
 	f := ast.GetSourceFileOfNode(decl)
-	return f != nil && f.FileName() == types.NodeHTTPPath()
+	return f != nil && string(f.FileName()) == types.NodeHTTPPath()
 }
 
 // hostType reports which host type t is, or ir.HostNone.
@@ -62,14 +62,14 @@ func inBundledHTTP(decl *ast.Node) bool {
 // it at runtime.
 func (l *lowerer) hostType(t *checker.Type) ir.HostType {
 	sym := t.Symbol()
-	if sym == nil || sym.Flags&ast.SymbolFlagsInterface == 0 {
+	if sym == nil || sym.Flags()&ast.SymbolFlagsInterface == 0 {
 		return ir.HostNone
 	}
-	h, ok := hostTypes[sym.Name]
+	h, ok := hostTypes[sym.Name()]
 	if !ok {
 		return ir.HostNone
 	}
-	for _, d := range sym.Declarations {
+	for _, d := range sym.Declarations() {
 		if inBundledHTTP(d) {
 			return h
 		}
@@ -88,13 +88,13 @@ func (l *lowerer) hostMemberOf(sym *ast.Symbol) (m hostMember, found, augmented 
 		return m, false, false
 	}
 	// A named import is an alias declared in the program's own file.
-	if sym.Flags&ast.SymbolFlagsAlias != 0 {
+	if sym.Flags()&ast.SymbolFlagsAlias != 0 {
 		if sym = l.checker.GetAliasedSymbol(sym); sym == nil {
 			return m, false, false
 		}
 	}
 	bundled := 0
-	for _, d := range sym.Declarations {
+	for _, d := range sym.Declarations() {
 		if inBundledHTTP(d) {
 			bundled++
 		}
@@ -102,11 +102,11 @@ func (l *lowerer) hostMemberOf(sym *ast.Symbol) (m hostMember, found, augmented 
 	if bundled == 0 {
 		return m, false, false
 	}
-	if bundled != len(sym.Declarations) {
+	if bundled != len(sym.Declarations()) {
 		return m, false, true
 	}
-	m.name = sym.Name
-	if p := sym.Declarations[0].Parent; p != nil && p.Kind == ast.KindInterfaceDeclaration {
+	m.name = sym.Name()
+	if p := sym.Declarations()[0].Parent; p != nil && p.Kind == ast.KindInterfaceDeclaration {
 		m.iface = p.Name().Text()
 	}
 	return m, true, false
@@ -118,11 +118,11 @@ func (l *lowerer) importDecl(n *ast.Node) {
 	decl := n.AsImportDeclaration()
 	spec := decl.ModuleSpecifier
 	if spec.Kind != ast.KindStringLiteral || (spec.Text() != "node:http" && spec.Text() != "http") {
-		l.fail(n, "imports from %q are not supported yet; cakebear bundles only node:http", spec.Text())
+		l.failf(n, "imports from %q are not supported yet; cakebear bundles only node:http", spec.Text())
 		return
 	}
 	if clause := decl.ImportClause; clause != nil && clause.Name() != nil {
-		l.fail(n, "a default import of %s is not supported; use `import { createServer }` or `import * as http`", spec.Text())
+		l.failf(n, "a default import of %s is not supported; use `import { createServer }` or `import * as http`", spec.Text())
 	}
 }
 
@@ -142,12 +142,12 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 	m, found, augmented := l.hostMemberOf(l.checker.GetSymbolAtLocation(name))
 	switch {
 	case augmented:
-		l.fail(n, "%s is augmented outside node:http, which is not supported yet", name.Text())
+		l.failf(n, "%s is augmented outside node:http, which is not supported yet", name.Text())
 		return nil, true
 	case !found:
 		if recv != nil {
 			if rt := l.typeOf(recv); rt.Kind == ir.KindHost {
-				l.fail(n, "%s.%s is not part of cakebear's node:http", rt, name.Text())
+				l.failf(n, "%s.%s is not part of cakebear's node:http", rt, name.Text())
 				return nil, true
 			}
 		}
@@ -156,7 +156,7 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 
 	spec, ok := hostCalls[m]
 	if !ok {
-		l.fail(n, "cakebear's runtime does not implement %s yet", m)
+		l.failf(n, "cakebear's runtime does not implement %s yet", m)
 		return nil, true
 	}
 	var args []*ast.Node
@@ -164,7 +164,7 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 		args = c.Arguments.Nodes
 	}
 	if len(args) < spec.min || len(args) > spec.max {
-		l.fail(n, "%s takes %s, got %d", m, spec.arity(), len(args))
+		l.failf(n, "%s takes %s, got %d", m, spec.arity(), len(args))
 		return nil, true
 	}
 
@@ -216,11 +216,11 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 	}
 	switch {
 	case augmented:
-		l.fail(n, "%s is augmented outside node:http, which is not supported yet", access.Name().Text())
+		l.failf(n, "%s is augmented outside node:http, which is not supported yet", access.Name().Text())
 	case found:
 		l.failHostValue(n, m)
 	default:
-		l.fail(n, "%s is not supported yet", describeKind(n.Kind))
+		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 	}
 	return nil
 }
@@ -228,8 +228,8 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 // failHostValue refuses a bundled member used as a value rather than called.
 func (l *lowerer) failHostValue(n *ast.Node, m hostMember) {
 	if _, ok := hostCalls[m]; ok {
-		l.fail(n, "%s can only be called, not used as a value, yet", m)
+		l.failf(n, "%s can only be called, not used as a value, yet", m)
 		return
 	}
-	l.fail(n, "cakebear's runtime does not implement %s yet", m)
+	l.failf(n, "cakebear's runtime does not implement %s yet", m)
 }

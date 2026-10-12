@@ -1,0 +1,24 @@
+package fourslash_test
+
+import (
+	"testing"
+
+	"github.com/zobstory/cakebear/internal/fourslash"
+	"github.com/zobstory/cakebear/internal/testutil"
+)
+
+func TestCodeFixClassImplementInterfaceDuplicateMember1(t *testing.T) {
+	t.Parallel()
+	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
+	const content = `interface I1 {
+    x: number;
+}
+interface I2 {
+    x: number;
+}
+
+class C implements I1,I2 {[| |]}`
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
+	f.VerifyCodeFixAvailable(t, []string{"Implement interface 'I1'", "Implement interface 'I2'"})
+}

@@ -28,11 +28,10 @@ func checkSource(t *testing.T, src string) (*compiler.Program, *ast.SourceFile) 
 		t.Fatalf("writing source: %v", err)
 	}
 
-	cwd := tspath.NormalizePath(dir)
 	// Mirrors what cakec does: cakebear's declarations overlaid on the
 	// bundled lib files, so i32, base64 and node:http resolve here too.
 	fs := types.WrapFS(bundled.WrapFS(osvfs.FS()))
-	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil, nil)
+	host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil, nil, nil)
 
 	config := tsoptions.NewParsedCommandLine(
 		&core.CompilerOptions{
@@ -41,13 +40,15 @@ func checkSource(t *testing.T, src string) (*compiler.Program, *ast.SourceFile) 
 			Strict: core.TSTrue,
 			NoEmit: core.TSTrue,
 		},
-		append([]string{tspath.NormalizePath(path)}, types.RootFiles()...),
-		tspath.ComparePathsOptions{UseCaseSensitiveFileNames: fs.UseCaseSensitiveFileNames(), CurrentDirectory: cwd},
+		append([]tspath.RootedFilePath{tspath.RootedFilePathFromAbsolute(path)}, types.RootFiles()...),
+		nil, // projectReferences
+		tspath.RootedDirectoryPathFromAbsolute(dir),
+		fs.CaseSensitivity(),
 	)
 
 	program := compiler.NewProgram(compiler.ProgramOptions{Config: config, Host: host})
 	for _, f := range program.GetSourceFiles() {
-		if strings.HasSuffix(f.FileName(), "t.ts") {
+		if strings.HasSuffix(string(f.FileName()), "t.ts") {
 			return program, f
 		}
 	}

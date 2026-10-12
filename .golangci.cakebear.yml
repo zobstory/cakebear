@@ -2,20 +2,23 @@
 
 # Lint configuration for cakebear's own packages.
 #
-# We cannot reuse upstream's .golangci.yml. It enables `customlint`, a plugin
-# that only exists in a golangci-lint binary built from their .custom-gcl.yml
-# (upstream builds it at _tools/custom-gcl via their Herebyfile). The stock
-# binary the CI action installs has no such linter, so pointing at upstream's
-# config fails before it lints a single file -- which is exactly what happened
-# on the first real CI run.
+# Upstream's .golangci.yml lives at the root of microsoft/TypeScript, outside
+# the tsc/ tree cakebear syncs, so it is not in this repo at all. It would not
+# work here anyway: it enables `customlint`, a plugin that only exists in a
+# golangci-lint binary built from their .custom-gcl.yml. The stock binary the
+# CI action installs has no such linter, so pointing at their config fails
+# before it lints a single file -- which is exactly what happened on the first
+# real CI run.
 #
-# Building their custom binary would work too, but it ties our lint job to their
-# tooling for no benefit: customlint enforces conventions internal to the
-# TypeScript port, none of which apply to the five packages we own.
-#
-# The enabled set is upstream's, minus customlint, minus depguard (whose rules
-# reference their import graph), and minus modernize (not in the pinned
-# golangci-lint version). Same standards, our code.
+# The enabled set is upstream's (as of microsoft/TypeScript@aa8149273), minus:
+#   - customlint: conventions internal to the TypeScript port.
+#   - depguard and forbidigo: their import graph and host abstraction. forbidigo
+#     bans os and path/filepath outside their host packages, but backend/ is
+#     required to import only the standard library.
+#   - modernize: available in the pinned v2.14.0 but not yet enabled. It flags
+#     six sites in owned code; turning it on is its own change, not part of a
+#     sync.
+# Same standards, our code.
 
 version: '2'
 
@@ -52,8 +55,7 @@ linters:
     - makezero
     - mirror
     - misspell
-    # `modernize` is upstream's but does not exist in golangci-lint v2.1.6,
-    # which cakebear-ci pins. Re-add it when the pin moves past its release.
+    # `modernize` is upstream's; see the header for why it is off.
     - musttag
     - nakedret
     - nolintlint

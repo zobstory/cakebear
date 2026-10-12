@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"slices"
-	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/astnav"
@@ -17,6 +16,7 @@ import (
 	"github.com/zobstory/cakebear/internal/module"
 	"github.com/zobstory/cakebear/internal/modulespecifiers"
 	"github.com/zobstory/cakebear/internal/parser"
+	"github.com/zobstory/cakebear/internal/spanmap"
 	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs"
 )
@@ -26,11 +26,31 @@ func (l *LanguageService) ProvideSourceDefinition(
 	documentURI lsproto.DocumentUri,
 	position lsproto.Position,
 ) (lsproto.DefinitionResponse, error) {
+	program, file := l.getProgramAndFile(documentURI)
+	positions := l.converters.FromLSPPositionForSourceFile(file, position, spanmap.FeatureDefinition)
+	results := make([]lsproto.DefinitionResponse, 0, len(positions))
+	for _, mapped := range positions {
+		if mapped.Fidelity.IsSingleSegment() {
+			result, err := l.provideSourceDefinitionAtPosition(ctx, program, mapped.Script, mapped.Position)
+			if err != nil {
+				return lsproto.DefinitionResponse{}, err
+			}
+			results = append(results, result)
+		}
+	}
+	return combineDefinitionResponses(results, lsproto.GetClientCapabilities(ctx).TextDocument.Definition.LinkSupport), nil
+}
+
+func (l *LanguageService) provideSourceDefinitionAtPosition(
+	ctx context.Context,
+	program *compiler.Program,
+	file *ast.SourceFile,
+	textPos core.TextPos,
+) (lsproto.DefinitionResponse, error) {
 	caps := lsproto.GetClientCapabilities(ctx)
 	clientSupportsLink := caps.TextDocument.Definition.LinkSupport
 
-	program, file := l.getProgramAndFile(documentURI)
-	pos := int(l.converters.LineAndCharacterToPosition(file, position))
+	pos := int(textPos)
 	resolver := l.newSourceDefResolver(program, file.FileName())
 	node := astnav.GetTouchingPropertyName(file, pos)
 
@@ -38,32 +58,36 @@ func (l *LanguageService) ProvideSourceDefinition(
 		// Triple-slash directives are comments, not AST nodes, so
 		// GetTouchingPropertyName returns the SourceFile node.
 		if declarations, ref := resolver.resolveTripleSlashReference(file, pos, program); len(declarations) != 0 {
-			originSelectionRange := l.createLspRangeFromBounds(ref.Pos(), ref.End(), file)
-			return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, declarations, nil /*reference*/), nil
+			originSelectionRange, _ := l.createLspRangeFromBounds(ref.Pos(), ref.End(), file)
+			return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, declarations, nil /*reference*/, spanmap.FeatureDefinition), nil
 		}
 		return lsproto.LocationOrLocationsOrDefinitionLinksOrNull{}, nil
 	}
 
-	originSelectionRange := l.createLspRangeFromNode(node, file)
+	originSelectionRange, _ := l.createLspRangeFromNode(node, file)
+
+	containingModuleSpecifier := findContainingModuleSpecifier(node)
+	if containingModuleSpecifier != nil && ast.IsSourcePhaseImport(containingModuleSpecifier.Parent) {
+		return l.provideDefinitionAtPosition(ctx, program, file, textPos, clientSupportsLink), nil
+	}
 
 	// If the cursor is directly on a module specifier string, resolve to the
 	// implementation file's entry point.
-	containingModuleSpecifier := findContainingModuleSpecifier(node)
 	if node == containingModuleSpecifier {
 		specifierMode := program.GetModeForUsageLocation(file, containingModuleSpecifier)
 		if implementationFile := resolver.resolveImplementation(containingModuleSpecifier.Text(), specifierMode); implementationFile != "" {
 			if sourceFile := resolver.getOrParseSourceFile(implementationFile); sourceFile != nil {
-				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, getSourceDefinitionEntryDeclarations(sourceFile), nil), nil
+				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, getSourceDefinitionEntryDeclarations(sourceFile), nil, spanmap.FeatureDefinition), nil
 			}
 		}
-		return l.provideDefinitionWorker(ctx, documentURI, position)
+		return l.provideDefinitionAtPosition(ctx, program, file, textPos, clientSupportsLink), nil
 	}
 
 	// Phase 1: Syntactic fast path — when the cursor is inside an
 	// import/require/export, forward-resolve the module specifier to an
 	// implementation file and search it directly. This avoids acquiring
 	// the type checker entirely when the fast path succeeds.
-	var resolvedImplFile string
+	var resolvedImplFile tspath.RootedFilePath
 	if containingModuleSpecifier != nil {
 		specifierMode := program.GetModeForUsageLocation(file, containingModuleSpecifier)
 		resolvedImplFile = resolver.resolveImplementation(containingModuleSpecifier.Text(), specifierMode)
@@ -74,7 +98,7 @@ func (l *LanguageService) ProvideSourceDefinition(
 		moduleResults := resolver.searchImplementationFile(node, resolvedImplFile, names)
 		if len(moduleResults) != 0 {
 			if !ast.IsPartOfTypeNode(node) && !ast.IsPartOfTypeOnlyImportOrExportDeclaration(node) || hasConcreteSourceDeclarations(moduleResults) {
-				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, uniqueDeclarationNodes(moduleResults), nil), nil
+				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, uniqueDeclarationNodes(moduleResults), nil, spanmap.FeatureDefinition), nil
 			}
 		}
 	}
@@ -95,12 +119,12 @@ func (l *LanguageService) ProvideSourceDefinition(
 		// in which case the .d.ts definition is more appropriate.
 		if containingModuleSpecifier != nil && resolvedImplFile != "" && !hasConcreteSourceDeclarations(checkerDeclarations) {
 			if sourceFile := resolver.getOrParseSourceFile(resolvedImplFile); sourceFile != nil {
-				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, getSourceDefinitionEntryDeclarations(sourceFile), nil), nil
+				return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, getSourceDefinitionEntryDeclarations(sourceFile), nil, spanmap.FeatureDefinition), nil
 			}
 		}
-		return l.provideDefinitionWorker(ctx, documentURI, position)
+		return l.provideDefinitionAtPosition(ctx, program, file, textPos, clientSupportsLink), nil
 	}
-	return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, declarations, nil /*reference*/), nil
+	return l.createDefinitionLocations(originSelectionRange, clientSupportsLink, declarations, nil /*reference*/, spanmap.FeatureDefinition), nil
 }
 
 // sourceDefResolver resolves source definitions by mapping .d.ts declarations
@@ -112,15 +136,28 @@ type sourceDefResolver struct {
 	ls            *LanguageService
 	fs            vfs.FS
 	options       *core.CompilerOptions
-	getSourceFile func(string) *ast.SourceFile
-	resolveFrom   string
-	resolver      *module.Resolver
-	parsedFiles   map[string]*ast.SourceFile
+	getSourceFile func(tspath.RootedFilePath) *ast.SourceFile
+	resolveFrom   tspath.RootedFilePath
+	resolver      *module.DefaultResolver
+	parsedFiles   map[tspath.RootedFilePath]*ast.SourceFile
+}
+
+type sourceDefResolutionHost struct {
+	fs               vfs.FS
+	currentDirectory tspath.RootedDirectoryPath
+}
+
+func (h *sourceDefResolutionHost) FS() vfs.FS {
+	return h.fs
+}
+
+func (h *sourceDefResolutionHost) GetCurrentDirectory() tspath.RootedDirectoryPath {
+	return h.currentDirectory
 }
 
 func (l *LanguageService) newSourceDefResolver(
 	program *compiler.Program,
-	resolveFrom string,
+	resolveFrom tspath.RootedFilePath,
 ) *sourceDefResolver {
 	options := program.Options()
 	noDtsOptions := options.Clone()
@@ -131,7 +168,12 @@ func (l *LanguageService) newSourceDefResolver(
 		options:       options,
 		getSourceFile: program.GetSourceFile,
 		resolveFrom:   resolveFrom,
-		resolver:      module.NewResolver(program.Host(), noDtsOptions, program.GetGlobalTypingsCacheLocation(), ""),
+		resolver: module.NewResolver(module.ResolverOptions{
+			Host:            &sourceDefResolutionHost{fs: program.Host().FS(), currentDirectory: program.BaseDirectory()},
+			CompilerOptions: noDtsOptions,
+			TypingsLocation: program.GetGlobalTypingsCacheLocation(),
+			ExtraExtensions: program.CommandLine().ContentMapperExtensions(),
+		}),
 	}
 }
 
@@ -140,7 +182,7 @@ func (l *LanguageService) newSourceDefResolver(
 // the type checker and original request file are not needed.
 func (r *sourceDefResolver) resolveFromCheckerInfo(
 	node *ast.Node,
-	resolvedImplFile string,
+	resolvedImplFile tspath.RootedFilePath,
 	checkerDeclarations []*ast.Node,
 	moduleSpecifier string,
 ) []*ast.Node {
@@ -188,7 +230,7 @@ func getSourceDefCheckerInfo(
 	if len(declarations) == 0 && isPropertyName {
 		if left := node.Parent.Expression(); left != nil {
 			if prop := c.GetPropertyOfType(c.GetTypeAtLocation(left), node.Text()); prop != nil {
-				declarations = prop.Declarations
+				declarations = prop.Declarations()
 			}
 		}
 	}
@@ -212,7 +254,7 @@ func getSourceDefCheckerInfo(
 		}
 	}
 	if sym := c.GetSymbolAtLocation(resolveNode); sym != nil {
-		for _, d := range sym.Declarations {
+		for _, d := range sym.Declarations() {
 			if !ast.IsImportSpecifier(d) && !ast.IsImportClause(d) && !ast.IsNamespaceImport(d) && !ast.IsImportEqualsDeclaration(d) {
 				continue
 			}
@@ -262,7 +304,7 @@ func (r *sourceDefResolver) resolveTripleSlashReference(file *ast.SourceFile, po
 // fall through to the checker path or to the standard definition provider.
 func (r *sourceDefResolver) searchImplementationFile(
 	originalNode *ast.Node,
-	implementationFile string,
+	implementationFile tspath.RootedFilePath,
 	names []string,
 ) []*ast.Node {
 	if implementationFile == "" {
@@ -275,13 +317,13 @@ func (r *sourceDefResolver) searchImplementationFile(
 	if isDefaultImportName(originalNode) {
 		// For default imports, only search for "default" declarations to avoid
 		// matching unrelated declarations with the same identifier name.
-		defaultDeclarations := r.findDeclarationsInFile(implementationFile, []string{"default"}, &collections.Set[string]{})
+		defaultDeclarations := r.findDeclarationsInFile(implementationFile, []string{"default"}, &collections.Set[tspath.RootedFilePath]{})
 		if len(defaultDeclarations) != 0 {
 			return filterPreferredSourceDeclarations(originalNode, defaultDeclarations)
 		}
 		return getSourceDefinitionEntryDeclarations(sourceFile)
 	}
-	declarations := r.findDeclarationsInFile(implementationFile, names, &collections.Set[string]{})
+	declarations := r.findDeclarationsInFile(implementationFile, names, &collections.Set[tspath.RootedFilePath]{})
 	if len(declarations) != 0 {
 		return filterPreferredSourceDeclarations(originalNode, declarations)
 	}
@@ -309,7 +351,7 @@ func getSourceDefinitionEntryDeclarations(sourceFile *ast.SourceFile) []*ast.Nod
 func (r *sourceDefResolver) mapDeclarationToSource(
 	originalNode *ast.Node,
 	declaration *ast.Node,
-	resolvedImplFile string,
+	resolvedImplFile tspath.RootedFilePath,
 ) []*ast.Node {
 	file, startPos := getFileAndStartPosFromDeclaration(declaration)
 	fileName := file.FileName()
@@ -320,7 +362,7 @@ func (r *sourceDefResolver) mapDeclarationToSource(
 		}
 	}
 
-	if !tspath.IsDeclarationFileName(fileName) {
+	if !fileName.IsDeclarationFile() {
 		return []*ast.Node{declaration}
 	}
 
@@ -338,11 +380,11 @@ func (r *sourceDefResolver) mapDeclarationToSource(
 }
 
 func (r *sourceDefResolver) findImplementationFileFromDtsFileName(
-	dtsFileName string,
+	dtsFileName tspath.RootedFilePath,
 	preferredMode core.ResolutionMode,
-) string {
-	if jsExt := module.TryGetJSExtensionForFile(dtsFileName, r.options); jsExt != "" {
-		candidate := tspath.ChangeExtension(dtsFileName, jsExt)
+) tspath.RootedFilePath {
+	if jsExt := module.TryGetJSExtensionForFileName(dtsFileName, r.options); jsExt != "" {
+		candidate := dtsFileName.ChangeExtension(jsExt)
 		if r.fs.FileExists(candidate) {
 			return candidate
 		}
@@ -353,27 +395,25 @@ func (r *sourceDefResolver) findImplementationFileFromDtsFileName(
 		return ""
 	}
 
-	// Ensure the file only contains one /node_modules/ segment. If there's more
-	// than one, the package name extraction may be incorrect, so bail out.
-	if strings.LastIndex(dtsFileName, "/node_modules/") != parts.TopLevelNodeModulesIndex {
+	if parts.HasNestedNodeModules {
+		return ""
+	}
+	if parts.IsDirectNodeModulesFile {
 		return ""
 	}
 
-	packageNamePathPart := dtsFileName[parts.TopLevelPackageNameIndex+1 : parts.PackageRootIndex]
-	packageName := module.GetPackageNameFromTypesPackageName(module.UnmangleScopedPackageName(packageNamePathPart))
+	packageName := module.GetPackageNameFromTypesPackageName(module.UnmangleScopedPackageName(parts.PackageName))
 	if packageName == "" {
 		return ""
 	}
-
-	pathToFileInPackage := dtsFileName[parts.PackageRootIndex+1:]
 
 	// Try resolving as a package subpath first (e.g. "pkg/dist/utils"), then
 	// fall back to the bare package name (e.g. "pkg"). This covers both main
 	// entrypoints and deep imports without needing to inspect package.json
 	// entrypoints.
-	if pathToFileInPackage != "" {
-		specifier := packageName + "/" + tspath.RemoveFileExtension(pathToFileInPackage)
-		if implementationFile := r.resolveImplementation(specifier, preferredMode); implementationFile != "" {
+	if parts.PackageRelativePath != "" {
+		specifier := tspath.ToModuleSpecifier(packageName).ResolveRelative(parts.PackageRelativePath).RemoveFileExtension()
+		if implementationFile := r.resolveImplementation(specifier.AsString(), preferredMode); implementationFile != "" {
 			return implementationFile
 		}
 	}
@@ -383,15 +423,15 @@ func (r *sourceDefResolver) findImplementationFileFromDtsFileName(
 func (r *sourceDefResolver) resolveImplementation(
 	moduleName string,
 	preferredMode core.ResolutionMode,
-) string {
+) tspath.RootedFilePath {
 	return r.resolveImplementationFrom(moduleName, r.resolveFrom, preferredMode)
 }
 
 func (r *sourceDefResolver) resolveImplementationFrom(
 	moduleName string,
-	resolveFromFile string,
+	resolveFromFile tspath.RootedFilePath,
 	preferredMode core.ResolutionMode,
-) string {
+) tspath.RootedFilePath {
 	modes := []core.ResolutionMode{preferredMode}
 	if preferredMode != core.ModuleKindESNext {
 		modes = append(modes, core.ModuleKindESNext)
@@ -401,15 +441,15 @@ func (r *sourceDefResolver) resolveImplementationFrom(
 	}
 
 	for _, mode := range modes {
-		resolved, _ := r.resolver.ResolveModuleName(moduleName, resolveFromFile, mode, nil)
-		if resolved != nil && resolved.IsResolved() && !tspath.IsDeclarationFileName(resolved.ResolvedFileName) {
+		resolved, _, _ := r.resolver.ResolveModuleName(moduleName, resolveFromFile, mode, nil)
+		if resolved != nil && resolved.IsResolved() && !resolved.ResolvedFileName.IsDeclarationFile() {
 			return resolved.ResolvedFileName
 		}
 	}
 	return ""
 }
 
-func (r *sourceDefResolver) getOrParseSourceFile(fileName string) *ast.SourceFile {
+func (r *sourceDefResolver) getOrParseSourceFile(fileName tspath.RootedFilePath) *ast.SourceFile {
 	if sourceFile := r.getSourceFile(fileName); sourceFile != nil {
 		return sourceFile
 	}
@@ -419,7 +459,7 @@ func (r *sourceDefResolver) getOrParseSourceFile(fileName string) *ast.SourceFil
 	var sourceFile *ast.SourceFile
 	if text, ok := r.ls.ReadFile(fileName); ok {
 		sourceFile = parser.ParseSourceFile(
-			ast.SourceFileParseOptions{FileName: fileName, Path: r.ls.toPath(fileName)},
+			ast.SourceFileParseOptions{FileName: fileName, PathKey: r.ls.program.PathKeyForFileName(fileName)},
 			text,
 			// A declaration map's `sources` entries are arbitrary strings, so the
 			// file name here may not have a recognized extension.
@@ -428,7 +468,7 @@ func (r *sourceDefResolver) getOrParseSourceFile(fileName string) *ast.SourceFil
 		binder.BindSourceFile(sourceFile)
 	}
 	if r.parsedFiles == nil {
-		r.parsedFiles = map[string]*ast.SourceFile{}
+		r.parsedFiles = map[tspath.RootedFilePath]*ast.SourceFile{}
 	}
 	r.parsedFiles[fileName] = sourceFile
 	return sourceFile
@@ -436,9 +476,9 @@ func (r *sourceDefResolver) getOrParseSourceFile(fileName string) *ast.SourceFil
 
 // inferImpliedNodeFormat determines the module format for a source file that may not be
 // in the program, using the file extension and nearest package.json "type" field.
-func (r *sourceDefResolver) inferImpliedNodeFormat(fileName string) core.ResolutionMode {
+func (r *sourceDefResolver) inferImpliedNodeFormat(fileName tspath.RootedFilePath) core.ResolutionMode {
 	var packageJsonType string
-	if scope := r.resolver.GetPackageScopeForPath(tspath.GetDirectoryPath(fileName)); scope.Exists() {
+	if scope := r.resolver.GetPackageScopeForPath(fileName.Directory()); scope.Exists() {
 		if value, ok := scope.Contents.Type.GetValue(); ok {
 			packageJsonType = value
 		}
@@ -458,9 +498,9 @@ func findContainingModuleSpecifier(node *ast.Node) *ast.Node {
 }
 
 func (r *sourceDefResolver) findDeclarationsInFile(
-	fileName string,
+	fileName tspath.RootedFilePath,
 	names []string,
-	seen *collections.Set[string],
+	seen *collections.Set[tspath.RootedFilePath],
 ) []*ast.Node {
 	if fileName == "" || len(names) == 0 {
 		return nil
@@ -492,10 +532,10 @@ func (r *sourceDefResolver) findDeclarationsInFile(
 	return declarations
 }
 
-func (r *sourceDefResolver) getForwardedImplementationFiles(sourceFile *ast.SourceFile) []string {
+func (r *sourceDefResolver) getForwardedImplementationFiles(sourceFile *ast.SourceFile) []tspath.RootedFilePath {
 	preferredMode := r.inferImpliedNodeFormat(sourceFile.FileName())
 
-	var files []string
+	var files []tspath.RootedFilePath
 	for _, imp := range sourceFile.Imports() {
 		moduleName := imp.Text()
 		if implementationFile := r.resolveImplementationFrom(moduleName, sourceFile.FileName(), preferredMode); implementationFile != "" {
@@ -679,7 +719,7 @@ func isConcreteSourceDeclaration(node *ast.Node) bool {
 
 func uniqueDeclarationNodes(nodes []*ast.Node) []*ast.Node {
 	type declarationKey struct {
-		fileName string
+		fileName tspath.RootedFilePath
 		loc      core.TextRange
 	}
 	var seen collections.Set[declarationKey]

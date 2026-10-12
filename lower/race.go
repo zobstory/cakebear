@@ -163,8 +163,8 @@ func (rc *raceChecker) mergeUse(c *callable, u sharedUse) bool {
 }
 
 func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
-	decl := sym.ValueDeclaration
-	if sym.Flags&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != rc.l.file {
+	decl := sym.ValueDeclaration()
+	if sym.Flags()&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != rc.l.file {
 		return nil, false
 	}
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
@@ -209,14 +209,14 @@ func (l *lowerer) checkHandler(arg *ast.Node, lowered ir.Expr) {
 	case ast.KindIdentifier:
 		c, ok := rc.callables[l.checker.GetSymbolAtLocation(arg)]
 		if !ok {
-			l.fail(arg, "cakebear can only check a request handler written inline or declared as a function; %s is neither", arg.Text())
+			l.failf(arg, "cakebear can only check a request handler written inline or declared as a function; %s is neither", arg.Text())
 			return
 		}
 		if u, ok := strongest(c.uses); ok {
-			l.fail(arg, "the handler `%s` runs on many requests at once, so it can't %s", c.name, touchPhrase(u))
+			l.failf(arg, "the handler `%s` runs on many requests at once, so it can't %s", c.name, touchPhrase(u))
 		}
 	default:
-		l.fail(arg, "cakebear can only check a request handler written inline or declared as a function")
+		l.failf(arg, "cakebear can only check a request handler written inline or declared as a function")
 	}
 }
 
@@ -263,7 +263,7 @@ func (rc *raceChecker) checkLiteral(fn *ast.Node) {
 
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.Pos() < found[j].at.Pos() })
 	for _, f := range found {
-		rc.l.fail(f.at, "%s", f.msg)
+		rc.l.failf(f.at, "%s", f.msg)
 	}
 }
 

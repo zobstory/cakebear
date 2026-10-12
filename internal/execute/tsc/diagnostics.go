@@ -9,17 +9,14 @@ import (
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/diagnosticwriter"
 	"github.com/zobstory/cakebear/internal/locale"
-	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 func getFormatOptsOfSys(sys System, locale locale.Locale) *diagnosticwriter.FormattingOptions {
 	return &diagnosticwriter.FormattingOptions{
-		NewLine: "\n",
-		ComparePathsOptions: tspath.ComparePathsOptions{
-			CurrentDirectory:          sys.GetCurrentDirectory(),
-			UseCaseSensitiveFileNames: sys.FS().UseCaseSensitiveFileNames(),
-		},
-		Locale: locale,
+		NewLine:          "\n",
+		CurrentDirectory: sys.GetCurrentDirectory(),
+		CaseSensitivity:  sys.FS().CaseSensitivity(),
+		Locale:           locale,
 	}
 }
 
@@ -44,11 +41,19 @@ func CreateDiagnosticReporter(sys System, w io.Writer, locale locale.Locale, opt
 }
 
 func defaultIsPretty(sys System) bool {
-	if sys.GetEnvironmentVariable("NO_COLOR") != "" {
+	if forceColor, ok := sys.GetEnvironmentVariable("FORCE_COLOR"); ok {
+		switch forceColor {
+		case "", "1", "2", "3", "true":
+			return true
+		default:
+			return false
+		}
+	}
+	if noColor, _ := sys.GetEnvironmentVariable("NO_COLOR"); noColor != "" {
 		return false
 	}
-	if sys.GetEnvironmentVariable("FORCE_COLOR") != "" {
-		return true
+	if term, _ := sys.GetEnvironmentVariable("TERM"); term == "dumb" {
+		return false
 	}
 	return sys.WriteOutputIsTTY()
 }
@@ -74,18 +79,19 @@ func createColors(sys System) *colors {
 		return &colors{showColors: false}
 	}
 
-	os := sys.GetEnvironmentVariable("OS")
+	os, _ := sys.GetEnvironmentVariable("OS")
 	isWindows := strings.Contains(strings.ToLower(os), "windows")
-	isWindowsTerminal := sys.GetEnvironmentVariable("WT_SESSION") != ""
-	isVSCode := sys.GetEnvironmentVariable("TERM_PROGRAM") == "vscode"
-	supportsRicherColors := sys.GetEnvironmentVariable("COLORTERM") == "truecolor" || sys.GetEnvironmentVariable("TERM") == "xterm-256color"
+	wtSession, _ := sys.GetEnvironmentVariable("WT_SESSION")
+	termProgram, _ := sys.GetEnvironmentVariable("TERM_PROGRAM")
+	colorTerm, _ := sys.GetEnvironmentVariable("COLORTERM")
+	term, _ := sys.GetEnvironmentVariable("TERM")
 
 	return &colors{
 		showColors:           true,
 		isWindows:            isWindows,
-		isWindowsTerminal:    isWindowsTerminal,
-		isVSCode:             isVSCode,
-		supportsRicherColors: supportsRicherColors,
+		isWindowsTerminal:    wtSession != "",
+		isVSCode:             termProgram == "vscode",
+		supportsRicherColors: colorTerm == "truecolor" || term == "xterm-256color",
 	}
 }
 

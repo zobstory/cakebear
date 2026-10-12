@@ -19,9 +19,11 @@ import (
 
 func TestEncodeSourceFile(t *testing.T) {
 	t.Parallel()
+	assert.Equal(t, encoder.HeaderSize, 64)
+	assert.Equal(t, encoder.NodeSize, 28)
 	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/test.ts",
-		Path:     "/test.ts",
+		PathKey:  "/test.ts",
 	}, "import { bar } from \"bar\";\nexport function foo<T, U>(a: string, b: string): any {}\nfoo();", core.ScriptKindTS)
 	t.Run("baseline", func(t *testing.T) {
 		t.Parallel()
@@ -35,11 +37,67 @@ func TestEncodeSourceFile(t *testing.T) {
 	})
 }
 
+func TestEncodeContentMapperSourceFileMetadata(t *testing.T) {
+	t.Parallel()
+	if encoder.ProtocolVersion != 9 {
+		t.Fatalf("protocol version = %d, want 9", encoder.ProtocolVersion)
+	}
+	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
+		FileName: "/component.vue",
+		PathKey:  "/component.vue",
+	}, "😀virtual", core.ScriptKindTS)
+	sourceFile.SetContentMapperInfo(ast.ContentMapperSourceFileInfo{
+		OriginalText:    "😀original",
+		ContentMapper:   "mapper@1.0.0",
+		VirtualFileName: "/component.vue.ts",
+		DiagnosticDirectives: []ast.MappedDiagnosticDirective{{
+			OriginalRange:     core.NewTextRange(4, 5),
+			VirtualRange:      core.NewTextRange(4, 11),
+			Policy:            ast.MappedDiagnosticDirectivePolicyExpect,
+			UnusedCode:        2578,
+			UnusedMessageText: "Unused framework directive.",
+			Source:            "mapper",
+		}},
+	})
+
+	buf, _, err := encoder.EncodeSourceFile(sourceFile)
+	assert.NilError(t, err)
+	nodesOffset := readUint32(buf, encoder.HeaderOffsetNodes)
+	rootData := readUint32(buf, int(nodesOffset)+encoder.NodeSize+encoder.NodeOffsetData)
+	extendedOffset := readUint32(buf, encoder.HeaderOffsetExtendedData) + (rootData & encoder.NodeDataStringIndexMask)
+	if int(extendedOffset)+76 > len(buf) {
+		t.Fatalf("invalid extended offset %d (nodes=%d rootData=%#x extendedData=%d len=%d)", extendedOffset, nodesOffset, rootData, readUint32(buf, encoder.HeaderOffsetExtendedData), len(buf))
+	}
+	contentMapperIndex := readUint32(buf, int(extendedOffset)+64)
+	virtualFileNameIndex := readUint32(buf, int(extendedOffset)+68)
+	diagnosticDirectivesOffset := readUint32(buf, int(extendedOffset)+72)
+	assert.Equal(t, encodedString(buf, contentMapperIndex), "mapper@1.0.0")
+	assert.Equal(t, encodedString(buf, virtualFileNameIndex), "/component.vue.ts")
+	structuredDataOffset := readUint32(buf, encoder.HeaderOffsetStructuredData)
+	directiveOffset := structuredDataOffset + diagnosticDirectivesOffset
+	assert.DeepEqual(t, buf[directiveOffset:directiveOffset+10], []byte{
+		0x91, // one directive
+		0x96, // six-element tuple
+		2, 1, // original range [2, 3) in UTF-16
+		2, 7, // virtual range [2, 9) in UTF-16
+		1,            // expect policy
+		0xcd, 10, 18, // unused diagnostic code 2578
+	})
+}
+
+func encodedString(buf []byte, index uint32) string {
+	stringOffsets := readUint32(buf, encoder.HeaderOffsetStringOffsets)
+	stringData := readUint32(buf, encoder.HeaderOffsetStringData)
+	start := readUint32(buf, int(stringOffsets+index*4))
+	end := readUint32(buf, int(stringOffsets+index*4+4))
+	return string(buf[stringData+start : stringData+end])
+}
+
 func TestEncodeSourceFileWithUnicodeEscapes(t *testing.T) {
 	t.Parallel()
 	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/test.ts",
-		Path:     "/test.ts",
+		PathKey:  "/test.ts",
 	}, `let a = "😃"; let b = "\ud83d\ude03"; let c = "\udc00\ud83d\ude03"; let d = "\ud83d\ud83d\ude03"`, core.ScriptKindTS)
 	t.Run("baseline", func(t *testing.T) {
 		t.Parallel()
@@ -57,7 +115,7 @@ func TestBuildNodeIndexTableMatchesEncode(t *testing.T) {
 	t.Parallel()
 	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/test.ts",
-		Path:     "/test.ts",
+		PathKey:  "/test.ts",
 	}, "import { bar } from \"bar\";\nexport function foo<T, U>(a: string, b: string): any {}\nfoo();", core.ScriptKindTS)
 
 	_, encodeTable, err := encoder.EncodeSourceFile(sourceFile)
@@ -86,13 +144,12 @@ func TestBuildNodeIndexTableMatchesEncode(t *testing.T) {
 }
 
 func BenchmarkEncodeSourceFile(b *testing.B) {
-	repo.SkipIfNoTypeScriptSubmodule(b)
-	filePath := filepath.Join(repo.TypeScriptSubmodulePath(), "src/compiler/checker.ts")
+	filePath := filepath.Join(repo.TestDataPath(), "fixtures/compiler/checker.ts")
 	fileContent, err := os.ReadFile(filePath)
 	assert.NilError(b, err)
 	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/checker.ts",
-		Path:     "/checker.ts",
+		PathKey:  "/checker.ts",
 	}, string(fileContent), core.ScriptKindTS)
 
 	for b.Loop() {
@@ -102,13 +159,12 @@ func BenchmarkEncodeSourceFile(b *testing.B) {
 }
 
 func BenchmarkBuildNodeIndexTable(b *testing.B) {
-	repo.SkipIfNoTypeScriptSubmodule(b)
-	filePath := filepath.Join(repo.TypeScriptSubmodulePath(), "src/compiler/checker.ts")
+	filePath := filepath.Join(repo.TestDataPath(), "fixtures/compiler/checker.ts")
 	fileContent, err := os.ReadFile(filePath)
 	assert.NilError(b, err)
 	sourceFile := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/checker.ts",
-		Path:     "/checker.ts",
+		PathKey:  "/checker.ts",
 	}, string(fileContent), core.ScriptKindTS)
 
 	for b.Loop() {

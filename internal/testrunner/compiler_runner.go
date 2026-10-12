@@ -1,6 +1,7 @@
 package testrunner
 
 import (
+	"flag"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -31,7 +32,7 @@ var (
 )
 
 // Posix-style path to sources under test
-var srcFolder = "/.src"
+var srcFolder = tspath.RootedDirectoryPathFromNormalized("/.src")
 
 type CompilerTestType int
 
@@ -48,7 +49,6 @@ func (t *CompilerTestType) String() string {
 }
 
 type CompilerBaselineRunner struct {
-	isSubmodule  bool
 	testFiles    []string
 	basePath     string
 	testSuitName string
@@ -56,18 +56,11 @@ type CompilerBaselineRunner struct {
 
 var _ Runner = (*CompilerBaselineRunner)(nil)
 
-func NewCompilerBaselineRunner(testType CompilerTestType, isSubmodule bool) *CompilerBaselineRunner {
+func NewCompilerBaselineRunner(testType CompilerTestType) *CompilerBaselineRunner {
 	testSuitName := testType.String()
-	var basePath string
-	if isSubmodule {
-		basePath = "../_submodules/TypeScript/tests/cases/" + testSuitName
-	} else {
-		basePath = "tests/cases/" + testSuitName
-	}
 	return &CompilerBaselineRunner{
-		basePath:     basePath,
+		basePath:     "tests/cases/" + testSuitName,
 		testSuitName: testSuitName,
-		isSubmodule:  isSubmodule,
 	}
 }
 
@@ -115,18 +108,15 @@ var skippedTests = []string{
 	"mappedTypeUnionConstraintInferences.ts",
 	"lateBoundConstraintTypeChecksCorrectly.ts",
 	"keyofDoesntContainSymbols.ts",
-	"isolatedModulesOut.ts",
 	"noStrictGenericChecks.ts",
 	"noImplicitUseStrict_umd.ts",
 	"noImplicitUseStrict_system.ts",
 	"noImplicitUseStrict_es6.ts",
 	"noImplicitUseStrict_commonjs.ts",
-	"noImplicitUseStrict_amd.ts",
 	"noImplicitAnyIndexingSuppressed.ts",
 	"excessPropertyErrorsSuppressed.ts",
 	"moduleNoneDynamicImport.ts",
 	"moduleNoneErrors.ts",
-	"moduleNoneOutFile.ts",
 	"noErrorUsingImportExportModuleAugmentationInDeclarationFile1.ts",
 	"noErrorUsingImportExportModuleAugmentationInDeclarationFile2.ts",
 	"noErrorUsingImportExportModuleAugmentationInDeclarationFile3.ts",
@@ -137,9 +127,13 @@ var skippedTests = []string{
 func (r *CompilerBaselineRunner) RunTests(t *testing.T) {
 	r.cleanUpLocal(t)
 	files := r.EnumerateTestFiles()
+	filter := compilerTestFileFilter(flag.Lookup("test.run").Value.String())
 
 	for _, filename := range files {
 		if slices.Contains(skippedTests, tspath.GetBaseFileName(filename)) {
+			continue
+		}
+		if !filter(tspath.GetBaseFileName(filename)) {
 			continue
 		}
 		r.runTest(t, filename)
@@ -149,42 +143,11 @@ func (r *CompilerBaselineRunner) RunTests(t *testing.T) {
 var localBasePath = filepath.Join(repo.TestDataPath(), "baselines", "local")
 
 func (r *CompilerBaselineRunner) cleanUpLocal(t *testing.T) {
-	localPath := filepath.Join(localBasePath, core.IfElse(r.isSubmodule, "diff", ""), r.testSuitName)
+	localPath := filepath.Join(localBasePath, r.testSuitName)
 	err := os.RemoveAll(localPath)
 	if err != nil {
 		panic("Could not clean up local compiler tests: " + err.Error())
 	}
-}
-
-// Set of compiler options for which we allow variations to be specified in the test file,
-// for instance `// @strict: true, false`.
-var compilerVaryBy map[string]struct{} = getCompilerVaryByMap()
-
-func getCompilerVaryByMap() map[string]struct{} {
-	varyByOptions := append(
-		core.Map(core.Filter(tsoptions.OptionsDeclarations, func(option *tsoptions.CommandLineOption) bool {
-			return !option.IsCommandLineOnly &&
-				(option.Kind == tsoptions.CommandLineOptionTypeBoolean || option.Kind == tsoptions.CommandLineOptionTypeEnum) &&
-				(option.AffectsProgramStructure ||
-					option.AffectsEmit ||
-					option.AffectsModuleResolution ||
-					option.AffectsBindDiagnostics ||
-					option.AffectsSemanticDiagnostics ||
-					option.AffectsSourceFile ||
-					option.AffectsDeclarationPath ||
-					option.AffectsBuildInfo)
-		}), func(option *tsoptions.CommandLineOption) string {
-			return option.Name
-		}),
-		// explicit variations that do not match above conditions
-		"noEmit",
-		"isolatedModules",
-	)
-	varyByMap := make(map[string]struct{})
-	for _, option := range varyByOptions {
-		varyByMap[strings.ToLower(option)] = struct{}{}
-	}
-	return varyByMap
 }
 
 func (r *CompilerBaselineRunner) runTest(t *testing.T, filename string) {
@@ -205,19 +168,20 @@ func (r *CompilerBaselineRunner) runTest(t *testing.T, filename string) {
 
 func (r *CompilerBaselineRunner) runSingleConfigTest(t *testing.T, testName string, test *compilerFileBasedTest, config *harnessutil.NamedTestConfiguration) {
 	t.Parallel()
-	defer testutil.RecoverAndFail(t, "Panic on compiling test "+test.filename)
+	defer testutil.RecoverAndFail(t, "Panic on compiler test "+test.filename)
 
 	payload := makeUnitsFromTest(test.content, test.filename)
 	compilerTest := newCompilerTest(t, testName, test.filename, &payload, config)
 
 	harnessutil.SkipUnsupportedCompilerOptions(t, compilerTest.options)
 
-	compilerTest.verifyDiagnostics(t, r.testSuitName, r.isSubmodule)
-	compilerTest.verifyJavaScriptOutput(t, r.testSuitName, r.isSubmodule)
-	compilerTest.verifySourceMapOutput(t, r.testSuitName, r.isSubmodule)
-	compilerTest.verifySourceMapRecord(t, r.testSuitName, r.isSubmodule)
-	compilerTest.verifyTypesAndSymbols(t, r.testSuitName, r.isSubmodule)
-	compilerTest.verifyModuleResolution(t, r.testSuitName, r.isSubmodule)
+	compilerTest.verifyDiagnostics(t, r.testSuitName)
+	compilerTest.verifyContentMapper(t, r.testSuitName)
+	compilerTest.verifyJavaScriptOutput(t, r.testSuitName)
+	compilerTest.verifySourceMapOutput(t, r.testSuitName)
+	compilerTest.verifySourceMapRecord(t, r.testSuitName)
+	compilerTest.verifyTypesAndSymbols(t, r.testSuitName)
+	compilerTest.verifyModuleResolution(t, r.testSuitName)
 	compilerTest.verifyUnionOrdering(t)
 	compilerTest.verifyParentPointers(t)
 }
@@ -229,7 +193,7 @@ type compilerFileBasedTest struct {
 }
 
 func getCompilerFileBasedTest(t *testing.T, filename string) *compilerFileBasedTest {
-	content, ok := osvfs.FS().ReadFile(filename)
+	content, ok := osvfs.FS().ReadFile(tspath.RootedFilePathFromNormalized(filename))
 	if !ok {
 		panic("Could not read test file: " + filename)
 	}
@@ -243,17 +207,18 @@ func getCompilerFileBasedTest(t *testing.T, filename string) *compilerFileBasedT
 }
 
 type compilerTest struct {
-	testName       string
-	filename       string
-	basename       string
-	configuredName string // name with configuration description, e.g. `file`
-	options        *core.CompilerOptions
-	harnessOptions *harnessutil.HarnessOptions
-	result         *harnessutil.CompilationResult
-	tsConfigFiles  []*harnessutil.TestFile
-	toBeCompiled   []*harnessutil.TestFile // equivalent to the files that will be passed on the command line
-	otherFiles     []*harnessutil.TestFile // equivalent to other files on the file system not directly passed to the compiler (ie things that are referenced by other files)
-	hasNonDtsFiles bool
+	testName         string
+	filename         string
+	basename         string
+	configuredName   string // name with configuration description, e.g. `file`
+	currentDirectory tspath.RootedDirectoryPath
+	options          *core.CompilerOptions
+	harnessOptions   *harnessutil.HarnessOptions
+	result           *harnessutil.CompilationResult
+	tsConfigFiles    []*harnessutil.TestFile
+	toBeCompiled     []*harnessutil.TestFile // equivalent to the files that will be passed on the command line
+	otherFiles       []*harnessutil.TestFile // equivalent to other files on the file system not directly passed to the compiler (ie things that are referenced by other files)
+	hasNonDtsFiles   bool
 }
 
 type testCaseContentWithConfig struct {
@@ -271,7 +236,7 @@ func newCompilerTest(
 	basename := tspath.GetBaseFileName(filename)
 	configuredName := basename
 	if namedConfiguration != nil && namedConfiguration.Name != "" {
-		extname := tspath.GetAnyExtensionFromPath(basename, nil, false)
+		extname := tspath.GetAnyExtensionFromPath(basename, nil, tspath.CaseSensitive)
 		extensionlessBasename := basename[:len(basename)-len(extname)]
 		configuredName = fmt.Sprintf("%s(%s)%s", extensionlessBasename, namedConfiguration.Name, extname)
 	}
@@ -286,7 +251,10 @@ func newCompilerTest(
 	}
 
 	harnessConfig := testCaseContentWithConfig.configuration
-	currentDirectory := tspath.GetNormalizedAbsolutePath(harnessConfig["currentdirectory"], srcFolder)
+	currentDirectory := srcFolder
+	if rawCurrentDirectory := harnessConfig["currentdirectory"]; rawCurrentDirectory != "" {
+		currentDirectory = tspath.ToRootedDirectoryPath(rawCurrentDirectory, srcFolder)
+	}
 
 	units := testCaseContentWithConfig.testUnitData
 	var toBeCompiled []*harnessutil.TestFile
@@ -305,7 +273,7 @@ func newCompilerTest(
 		for _, unit := range units {
 			if slices.Contains(
 				tsConfig.ParsedConfig.FileNames,
-				tspath.GetNormalizedAbsolutePath(unit.name, currentDirectory),
+				tspath.ToRootedFilePath(unit.name, currentDirectory),
 			) {
 				toBeCompiled = append(toBeCompiled, createHarnessTestFile(unit, currentDirectory))
 			} else {
@@ -315,7 +283,7 @@ func newCompilerTest(
 	} else {
 		baseUrl, ok := harnessConfig["baseurl"]
 		if ok && !tspath.IsRootedDiskPath(baseUrl) {
-			harnessConfig["baseurl"] = tspath.GetNormalizedAbsolutePath(baseUrl, currentDirectory)
+			harnessConfig["baseurl"] = tspath.ToRootedDirectoryPath(baseUrl, currentDirectory).AsString()
 		}
 
 		lastUnit := units[len(units)-1]
@@ -345,28 +313,49 @@ func newCompilerTest(
 		testCaseContentWithConfig.symlinks,
 	)
 
+	// Content-mapped files are transformed during program construction; the transformed text is what the
+	// compiler actually parses and reports positions against. Baseline that text (rather than the original
+	// foreign source) so the type, symbol, and error baselines line up with the compiler's positions.
+	for _, file := range core.Concatenate(toBeCompiled, otherFiles) {
+		if sf := result.Program.GetSourceFile(tspath.ToRootedFilePath(file.UnitName, currentDirectory)); sf != nil && sf.ContentMapper() != "" {
+			file.Content = sf.Text()
+		}
+	}
+
 	return &compilerTest{
-		testName:       testName,
-		filename:       filename,
-		basename:       basename,
-		configuredName: configuredName,
-		options:        result.Options,
-		harnessOptions: result.HarnessOptions,
-		result:         result,
-		tsConfigFiles:  tsConfigFiles,
-		toBeCompiled:   toBeCompiled,
-		otherFiles:     otherFiles,
-		hasNonDtsFiles: hasNonDtsFiles,
+		testName:         testName,
+		filename:         filename,
+		basename:         basename,
+		configuredName:   configuredName,
+		currentDirectory: currentDirectory,
+		options:          result.Options,
+		harnessOptions:   result.HarnessOptions,
+		result:           result,
+		tsConfigFiles:    tsConfigFiles,
+		toBeCompiled:     toBeCompiled,
+		otherFiles:       otherFiles,
+		hasNonDtsFiles:   hasNonDtsFiles,
 	}
 }
 
-func (c *compilerTest) verifyDiagnostics(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifyDiagnostics(t *testing.T, suiteName string) {
 	t.Run("error", func(t *testing.T) {
 		defer testutil.RecoverAndFail(t, "Panic on creating error baseline for test "+c.filename)
 		files := core.Concatenate(c.tsConfigFiles, core.Concatenate(c.toBeCompiled, c.otherFiles))
-		tsbaseline.DoErrorBaseline(t, c.configuredName, files, c.result.Diagnostics, c.result.Options.Pretty.IsTrue(), baseline.Options{
-			Subfolder:   suiteName,
-			IsSubmodule: isSubmodule,
+		diagnostics := c.result.Diagnostics
+		// Content-mapped files' diagnostics are baselined separately (see verifyContentMapper), where they can
+		// be rendered against the correct text; the squiggle renderer here assumes a single coordinate space.
+		if contentMapped := c.contentMappedFileNames(); len(contentMapped) > 0 {
+			files = core.Filter(files, func(f *harnessutil.TestFile) bool {
+				return !contentMapped[f.UnitName]
+			})
+			diagnostics = core.Filter(diagnostics, func(d *ast.Diagnostic) bool {
+				return d.File() == nil || !contentMapped[d.File().FileName().AsString()]
+			})
+		}
+		tsbaseline.DoErrorBaseline(t, c.configuredName, files, diagnostics, c.result.Options.Pretty.IsTrue(), baseline.Options{
+			Subfolder: suiteName,
+
 			DiffFixupOld: func(old string) string {
 				var sb strings.Builder
 				sb.Grow(len(old))
@@ -390,6 +379,30 @@ func (c *compilerTest) verifyDiagnostics(t *testing.T, suiteName string, isSubmo
 	})
 }
 
+func (c *compilerTest) verifyContentMapper(t *testing.T, suiteName string) {
+	t.Run("content mapper", func(t *testing.T) {
+		defer testutil.RecoverAndFail(t, "Panic on creating content mapper baseline for test "+c.filename)
+		tsbaseline.DoContentMapperBaseline(t, c.configuredName, c.result.Program, c.result.Diagnostics, baseline.Options{
+			Subfolder: suiteName,
+		})
+	})
+}
+
+// contentMappedFileNames returns the set of absolute file names that were produced by a content mapper.
+func (c *compilerTest) contentMappedFileNames() map[string]bool {
+	program := c.result.Program.Program()
+	var mapped map[string]bool
+	for _, file := range c.result.Program.GetSourceFiles() {
+		if program.GetContentMapper(file) != nil {
+			if mapped == nil {
+				mapped = make(map[string]bool)
+			}
+			mapped[file.FileName().AsString()] = true
+		}
+	}
+	return mapped
+}
+
 var skippedEmitTests = map[string]string{
 	"filesEmittingIntoSameOutput.ts":                  "Output order nondeterministic due to collision on filename during parallel emit.",
 	"jsFileCompilationWithJsEmitPathSameAsInput.ts":   "Output order nondeterministic due to collision on filename during parallel emit.",
@@ -401,7 +414,7 @@ var skippedEmitTests = map[string]string{
 	"typeOnlyMerge3.ts":                               "Nondeterministic contents when run concurrently.",
 }
 
-func (c *compilerTest) verifyJavaScriptOutput(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifyJavaScriptOutput(t *testing.T, suiteName string) {
 	if !c.hasNonDtsFiles {
 		return
 	}
@@ -412,10 +425,7 @@ func (c *compilerTest) verifyJavaScriptOutput(t *testing.T, suiteName string, is
 		}
 
 		defer testutil.RecoverAndFail(t, "Panic on creating js output for test "+c.filename)
-		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.ComparePathsOptions{})
-		if isSubmodule {
-			headerComponents = headerComponents[4:] // Strip "./../_submodules/TypeScript" prefix
-		}
+		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.CaseInsensitive)
 		header := tspath.GetPathFromPathComponents(headerComponents)
 		tsbaseline.DoJSEmitBaseline(
 			t,
@@ -427,18 +437,15 @@ func (c *compilerTest) verifyJavaScriptOutput(t *testing.T, suiteName string, is
 			c.toBeCompiled,
 			c.otherFiles,
 			c.harnessOptions,
-			baseline.Options{Subfolder: suiteName, IsSubmodule: isSubmodule},
+			baseline.Options{Subfolder: suiteName},
 		)
 	})
 }
 
-func (c *compilerTest) verifySourceMapOutput(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifySourceMapOutput(t *testing.T, suiteName string) {
 	t.Run("sourcemap", func(t *testing.T) {
 		defer testutil.RecoverAndFail(t, "Panic on creating source map output for test "+c.filename)
-		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.ComparePathsOptions{})
-		if isSubmodule {
-			headerComponents = headerComponents[4:] // Strip "./../_submodules/TypeScript" prefix
-		}
+		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.CaseInsensitive)
 		header := tspath.GetPathFromPathComponents(headerComponents)
 		tsbaseline.DoSourcemapBaseline(
 			t,
@@ -447,18 +454,15 @@ func (c *compilerTest) verifySourceMapOutput(t *testing.T, suiteName string, isS
 			c.options,
 			c.result,
 			c.harnessOptions,
-			baseline.Options{Subfolder: suiteName, IsSubmodule: isSubmodule},
+			baseline.Options{Subfolder: suiteName},
 		)
 	})
 }
 
-func (c *compilerTest) verifySourceMapRecord(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifySourceMapRecord(t *testing.T, suiteName string) {
 	t.Run("sourcemap record", func(t *testing.T) {
 		defer testutil.RecoverAndFail(t, "Panic on creating source map record for test "+c.filename)
-		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.ComparePathsOptions{})
-		if isSubmodule {
-			headerComponents = headerComponents[4:] // Strip "./../_submodules/TypeScript" prefix
-		}
+		headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.CaseInsensitive)
 		header := tspath.GetPathFromPathComponents(headerComponents)
 		tsbaseline.DoSourcemapRecordBaseline(
 			t,
@@ -467,12 +471,12 @@ func (c *compilerTest) verifySourceMapRecord(t *testing.T, suiteName string, isS
 			c.options,
 			c.result,
 			c.harnessOptions,
-			baseline.Options{Subfolder: suiteName, IsSubmodule: isSubmodule},
+			baseline.Options{Subfolder: suiteName},
 		)
 	})
 }
 
-func (c *compilerTest) verifyTypesAndSymbols(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifyTypesAndSymbols(t *testing.T, suiteName string) {
 	noTypesAndSymbols := c.harnessOptions.NoTypesAndSymbols
 	if noTypesAndSymbols {
 		return
@@ -481,14 +485,11 @@ func (c *compilerTest) verifyTypesAndSymbols(t *testing.T, suiteName string, isS
 	allFiles := core.Filter(
 		core.Concatenate(c.toBeCompiled, c.otherFiles),
 		func(f *harnessutil.TestFile) bool {
-			return program.GetSourceFile(f.UnitName) != nil
+			return program.GetSourceFile(tspath.ToRootedFilePath(f.UnitName, c.currentDirectory)) != nil
 		},
 	)
 
-	headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.ComparePathsOptions{})
-	if isSubmodule {
-		headerComponents = headerComponents[4:] // Strip "./../_submodules/TypeScript" prefix
-	}
+	headerComponents := tspath.GetPathComponentsRelativeTo(repo.TestDataPath(), c.filename, tspath.CaseInsensitive)
 	header := tspath.GetPathFromPathComponents(headerComponents)
 	tsbaseline.DoTypeAndSymbolBaseline(
 		t,
@@ -496,14 +497,14 @@ func (c *compilerTest) verifyTypesAndSymbols(t *testing.T, suiteName string, isS
 		header,
 		program,
 		allFiles,
-		baseline.Options{Subfolder: suiteName, IsSubmodule: isSubmodule},
+		baseline.Options{Subfolder: suiteName},
 		false,
 		false,
 		len(c.result.Diagnostics) > 0,
 	)
 }
 
-func (c *compilerTest) verifyModuleResolution(t *testing.T, suiteName string, isSubmodule bool) {
+func (c *compilerTest) verifyModuleResolution(t *testing.T, suiteName string) {
 	if !c.options.TraceResolution.IsTrue() {
 		return
 	}
@@ -511,16 +512,16 @@ func (c *compilerTest) verifyModuleResolution(t *testing.T, suiteName string, is
 	t.Run("module resolution", func(t *testing.T) {
 		defer testutil.RecoverAndFail(t, "Panic on creating module resolution baseline for test "+c.filename)
 		tsbaseline.DoModuleResolutionBaseline(t, c.configuredName, c.result.Trace, baseline.Options{
-			Subfolder:       suiteName,
-			IsSubmodule:     isSubmodule,
+			Subfolder: suiteName,
+
 			SkipDiffWithOld: true,
 		})
 	})
 }
 
-func createHarnessTestFile(unit *testUnit, currentDirectory string) *harnessutil.TestFile {
+func createHarnessTestFile(unit *testUnit, currentDirectory tspath.RootedDirectoryPath) *harnessutil.TestFile {
 	return &harnessutil.TestFile{
-		UnitName: tspath.GetNormalizedAbsolutePath(unit.name, currentDirectory),
+		UnitName: tspath.ToRootedFilePath(unit.name, currentDirectory).AsString(),
 		Content:  unit.content,
 	}
 }
@@ -573,7 +574,7 @@ func (c *compilerTest) verifyParentPointers(t *testing.T) {
 			return false
 		}
 		for _, f := range c.result.Program.GetSourceFiles() {
-			if c.result.Program.IsSourceFileDefaultLibrary(f.Path()) {
+			if c.result.Program.IsSourceFileDefaultLibrary(f.PathKey()) {
 				continue
 			}
 			parent = f.AsNode()

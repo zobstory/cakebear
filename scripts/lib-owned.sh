@@ -33,3 +33,20 @@ is_owned() {
   done <<<"$_OWNED_PATTERNS"
   return 1
 }
+
+# owned_regex prints an extended regular expression matching exactly the paths
+# is_owned accepts, for filtering a long file list in one grep rather than
+# calling is_owned per file (a sync lists ~55,000 upstream files). Manifest
+# entries are plain paths, so a dot is the only character needing escape.
+owned_regex() {
+  local pattern esc out=""
+  while IFS= read -r pattern; do
+    esc=$(printf '%s' "$pattern" | sed 's/\./\\./g')
+    case "$pattern" in
+      */) esc="^$esc" ;;
+      *)  esc="^$esc\$" ;;
+    esac
+    out="${out:+$out|}$esc"
+  done <<<"$_OWNED_PATTERNS"
+  printf '%s' "$out"
+}

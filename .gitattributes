@@ -1,3 +1,8 @@
+# cakebear owns this file: upstream (microsoft/TypeScript) keeps its
+# .gitattributes at the monorepo root, outside the tsc/ tree cakebear syncs.
+# These are its rules, unchanged. `* -text` matters most: the compiler test
+# baselines under testdata/ are compared byte for byte, so git must never
+# convert their line endings.
 *.js linguist-language=TypeScript
 **/*.json linguist-language=jsonc
 * -text

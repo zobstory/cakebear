@@ -1,6 +1,7 @@
 package ls
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/astnav"
 	"github.com/zobstory/cakebear/internal/checker"
+	"github.com/zobstory/cakebear/internal/collections"
 	"github.com/zobstory/cakebear/internal/compiler"
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/debug"
@@ -16,6 +18,8 @@ import (
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/printer"
 	"github.com/zobstory/cakebear/internal/scanner"
+	"github.com/zobstory/cakebear/internal/spanmap"
+	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 type CallHierarchyDeclaration = *ast.Node
@@ -159,7 +163,7 @@ func getSymbolOfCallHierarchyDeclaration(c *checker.Checker, node *ast.Node) *as
 func getCallHierarchyItemName(program *compiler.Program, node *ast.Node) (text string, pos int, end int) {
 	if ast.IsSourceFile(node) {
 		sourceFile := node.AsSourceFile()
-		return sourceFile.FileName(), 0, 0
+		return sourceFile.FileName().AsString(), 0, 0
 	}
 
 	if (ast.IsFunctionDeclaration(node) || ast.IsClassDeclaration(node)) && node.Name() == nil {
@@ -321,9 +325,9 @@ func findImplementation(c *checker.Checker, node *ast.Node) *ast.Node {
 
 	if ast.IsFunctionDeclaration(node) || ast.IsMethodDeclaration(node) {
 		symbol := getSymbolOfCallHierarchyDeclaration(c, node)
-		if symbol != nil && symbol.ValueDeclaration != nil {
-			if ast.IsFunctionLikeDeclaration(symbol.ValueDeclaration) && symbol.ValueDeclaration.Body() != nil {
-				return symbol.ValueDeclaration
+		if symbol != nil && symbol.ValueDeclaration() != nil {
+			if ast.IsFunctionLikeDeclaration(symbol.ValueDeclaration()) && symbol.ValueDeclaration().Body() != nil {
+				return symbol.ValueDeclaration()
 			}
 		}
 		return nil
@@ -338,21 +342,21 @@ func findAllInitialDeclarations(c *checker.Checker, node *ast.Node) []*ast.Node 
 	}
 
 	symbol := getSymbolOfCallHierarchyDeclaration(c, node)
-	if symbol == nil || symbol.Declarations == nil {
+	if symbol == nil || symbol.Declarations() == nil {
 		return nil
 	}
 
 	type declKey struct {
-		file string
+		file tspath.RootedFilePath
 		pos  int
 	}
 
-	indices := make([]int, len(symbol.Declarations))
+	indices := make([]int, len(symbol.Declarations()))
 	for i := range indices {
 		indices[i] = i
 	}
-	keys := make([]declKey, len(symbol.Declarations))
-	for i, decl := range symbol.Declarations {
+	keys := make([]declKey, len(symbol.Declarations()))
+	for i, decl := range symbol.Declarations() {
 		keys[i] = declKey{
 			file: ast.GetSourceFileOfNode(decl).FileName(),
 			pos:  decl.Pos(),
@@ -361,7 +365,7 @@ func findAllInitialDeclarations(c *checker.Checker, node *ast.Node) []*ast.Node 
 
 	slices.SortFunc(indices, func(a, b int) int {
 		if keys[a].file != keys[b].file {
-			return strings.Compare(keys[a].file, keys[b].file)
+			return cmp.Compare(keys[a].file, keys[b].file)
 		}
 		return keys[a].pos - keys[b].pos
 	})
@@ -370,7 +374,7 @@ func findAllInitialDeclarations(c *checker.Checker, node *ast.Node) []*ast.Node 
 	var lastDecl *ast.Node
 
 	for _, i := range indices {
-		decl := symbol.Declarations[i]
+		decl := symbol.Declarations()[i]
 		if isValidCallHierarchyDeclaration(decl) {
 			if lastDecl == nil || lastDecl.Parent != decl.Parent || lastDecl.End() != decl.Pos() {
 				declarations = append(declarations, decl)
@@ -478,12 +482,12 @@ func resolveCallHierarchyDeclaration(program *compiler.Program, location *ast.No
 		if !followingSymbol {
 			symbol := c.GetSymbolAtLocation(location)
 			if symbol != nil {
-				if (symbol.Flags & ast.SymbolFlagsAlias) != 0 {
+				if (symbol.Flags() & ast.SymbolFlagsAlias) != 0 {
 					symbol = c.GetAliasedSymbol(symbol)
 				}
-				if symbol.ValueDeclaration != nil {
+				if symbol.ValueDeclaration() != nil {
 					followingSymbol = true
-					location = symbol.ValueDeclaration
+					location = symbol.ValueDeclaration()
 					continue
 				}
 			}
@@ -504,14 +508,19 @@ func (l *LanguageService) createCallHierarchyItem(program *compiler.Program, nod
 	kind := getSymbolKindFromNode(node)
 
 	fullStart := scanner.SkipTriviaEx(sourceFile.Text(), node.Pos(), &scanner.SkipTriviaOptions{StopAtComments: true})
-	script := l.getScript(sourceFile.FileName())
-	span := l.converters.ToLSPRange(script, core.NewTextRange(fullStart, node.End()))
-	selectionSpan := l.converters.ToLSPRange(script, core.NewTextRange(namePos, nameEnd))
+	span, spanFidelity := l.converters.ToLSPRangeForFeature(sourceFile, core.NewTextRange(fullStart, node.End()), spanmap.FeatureCallHierarchy)
+	selectionSpan, selectionFidelity := l.converters.ToLSPRangeForFeature(sourceFile, core.NewTextRange(namePos, nameEnd), spanmap.FeatureCallHierarchy)
+	if !selectionFidelity.IsSingleSegment() {
+		return nil
+	}
+	if spanFidelity.IsNone() || sourceFile.ContentMapper() != "" && !lspRangeContains(span, selectionSpan) {
+		span = selectionSpan
+	}
 
 	item := &lsproto.CallHierarchyItem{
 		Name:           nameText,
 		Kind:           kind,
-		Uri:            lsconv.FileNameToDocumentURI(sourceFile.FileName()),
+		Uri:            lsconv.FileNameToDocumentURI(sourceFile.OriginalFileName()),
 		Range:          span,
 		SelectionRange: selectionSpan,
 	}
@@ -563,16 +572,22 @@ func getCallSiteGroupKey(site *callSite) ast.NodeId {
 }
 
 func (l *LanguageService) convertCallSiteGroupToIncomingCall(program *compiler.Program, entries []*callSite) *lsproto.CallHierarchyIncomingCall {
-	fromRanges := make([]lsproto.Range, len(entries))
-	for i, entry := range entries {
-		script := l.getScript(entry.sourceFile.AsSourceFile().FileName())
-		fromRanges[i] = l.converters.ToLSPRange(script, entry.textRange)
+	fromRanges := make([]lsproto.Range, 0, len(entries))
+	for _, entry := range entries {
+		sourceFile := entry.sourceFile.AsSourceFile()
+		if lspRange, fidelity := l.converters.ToLSPRangeForFeature(sourceFile, entry.textRange, spanmap.FeatureCallHierarchy); !fidelity.IsNone() {
+			fromRanges = append(fromRanges, lspRange)
+		}
+	}
+	from := l.createCallHierarchyItem(program, entries[0].declaration)
+	if from == nil || len(fromRanges) == 0 {
+		return nil
 	}
 
 	slices.SortFunc(fromRanges, lsproto.CompareRanges)
 
 	return &lsproto.CallHierarchyIncomingCall{
-		From:       l.createCallHierarchyItem(program, entries[0].declaration),
+		From:       from,
 		FromRanges: fromRanges,
 	}
 }
@@ -602,7 +617,7 @@ func (d *incomingEntry) getSourceFile() *ast.SourceFile {
 
 func (d *incomingEntry) TextDocumentURI() lsproto.DocumentUri {
 	d.documentUriOnce.Do(func() {
-		d.documentUri = lsconv.FileNameToDocumentURI(d.getSourceFile().FileName())
+		d.documentUri = lsconv.FileNameToDocumentURI(d.getSourceFile().OriginalFileName())
 	})
 	return d.documentUri
 }
@@ -610,7 +625,7 @@ func (d *incomingEntry) TextDocumentURI() lsproto.DocumentUri {
 func (d *incomingEntry) TextDocumentPosition() lsproto.Position {
 	d.positionOnce.Do(func() {
 		start := scanner.GetTokenPosOfNode(d.node, d.getSourceFile(), false /*includeJsDoc*/)
-		d.position = d.ls.createLspPosition(start, d.getSourceFile())
+		d.position, _ = d.ls.createLspPosition(start, d.getSourceFile())
 	})
 	return d.position
 }
@@ -626,14 +641,18 @@ func (l *LanguageService) getIncomingCalls(ctx context.Context, program *compile
 	if location == nil {
 		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
 	}
+	locationFile := ast.GetSourceFileOfNode(location)
+	locationStart := scanner.GetTokenPosOfNode(location, locationFile, false /*includeJsDoc*/)
+	if _, fidelity := l.converters.ToLSPPositionForFeature(locationFile, core.TextPos(locationStart), spanmap.FeatureCallHierarchy); fidelity.IsNone() {
+		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
+	}
 
 	incomingEntry := &incomingEntry{
 		ls:   l,
 		node: location,
 	}
 
-	result, err := handleCrossProject(
-		l,
+	result, err := l.handleCrossProject(
 		ctx,
 		incomingEntry,
 		orchestrator,
@@ -642,6 +661,7 @@ func (l *LanguageService) getIncomingCalls(ctx context.Context, program *compile
 		false,
 		false,
 		symbolEntryTransformOptions{},
+		nil, /*defaultProjectData*/
 	)
 	if result.CallHierarchyIncomingCalls != nil {
 		slices.SortFunc(*result.CallHierarchyIncomingCalls, func(a, b *lsproto.CallHierarchyIncomingCall) int {
@@ -683,7 +703,9 @@ func (l *LanguageService) symbolAndEntriesToIncomingCalls(ctx context.Context, p
 
 	var result []*lsproto.CallHierarchyIncomingCall
 	for _, sites := range grouped {
-		result = append(result, l.convertCallSiteGroupToIncomingCall(program, sites))
+		if incomingCall := l.convertCallSiteGroupToIncomingCall(program, sites); incomingCall != nil {
+			result = append(result, incomingCall)
+		}
 	}
 	return lsproto.CallHierarchyIncomingCallsOrNull{CallHierarchyIncomingCalls: &result}, nil
 }
@@ -920,16 +942,22 @@ func collectCallSites(program *compiler.Program, c *checker.Checker, node *ast.N
 }
 
 func (l *LanguageService) convertCallSiteGroupToOutgoingCall(program *compiler.Program, entries []*callSite) *lsproto.CallHierarchyOutgoingCall {
-	fromRanges := make([]lsproto.Range, len(entries))
-	for i, entry := range entries {
-		script := l.getScript(entry.sourceFile.AsSourceFile().FileName())
-		fromRanges[i] = l.converters.ToLSPRange(script, entry.textRange)
+	fromRanges := make([]lsproto.Range, 0, len(entries))
+	for _, entry := range entries {
+		sourceFile := entry.sourceFile.AsSourceFile()
+		if lspRange, fidelity := l.converters.ToLSPRangeForFeature(sourceFile, entry.textRange, spanmap.FeatureCallHierarchy); !fidelity.IsNone() {
+			fromRanges = append(fromRanges, lspRange)
+		}
+	}
+	to := l.createCallHierarchyItem(program, entries[0].declaration)
+	if to == nil || len(fromRanges) == 0 {
+		return nil
 	}
 
 	slices.SortFunc(fromRanges, lsproto.CompareRanges)
 
 	return &lsproto.CallHierarchyOutgoingCall{
-		To:         l.createCallHierarchyItem(program, entries[0].declaration),
+		To:         to,
 		FromRanges: fromRanges,
 	}
 }
@@ -957,7 +985,9 @@ func (l *LanguageService) getOutgoingCalls(program *compiler.Program, declaratio
 
 	var result []*lsproto.CallHierarchyOutgoingCall
 	for _, sites := range grouped {
-		result = append(result, l.convertCallSiteGroupToOutgoingCall(program, sites))
+		if outgoingCall := l.convertCallSiteGroupToOutgoingCall(program, sites); outgoingCall != nil {
+			result = append(result, outgoingCall)
+		}
 	}
 
 	slices.SortFunc(result, func(a, b *lsproto.CallHierarchyOutgoingCall) int {
@@ -979,25 +1009,15 @@ func (l *LanguageService) ProvidePrepareCallHierarchy(
 	position lsproto.Position,
 ) (lsproto.CallHierarchyPrepareResponse, error) {
 	program, file := l.getProgramAndFile(documentURI)
-	node := astnav.GetTouchingPropertyName(file, int(l.converters.LineAndCharacterToPosition(file, position)))
-
-	if node.Kind == ast.KindSourceFile {
-		return lsproto.CallHierarchyItemsOrNull{}, nil
-	}
-
-	declaration := resolveCallHierarchyDeclaration(program, node)
-	if declaration == nil {
-		return lsproto.CallHierarchyItemsOrNull{}, nil
-	}
-
+	declarations := l.callHierarchyDeclarations(file, position, program, false)
 	var items []*lsproto.CallHierarchyItem
-	switch decl := declaration.(type) {
-	case *ast.Node:
-		items = []*lsproto.CallHierarchyItem{l.createCallHierarchyItem(program, decl)}
-	case []*ast.Node:
-		items = make([]*lsproto.CallHierarchyItem, len(decl))
-		for i, d := range decl {
-			items[i] = l.createCallHierarchyItem(program, d)
+	var seen collections.Set[lsproto.Location]
+	for _, declaration := range declarations {
+		if item := l.createCallHierarchyItem(program, declaration); item != nil {
+			location := lsproto.Location{Uri: item.Uri, Range: item.SelectionRange}
+			if seen.AddIfAbsent(location) {
+				items = append(items, item)
+			}
 		}
 	}
 
@@ -1019,38 +1039,34 @@ func (l *LanguageService) ProvideCallHierarchyIncomingCalls(
 		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
 	}
 
-	pos := int(l.converters.LineAndCharacterToPosition(file, item.SelectionRange.Start))
-	var node *ast.Node
-	if pos == 0 {
-		node = file.AsNode()
-	} else {
-		node = astnav.GetTouchingPropertyName(file, pos)
-	}
-
-	if node == nil {
-		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
-	}
-
-	declaration := resolveCallHierarchyDeclaration(program, node)
-	if declaration == nil {
-		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
-	}
-
-	var decl *ast.Node
-	switch d := declaration.(type) {
-	case *ast.Node:
-		decl = d
-	case []*ast.Node:
-		if len(d) > 0 {
-			decl = d[0]
+	declarations := l.callHierarchyDeclarations(file, item.SelectionRange.Start, program, true)
+	var calls []*lsproto.CallHierarchyIncomingCall
+	seen := make(map[lsproto.Location]*lsproto.CallHierarchyIncomingCall)
+	for _, declaration := range declarations {
+		response, err := l.getIncomingCalls(ctx, program, declaration, orchestrator)
+		if err != nil {
+			return lsproto.CallHierarchyIncomingCallsOrNull{}, err
+		}
+		if response.CallHierarchyIncomingCalls != nil {
+			for _, call := range *response.CallHierarchyIncomingCalls {
+				location := lsproto.Location{Uri: call.From.Uri, Range: call.From.SelectionRange}
+				if existing := seen[location]; existing != nil {
+					for _, fromRange := range call.FromRanges {
+						if !slices.Contains(existing.FromRanges, fromRange) {
+							existing.FromRanges = append(existing.FromRanges, fromRange)
+						}
+					}
+				} else {
+					seen[location] = call
+					calls = append(calls, call)
+				}
+			}
 		}
 	}
-
-	if decl == nil {
+	if len(calls) == 0 {
 		return lsproto.CallHierarchyIncomingCallsOrNull{}, nil
 	}
-
-	return l.getIncomingCalls(ctx, program, decl, orchestrator)
+	return lsproto.CallHierarchyIncomingCallsOrNull{CallHierarchyIncomingCalls: &calls}, nil
 }
 
 func (l *LanguageService) ProvideCallHierarchyOutgoingCalls(
@@ -1064,40 +1080,59 @@ func (l *LanguageService) ProvideCallHierarchyOutgoingCalls(
 		return lsproto.CallHierarchyOutgoingCallsOrNull{}, nil
 	}
 
-	pos := int(l.converters.LineAndCharacterToPosition(file, item.SelectionRange.Start))
-	var node *ast.Node
-	if pos == 0 {
-		node = file.AsNode()
-	} else {
-		node = astnav.GetTouchingPropertyName(file, pos)
-	}
-
-	if node == nil {
-		return lsproto.CallHierarchyOutgoingCallsOrNull{}, nil
-	}
-
-	declaration := resolveCallHierarchyDeclaration(program, node)
-	if declaration == nil {
-		return lsproto.CallHierarchyOutgoingCallsOrNull{}, nil
-	}
-
-	var decl *ast.Node
-	switch d := declaration.(type) {
-	case *ast.Node:
-		decl = d
-	case []*ast.Node:
-		if len(d) > 0 {
-			decl = d[0]
+	declarations := l.callHierarchyDeclarations(file, item.SelectionRange.Start, program, true)
+	var calls []*lsproto.CallHierarchyOutgoingCall
+	seen := make(map[lsproto.Location]*lsproto.CallHierarchyOutgoingCall)
+	for _, declaration := range declarations {
+		for _, call := range l.getOutgoingCalls(program, declaration) {
+			location := lsproto.Location{Uri: call.To.Uri, Range: call.To.SelectionRange}
+			if existing := seen[location]; existing != nil {
+				for _, fromRange := range call.FromRanges {
+					if !slices.Contains(existing.FromRanges, fromRange) {
+						existing.FromRanges = append(existing.FromRanges, fromRange)
+					}
+				}
+			} else {
+				seen[location] = call
+				calls = append(calls, call)
+			}
 		}
 	}
-
-	if decl == nil {
-		return lsproto.CallHierarchyOutgoingCallsOrNull{}, nil
-	}
-
-	calls := l.getOutgoingCalls(program, decl)
-	if calls == nil {
+	if len(calls) == 0 {
 		return lsproto.CallHierarchyOutgoingCallsOrNull{}, nil
 	}
 	return lsproto.CallHierarchyOutgoingCallsOrNull{CallHierarchyOutgoingCalls: &calls}, nil
+}
+
+func (l *LanguageService) callHierarchyDeclarations(file *ast.SourceFile, position lsproto.Position, program *compiler.Program, allowSourceFile bool) []*ast.Node {
+	positions := l.converters.FromLSPPositionForSourceFile(file, position, spanmap.FeatureCallHierarchy)
+	var declarations []*ast.Node
+	var seen collections.Set[*ast.Node]
+	for _, mapped := range positions {
+		if !mapped.Fidelity.IsSingleSegment() {
+			continue
+		}
+		file := mapped.Script
+		pos := int(mapped.Position)
+		node := file.AsNode()
+		if pos != 0 {
+			node = astnav.GetTouchingPropertyName(file, pos)
+		}
+		if node == nil || !allowSourceFile && node.Kind == ast.KindSourceFile {
+			continue
+		}
+		switch declaration := resolveCallHierarchyDeclaration(program, node).(type) {
+		case *ast.Node:
+			if seen.AddIfAbsent(declaration) {
+				declarations = append(declarations, declaration)
+			}
+		case []*ast.Node:
+			for _, declaration := range declaration {
+				if seen.AddIfAbsent(declaration) {
+					declarations = append(declarations, declaration)
+				}
+			}
+		}
+	}
+	return declarations
 }

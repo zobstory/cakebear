@@ -24,7 +24,7 @@ import (
 // program to Go and hands it to `go build`; that step slots in after
 // collectDiagnostics reports clean.
 func runBuild(opts buildOptions, stderr io.Writer) int {
-	roots := make([]string, 0, len(opts.files))
+	roots := make([]tspath.RootedFilePath, 0, len(opts.files))
 	for _, name := range opts.files {
 		abs, err := filepath.Abs(name)
 		if err != nil {
@@ -38,7 +38,7 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "cakec: %v\n", err)
 			return exitBadArgs
 		}
-		roots = append(roots, tspath.NormalizePath(abs))
+		roots = append(roots, tspath.RootedFilePathFromAbsolute(abs))
 	}
 
 	cwd, err := os.Getwd()
@@ -56,7 +56,7 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	// real file or left stale by a partial install.
 	fs := cakebeartypes.WrapFS(bundled.WrapFS(osvfs.FS()))
 
-	host := compiler.NewCompilerHost(cwd, fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/)
+	host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/, nil /*contentMapperProject*/)
 
 	// cakebear's declarations are root files of every program, so `i32`,
 	// `base64` and `node:http` resolve without an import, a reference
@@ -66,10 +66,9 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	config := tsoptions.NewParsedCommandLine(
 		compilerOptionsFor(opts),
 		roots,
-		tspath.ComparePathsOptions{
-			UseCaseSensitiveFileNames: fs.UseCaseSensitiveFileNames(),
-			CurrentDirectory:          cwd,
-		},
+		nil, // projectReferences
+		tspath.RootedDirectoryPathFromAbsolute(cwd),
+		fs.CaseSensitivity(),
 	)
 
 	program := compiler.NewProgram(compiler.ProgramOptions{

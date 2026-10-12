@@ -125,16 +125,16 @@ func signalExitCode(s os.Signal) int {
 	return 1
 }
 
-// fatal ends the process the way an uncaught error ends a Node program: a
+// fatalf ends the process the way an uncaught error ends a Node program: a
 // message on stderr and exit code 1, after flushing the output written so far.
-func fatal(format string, args ...any) {
+func fatalf(format string, args ...any) {
 	Flush()
-	warn(format, args...)
+	warnf(format, args...)
 	exit(1)
 }
 
-// warn writes one line to stderr.
-func warn(format string, args ...any) {
+// warnf writes one line to stderr.
+func warnf(format string, args ...any) {
 	errMu.Lock()
 	defer errMu.Unlock()
 	_, _ = fmt.Fprintf(errOut, format+"\n", args...)

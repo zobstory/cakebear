@@ -225,7 +225,7 @@ func TestFatalFlushesThenExitsWithOne(t *testing.T) { //nolint:paralleltest // i
 	stdout, stderr, exits := isolate(t)
 
 	LogString("logged first")
-	fatal("Error: %s", "boom")
+	fatalf("Error: %s", "boom")
 	if got := exitCode(t, exits); got != 1 {
 		t.Errorf("exit code = %d, want 1", got)
 	}

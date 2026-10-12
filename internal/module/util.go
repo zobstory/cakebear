@@ -25,19 +25,26 @@ func IsApplicableVersionedTypesKey(key string) bool {
 	return range_.Test(&typeScriptVersion)
 }
 
-func ParseNodeModuleFromPath(resolved string, isFolder bool) string {
-	path := tspath.NormalizePath(resolved)
+func NodeModulePackageRootForFile(resolved tspath.RootedFilePath) tspath.RootedDirectoryPath {
+	return parseNodeModulePackageRoot(resolved.AsString(), false /*isDirectory*/)
+}
+
+func NodeModulePackageRootForDirectory(resolved tspath.RootedDirectoryPath) tspath.RootedDirectoryPath {
+	return parseNodeModulePackageRoot(resolved.AsString(), true /*isDirectory*/)
+}
+
+func parseNodeModulePackageRoot(path string, isDirectory bool) tspath.RootedDirectoryPath {
 	idx := strings.LastIndex(path, "/node_modules/")
 	if idx == -1 {
 		return ""
 	}
 
 	indexAfterNodeModules := idx + len("/node_modules/")
-	indexAfterPackageName := moveToNextDirectorySeparatorIfAvailable(path, indexAfterNodeModules, isFolder)
+	indexAfterPackageName := moveToNextDirectorySeparatorIfAvailable(path, indexAfterNodeModules, isDirectory)
 	if path[indexAfterNodeModules] == '@' {
-		indexAfterPackageName = moveToNextDirectorySeparatorIfAvailable(path, indexAfterPackageName, isFolder)
+		indexAfterPackageName = moveToNextDirectorySeparatorIfAvailable(path, indexAfterPackageName, isDirectory)
 	}
-	return path[:indexAfterPackageName]
+	return tspath.RootedDirectoryPathFromAbsolute(path[:indexAfterPackageName])
 }
 
 func ParsePackageName(moduleName string) (packageName, rest string) {
@@ -151,6 +158,10 @@ func GetResolutionDiagnostic(options *core.CompilerOptions, resolvedModule *Reso
 		return diagnostics.Module_0_was_resolved_to_1_but_allowArbitraryExtensions_is_not_set
 	}
 
+	if resolvedModule.ResolvedUsingExtraExtensions {
+		return nil
+	}
+
 	switch resolvedModule.Extension {
 	case tspath.ExtensionTs, tspath.ExtensionDts,
 		tspath.ExtensionMts, tspath.ExtensionDmts,
@@ -194,4 +205,8 @@ func TryGetJSExtensionForFile(fileName string, options *core.CompilerOptions) st
 	default:
 		return ""
 	}
+}
+
+func TryGetJSExtensionForFileName(fileName tspath.RootedFilePath, options *core.CompilerOptions) string {
+	return TryGetJSExtensionForFile(fileName.AsString(), options)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/zobstory/cakebear/internal/ls/lsconv"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
+	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 type SemanticToken struct {
@@ -23,7 +24,7 @@ func (f *FourslashTest) VerifySemanticTokens(t *testing.T, expected []SemanticTo
 		},
 	}
 
-	result := sendRequest(t, f, lsproto.TextDocumentSemanticTokensFullInfo, params)
+	result := f.sendRequest(t, lsproto.TextDocumentSemanticTokensFullInfo, params)
 
 	if result.SemanticTokens == nil {
 		if len(expected) == 0 {
@@ -58,9 +59,9 @@ func decodeSemanticTokens(f *FourslashTest, data []uint32, tokenTypes, tokenModi
 	}
 
 	scriptInfo := f.scriptInfos[f.activeFilename]
-	converters := lsconv.NewConverters(lsproto.PositionEncodingKindUTF8, func(_ string) *lsconv.LSPLineMap {
+	converters := newTestConverters(lsconv.NewConverters(lsproto.PositionEncodingKindUTF8, func(_ tspath.RootedFilePath) *lsconv.LSPLineMap {
 		return scriptInfo.lineMap
-	})
+	}))
 
 	var tokens []SemanticToken
 	prevLine := uint32(0)

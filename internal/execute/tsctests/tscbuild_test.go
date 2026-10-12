@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/testutil/contentmappertest"
 	"github.com/zobstory/cakebear/internal/testutil/harnessutil"
 	"github.com/zobstory/cakebear/internal/testutil/stringtestutil"
 	"github.com/zobstory/cakebear/internal/tsoptions"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 	"gotest.tools/v3/assert"
 )
@@ -295,6 +297,78 @@ console.log(tsconfig);`,
 	for _, test := range testCases {
 		test.run(t, "commandLine")
 	}
+}
+
+func TestBuildContentMapperIdentity(t *testing.T) {
+	t.Parallel()
+	testCases := []*tscInput{
+		{
+			subScenario: "content mapper identity change forces rebuild",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+				{
+					"compilerOptions": {
+						"incremental": true
+					},
+					"contentMappers": [
+						{ "package": "vue-ts-mapper", "extensions": [".vue"] }
+					]
+				}`),
+				"/home/src/workspaces/project/index.ts": `export const local = 1;`,
+				"/home/src/workspaces/project/app.vue":  `export const app = 1;`,
+				"/home/src/workspaces/project/node_modules/vue-ts-mapper/package.json": stringtestutil.Dedent(`
+				{
+					"name": "vue-ts-mapper",
+					"version": "1.0.0",
+					"typescript": { "contentMapper": { "exec": ["verbatim-mapper"] } }
+				}`),
+			},
+			commandLineArgs: []string{"--build", "--verbose", "--runExternalCode"},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "upgrade the content mapper package to a new version",
+					edit: func(sys *TestSys) {
+						sys.replaceFileText(
+							"/home/src/workspaces/project/node_modules/vue-ts-mapper/package.json",
+							`"version": "1.0.0"`,
+							`"version": "2.0.0"`,
+						)
+					},
+				},
+				noChange,
+			},
+		},
+	}
+	for _, test := range testCases {
+		test.run(t, "contentMapperIdentity")
+	}
+}
+
+func TestBuildContentMapperOptionDiagnostics(t *testing.T) {
+	t.Parallel()
+	// Verify that mapper option diagnostics are represented by the standard build
+	// info errors flag and are reported again when that flag triggers a rebuild.
+	(&tscInput{
+		subScenario: "rebuild to report mapper option diagnostics",
+		files: FileMap{
+			"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+			{
+				"compilerOptions": { "incremental": true, "noCheck": true },
+				"contentMappers": [
+					{
+						"package": "mapper",
+						"extensions": [".vue"],
+						"options": { "plugins": [{ "name": 1 }] }
+					}
+				]
+			}`),
+			"/home/src/workspaces/project/app.vue":                          `export const value = 1;`,
+			"/home/src/workspaces/project/node_modules/mapper/package.json": contentmappertest.PackageJSON(contentmappertest.VerbatimMapper),
+		},
+		commandLineArgs: []string{"--build", "--verbose", "--runExternalCode", "--pretty", "false"},
+		edits:           []*tscEdit{noChange},
+	}).run(t, "contentMapperOptionDiagnostics")
 }
 
 func TestBuildClean(t *testing.T) {
@@ -2174,7 +2248,7 @@ func TestBuildOutputPaths(t *testing.T) {
 	type tscOutputPathScenario struct {
 		subScenario      string
 		files            FileMap
-		expectedDtsNames []string
+		expectedDtsNames []tspath.RootedFilePath
 	}
 	runOutputPaths := func(s *tscOutputPathScenario) {
 		t.Helper()
@@ -2194,7 +2268,7 @@ func TestBuildOutputPaths(t *testing.T) {
 		t.Run("GetOutputFileNames/"+s.subScenario, func(t *testing.T) {
 			t.Parallel()
 			sys := newTestSys(input, false)
-			config, _ := tsoptions.GetParsedCommandLineOfConfigFile("/home/src/workspaces/project/tsconfig.json", &core.CompilerOptions{}, nil, sys, nil)
+			config, _ := tsoptions.GetParsedCommandLineOfConfigFile("/home/src/workspaces/project/tsconfig.json", &core.CompilerOptions{}, nil, sys.FS(), nil)
 			assert.DeepEqual(t, slices.Collect(config.GetOutputFileNames()), s.expectedDtsNames)
 		})
 	}
@@ -2210,7 +2284,7 @@ func TestBuildOutputPaths(t *testing.T) {
                     },
                 }`),
 			},
-			expectedDtsNames: []string{
+			expectedDtsNames: []tspath.RootedFilePath{
 				"/home/src/workspaces/project/dist/src/index.js",
 			},
 		},
@@ -2226,7 +2300,7 @@ func TestBuildOutputPaths(t *testing.T) {
                     },
                 }`),
 			},
-			expectedDtsNames: []string{
+			expectedDtsNames: []tspath.RootedFilePath{
 				"/home/src/workspaces/project/dist/src/index.js",
 				"/home/src/workspaces/project/dist/src/index.d.ts",
 			},
@@ -2243,7 +2317,7 @@ func TestBuildOutputPaths(t *testing.T) {
                     },
                 }`),
 			},
-			expectedDtsNames: []string{
+			expectedDtsNames: []tspath.RootedFilePath{
 				"/home/src/workspaces/project/dist/index.js",
 			},
 		},
@@ -2261,7 +2335,7 @@ func TestBuildOutputPaths(t *testing.T) {
                     },
                 }`),
 			},
-			expectedDtsNames: []string{
+			expectedDtsNames: []tspath.RootedFilePath{
 				"/home/src/workspaces/project/dist/index.js",
 				"/home/src/workspaces/project/types/type.js",
 			},
@@ -2281,7 +2355,7 @@ func TestBuildOutputPaths(t *testing.T) {
                     },
                 }`),
 			},
-			expectedDtsNames: []string{
+			expectedDtsNames: []tspath.RootedFilePath{
 				"/home/src/workspaces/project/dist/index.js",
 				"/home/src/workspaces/project/dist/index.d.ts",
 				"/home/src/workspaces/project/types/type.js",

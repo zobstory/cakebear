@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/zobstory/cakebear/internal/checker"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs"
 )
 
@@ -50,10 +51,10 @@ var virtualFiles = []struct{ path, contents string }{
 // RootFiles returns the virtual path of every declarations file. cakec adds
 // all of them as root files of every program, so extensions and bundled
 // modules resolve with no import, reference directive or install.
-func RootFiles() []string {
-	paths := make([]string, len(virtualFiles))
+func RootFiles() []tspath.RootedFilePath {
+	paths := make([]tspath.RootedFilePath, len(virtualFiles))
 	for i, f := range virtualFiles {
-		paths[i] = f.path
+		paths[i] = tspath.RootedFilePath(f.path)
 	}
 	return paths
 }
@@ -206,15 +207,15 @@ type Overlay struct {
 // WrapFS returns fs with cakebear's declarations overlaid.
 func WrapFS(fs vfs.FS) vfs.FS { return &Overlay{FS: fs} }
 
-func (o *Overlay) FileExists(path string) bool {
-	if _, ok := virtualFile(path); ok {
+func (o *Overlay) FileExists(path tspath.RootedFilePath) bool {
+	if _, ok := virtualFile(string(path)); ok {
 		return true
 	}
 	return o.FS.FileExists(path)
 }
 
-func (o *Overlay) ReadFile(path string) (string, bool) {
-	if contents, ok := virtualFile(path); ok {
+func (o *Overlay) ReadFile(path tspath.RootedFilePath) (string, bool) {
+	if contents, ok := virtualFile(string(path)); ok {
 		return contents, true
 	}
 	return o.FS.ReadFile(path)

@@ -15,6 +15,15 @@ import (
 	"github.com/zobstory/cakebear/internal/nodebuilder"
 	"github.com/zobstory/cakebear/internal/printer"
 	"github.com/zobstory/cakebear/internal/scanner"
+	"github.com/zobstory/cakebear/internal/spanmap"
+)
+
+// SignatureHelpTriggerCharacters and SignatureHelpRetriggerCharacters are the characters that trigger and
+// re-trigger signature help. They are advertised both in the static server capabilities and in the dynamic
+// content-mapper registration, so they live here to keep those two declarations in sync.
+var (
+	SignatureHelpTriggerCharacters   = []string{"(", ",", "<"}
+	SignatureHelpRetriggerCharacters = []string{")"}
 )
 
 type callInvocation struct {
@@ -44,14 +53,23 @@ func (l *LanguageService) ProvideSignatureHelp(
 	context *lsproto.SignatureHelpContext,
 ) (lsproto.SignatureHelpResponse, error) {
 	program, sourceFile := l.getProgramAndFile(documentURI)
-	items := l.GetSignatureHelpItems(
-		ctx,
-		int(l.converters.LineAndCharacterToPosition(sourceFile, position)),
-		program,
-		sourceFile,
-		context,
-	)
-	return lsproto.SignatureHelpOrNull{SignatureHelp: items}, nil
+	positions := l.converters.FromLSPPositionForSourceFile(sourceFile, position, spanmap.FeatureSignatureHelp)
+	for _, projection := range positions {
+		if !projection.Fidelity.IsSingleSegment() {
+			continue
+		}
+		items := l.GetSignatureHelpItems(
+			ctx,
+			int(projection.Position),
+			program,
+			projection.Script,
+			context,
+		)
+		if items != nil {
+			return lsproto.SignatureHelpOrNull{SignatureHelp: items}, nil
+		}
+	}
+	return lsproto.SignatureHelpOrNull{}, nil
 }
 
 func (l *LanguageService) GetSignatureHelpItems(
@@ -191,11 +209,13 @@ func createTypeHelpItems(ctx context.Context, symbol *ast.Symbol, argumentInfo *
 }
 
 func getTypeHelpItem(symbol *ast.Symbol, typeParameter []*checker.Type, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, c *checker.Checker) signatureInformation {
-	printer := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, nil)
+	emitContext := printer.NewEmitContext()
+	builder := checker.NewNodeBuilder(c, emitContext)
+	printer := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, emitContext)
 
 	parameters := make([]signatureHelpParameter, len(typeParameter))
 	for i, typeParam := range typeParameter {
-		parameters[i] = createSignatureHelpParameterForTypeParameter(typeParam, sourceFile, enclosingDeclaration, c, printer)
+		parameters[i] = createSignatureHelpParameterForTypeParameter(typeParam, sourceFile, enclosingDeclaration, builder, printer)
 	}
 
 	// Creating display label
@@ -299,7 +319,7 @@ func (l *LanguageService) createSignatureHelpItems(ctx context.Context, candidat
 	// "\xFEtype". There is no meaningful name to show, so render the signature with
 	// no prefix (as we already do when there is no call target symbol) rather than
 	// leaking the internal name.
-	if callTargetSymbol != nil && !strings.HasPrefix(callTargetSymbol.Name, ast.InternalSymbolNamePrefix) {
+	if callTargetSymbol != nil && !strings.HasPrefix(callTargetSymbol.Name(), ast.InternalSymbolNamePrefix) {
 		if useFullPrefix {
 			callTargetDisplayParts.WriteString(c.SymbolToStringEx(callTargetSymbol, sourceFile.AsNode(), ast.SymbolFlagsNone, checker.SymbolFormatFlagsUseAliasDefinedOutsideCurrentScope))
 		} else {
@@ -429,19 +449,20 @@ func (l *LanguageService) computeActiveParameter(sig signatureInformation, argum
 }
 
 func (l *LanguageService) getSignatureHelpItem(candidate *checker.Signature, isTypeParameterList bool, callTargetSymbol string, callTargetSym *ast.Symbol, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, c *checker.Checker, docFormat lsproto.MarkupKind, vsCapability bool) []signatureInformation {
+	emitContext := printer.NewEmitContext()
 	var infos []*signatureHelpItemInfo
 	if isTypeParameterList {
-		infos = l.itemInfoForTypeParameters(candidate, c, enclosingDeclaration, sourceFile, docFormat, vsCapability)
+		infos = l.itemInfoForTypeParameters(candidate, c, enclosingDeclaration, sourceFile, docFormat, vsCapability, emitContext)
 	} else {
-		infos = l.itemInfoForParameters(candidate, c, enclosingDeclaration, sourceFile, docFormat, vsCapability)
+		infos = l.itemInfoForParameters(candidate, c, enclosingDeclaration, sourceFile, docFormat, vsCapability, emitContext)
 	}
 
-	suffixDpw := returnTypeToDisplayParts(candidate, c, enclosingDeclaration, sourceFile, vsCapability)
+	suffixDpw := returnTypeToDisplayParts(candidate, c, enclosingDeclaration, sourceFile, vsCapability, emitContext)
 
 	// Generate documentation from the signature's declaration
 	var documentation *string
 	if declaration := candidate.Declaration(); declaration != nil {
-		doc := getDocumentationFromDeclaration(l.getMappedLocation, c, nil, declaration, nil, docFormat, true /*commentOnly*/)
+		doc := getDocumentationFromDeclaration(l.documentationLocationMapper(spanmap.FeatureSignatureHelp), c, nil, declaration, nil, docFormat, true /*commentOnly*/)
 		if doc != "" {
 			documentation = &doc
 		}
@@ -467,7 +488,7 @@ func (l *LanguageService) getSignatureHelpItem(candidate *checker.Signature, isT
 	return result
 }
 
-func returnTypeToDisplayParts(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, vsCapability bool) *displayPartsWriter {
+func returnTypeToDisplayParts(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, vsCapability bool, emitContext *printer.EmitContext) *displayPartsWriter {
 	dpw := newDisplayPartsWriter(vsCapability)
 
 	// Add ": " prefix
@@ -480,7 +501,7 @@ func returnTypeToDisplayParts(candidateSignature *checker.Signature, c *checker.
 		returnType := c.GetReturnTypeOfSignature(candidateSignature)
 		typeNode := c.TypeToTypeNode(returnType, enclosingDeclaration, signatureHelpNodeBuilderFlags, nil)
 		if typeNode != nil {
-			p := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, printer.NewEmitContext())
+			p := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, emitContext)
 			// Use a temporary writer for p.Write since the printer calls Clear() on its writer
 			tempDpw := newDisplayPartsWriter(vsCapability)
 			p.Write(typeNode, sourceFile, tempDpw, nil)
@@ -492,8 +513,8 @@ func returnTypeToDisplayParts(candidateSignature *checker.Signature, c *checker.
 	return dpw
 }
 
-func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, docFormat lsproto.MarkupKind, vsCapability bool) []*signatureHelpItemInfo {
-	emitContext := printer.NewEmitContext()
+func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaration *ast.Node, sourceFile *ast.SourceFile, docFormat lsproto.MarkupKind, vsCapability bool, emitContext *printer.EmitContext) []*signatureHelpItemInfo {
+	builder := checker.NewNodeBuilder(c, emitContext)
 	p := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, emitContext)
 
 	var typeParameters []*checker.Type
@@ -504,12 +525,12 @@ func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.
 	}
 	signatureHelpTypeParameters := make([]signatureHelpParameter, len(typeParameters))
 	for i, typeParameter := range typeParameters {
-		signatureHelpTypeParameters[i] = createSignatureHelpParameterForTypeParameter(typeParameter, sourceFile, enclosingDeclaration, c, p)
+		signatureHelpTypeParameters[i] = createSignatureHelpParameterForTypeParameter(typeParameter, sourceFile, enclosingDeclaration, builder, p)
 	}
 
 	thisParameter := []signatureHelpParameter{}
 	if candidateSignature.ThisParameter() != nil {
-		thisParameter = []signatureHelpParameter{l.createSignatureHelpParameterForParameter(candidateSignature.ThisParameter(), enclosingDeclaration, p, sourceFile, c, docFormat)}
+		thisParameter = []signatureHelpParameter{l.createSignatureHelpParameterForParameter(candidateSignature.ThisParameter(), enclosingDeclaration, builder, p, sourceFile, c, docFormat)}
 	}
 
 	// Creating type parameter display label
@@ -541,7 +562,7 @@ func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.
 
 		parameters := thisParameter
 		for j, param := range parameterList {
-			paramNode := checker.NewNodeBuilder(c, emitContext).SymbolToParameterDeclaration(param, enclosingDeclaration, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil)
+			paramNode := builder.SymbolToParameterDeclaration(param, enclosingDeclaration, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil)
 
 			if j > 0 {
 				paramDpw.WritePunctuation(", ")
@@ -549,6 +570,7 @@ func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.
 			// Use a temporary writer for p.Write since the printer calls Clear() on its writer
 			tempDpw := newDisplayPartsWriter(vsCapability)
 			p.Write(paramNode, sourceFile, tempDpw, nil)
+			emitContext.Factory.ReleaseArenas()
 			paramLabel := tempDpw.String()
 			paramDpw.WriteFrom(tempDpw)
 
@@ -567,14 +589,14 @@ func (l *LanguageService) itemInfoForTypeParameters(candidateSignature *checker.
 	return result
 }
 
-func (l *LanguageService) itemInfoForParameters(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaratipn *ast.Node, sourceFile *ast.SourceFile, docFormat lsproto.MarkupKind, vsCapability bool) []*signatureHelpItemInfo {
-	emitContext := printer.NewEmitContext()
+func (l *LanguageService) itemInfoForParameters(candidateSignature *checker.Signature, c *checker.Checker, enclosingDeclaratipn *ast.Node, sourceFile *ast.SourceFile, docFormat lsproto.MarkupKind, vsCapability bool, emitContext *printer.EmitContext) []*signatureHelpItemInfo {
+	builder := checker.NewNodeBuilder(c, emitContext)
 	p := printer.NewPrinter(printer.PrinterOptions{NewLine: core.NewLineKindLF}, printer.PrintHandlers{}, emitContext)
 
 	signatureHelpTypeParameters := make([]signatureHelpParameter, len(candidateSignature.TypeParameters()))
 	if len(candidateSignature.TypeParameters()) != 0 {
 		for i, typeParameter := range candidateSignature.TypeParameters() {
-			signatureHelpTypeParameters[i] = createSignatureHelpParameterForTypeParameter(typeParameter, sourceFile, enclosingDeclaratipn, c, p)
+			signatureHelpTypeParameters[i] = createSignatureHelpParameterForTypeParameter(typeParameter, sourceFile, enclosingDeclaratipn, builder, p)
 		}
 	}
 
@@ -609,7 +631,7 @@ func (l *LanguageService) itemInfoForParameters(candidateSignature *checker.Sign
 		if len(lists) == 1 {
 			return true
 		}
-		return len(parameterList) != 0 && parameterList[len(parameterList)-1] != nil && (parameterList[len(parameterList)-1].CheckFlags&ast.CheckFlagsRestParameter != 0)
+		return len(parameterList) != 0 && parameterList[len(parameterList)-1] != nil && (parameterList[len(parameterList)-1].CheckFlags()&ast.CheckFlagsRestParameter != 0)
 	}
 
 	result := make([]*signatureHelpItemInfo, len(lists))
@@ -619,7 +641,7 @@ func (l *LanguageService) itemInfoForParameters(candidateSignature *checker.Sign
 		paramDpw.WriteFrom(dpw)
 
 		for j, param := range parameterList {
-			paramNode := checker.NewNodeBuilder(c, emitContext).SymbolToParameterDeclaration(param, enclosingDeclaratipn, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil)
+			paramNode := builder.SymbolToParameterDeclaration(param, enclosingDeclaratipn, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil)
 
 			if j > 0 {
 				paramDpw.WritePunctuation(", ")
@@ -627,6 +649,7 @@ func (l *LanguageService) itemInfoForParameters(candidateSignature *checker.Sign
 			// Use a temporary writer for p.Write since the printer calls Clear() on its writer
 			tempDpw := newDisplayPartsWriter(vsCapability)
 			p.Write(paramNode, sourceFile, tempDpw, nil)
+			emitContext.Factory.ReleaseArenas()
 			paramLabel := tempDpw.String()
 			paramDpw.WriteFrom(tempDpw)
 
@@ -649,11 +672,11 @@ const signatureHelpNodeBuilderFlags = nodebuilder.FlagsOmitParameterModifiers | 
 
 // createSignatureHelpParameterFromLabel creates a signatureHelpParameter from a pre-computed label string.
 func (l *LanguageService) createSignatureHelpParameterFromLabel(parameter *ast.Symbol, label string, c *checker.Checker, docFormat lsproto.MarkupKind) signatureHelpParameter {
-	isOptional := parameter.CheckFlags&ast.CheckFlagsOptionalParameter != 0
-	isRest := parameter.CheckFlags&ast.CheckFlagsRestParameter != 0
+	isOptional := parameter.CheckFlags()&ast.CheckFlagsOptionalParameter != 0
+	isRest := parameter.CheckFlags()&ast.CheckFlagsRestParameter != 0
 	var documentation *lsproto.StringOrMarkupContent
-	if parameter.ValueDeclaration != nil {
-		doc := getDocumentationFromDeclaration(l.getMappedLocation, c, nil, parameter.ValueDeclaration, nil, docFormat, true /*commentOnly*/)
+	if parameter.ValueDeclaration() != nil {
+		doc := getDocumentationFromDeclaration(l.documentationLocationMapper(spanmap.FeatureSignatureHelp), c, nil, parameter.ValueDeclaration(), nil, docFormat, true /*commentOnly*/)
 		if doc != "" {
 			documentation = &lsproto.StringOrMarkupContent{
 				MarkupContent: &lsproto.MarkupContent{
@@ -673,13 +696,15 @@ func (l *LanguageService) createSignatureHelpParameterFromLabel(parameter *ast.S
 	}
 }
 
-func (l *LanguageService) createSignatureHelpParameterForParameter(parameter *ast.Symbol, enclosingDeclaratipn *ast.Node, p *printer.Printer, sourceFile *ast.SourceFile, c *checker.Checker, docFormat lsproto.MarkupKind) signatureHelpParameter {
-	display := p.Emit(checker.NewNodeBuilder(c, printer.NewEmitContext()).SymbolToParameterDeclaration(parameter, enclosingDeclaratipn, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil), sourceFile)
+func (l *LanguageService) createSignatureHelpParameterForParameter(parameter *ast.Symbol, enclosingDeclaratipn *ast.Node, builder *checker.NodeBuilder, p *printer.Printer, sourceFile *ast.SourceFile, c *checker.Checker, docFormat lsproto.MarkupKind) signatureHelpParameter {
+	defer builder.EmitContext().Factory.ReleaseArenas()
+	display := p.Emit(builder.SymbolToParameterDeclaration(parameter, enclosingDeclaratipn, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil), sourceFile)
 	return l.createSignatureHelpParameterFromLabel(parameter, display, c, docFormat)
 }
 
-func createSignatureHelpParameterForTypeParameter(t *checker.Type, sourceFile *ast.SourceFile, enclosingDeclaration *ast.Node, c *checker.Checker, p *printer.Printer) signatureHelpParameter {
-	display := p.Emit(checker.NewNodeBuilder(c, printer.NewEmitContext()).TypeParameterToDeclaration(t, enclosingDeclaration, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil), sourceFile)
+func createSignatureHelpParameterForTypeParameter(t *checker.Type, sourceFile *ast.SourceFile, enclosingDeclaration *ast.Node, builder *checker.NodeBuilder, p *printer.Printer) signatureHelpParameter {
+	defer builder.EmitContext().Factory.ReleaseArenas()
+	display := p.Emit(builder.TypeParameterToDeclaration(t, enclosingDeclaration, signatureHelpNodeBuilderFlags, nodebuilder.InternalFlagsNone, nil), sourceFile)
 	return signatureHelpParameter{
 		parameterInfo: &lsproto.ParameterInformation{
 			Label: lsproto.StringOrTuple{String: &display},
@@ -1282,8 +1307,8 @@ func tryGetParameterInfo(startingToken *ast.Node, sourceFile *ast.SourceFile, c 
 }
 
 func chooseBetterSymbol(s *ast.Symbol) *ast.Symbol {
-	if s.Name == ast.InternalSymbolNameType {
-		for _, d := range s.Declarations {
+	if s.Name() == ast.InternalSymbolNameType {
+		for _, d := range s.Declarations() {
 			if ast.IsFunctionTypeNode(d) && ast.CanHaveSymbol(d.Parent) {
 				return d.Parent.Symbol()
 			}

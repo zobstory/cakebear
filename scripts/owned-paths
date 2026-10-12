@@ -1,24 +1,25 @@
 # Paths cakebear owns.
 #
-# Everything else in this repository belongs to upstream
-# (github.com/microsoft/typescript-go) and must not be modified outside an
-# upstream sync. See CLAUDE.md, "The golden rule", for why.
+# Everything else in this repository belongs to upstream (microsoft/TypeScript's
+# Go compiler, the tsc/ directory of that repo) and is replaced wholesale by
+# every sync. Never edit it: see CLAUDE.md, "The golden rule", for why. A file
+# cakebear writes outside these paths is deleted by the next sync.
 #
 # One path per line. A trailing slash means "this directory and everything
 # under it"; anything else is an exact file path. Blank lines and lines
 # starting with # are ignored.
 #
-# Deliberately extensionless: upstream's .gitignore has a blanket `*.txt` rule,
-# so this file was silently untracked for five phases when it was called
-# owned-paths. Adding a negation to .gitignore is not an option -- that is
-# an upstream file. Do not give this a .txt extension.
+# Deliberately extensionless: it was silently untracked for five phases as
+# owned-paths.txt, under the blanket `*.txt` ignore rule upstream used to ship.
+# cakebear owns .gitignore now, but the name stays as it is.
 #
 # Read by:
 #   scripts/check-upstream-untouched.sh  (fails a PR that touches upstream)
+#   scripts/check-upstream-snapshot.sh   (upstream files equal the snapshot)
 #   scripts/check-boundary.sh            (keeps ir/ and backend/ extractable)
 #   scripts/check-line-limit.py          (only lints .go files we own)
 #   scripts/owned-go-packages.sh         (test, coverage and lint scoping)
-#   scripts/sync-upstream.sh             (refuses to auto-resolve our files)
+#   scripts/sync-upstream.sh             (never touches these paths)
 
 cmd/cakec/
 ir/
@@ -30,5 +31,10 @@ scripts/
 CLAUDE.md
 README.md
 .golangci.cakebear.yml
+.gitignore
+.gitattributes
+.claude/
+.github/CODEOWNERS
+.github/upstream-sync-pr-body.md
 .github/workflows/cakebear-ci.yml
 .github/workflows/cakebear-sync-upstream.yml

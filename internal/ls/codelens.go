@@ -2,74 +2,106 @@ package ls
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/zobstory/cakebear/internal/ast"
+	"github.com/zobstory/cakebear/internal/collections"
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/diagnostics"
 	"github.com/zobstory/cakebear/internal/locale"
 	"github.com/zobstory/cakebear/internal/ls/lsutil"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/scanner"
+	"github.com/zobstory/cakebear/internal/spanmap"
 )
 
 func (l *LanguageService) ProvideCodeLenses(ctx context.Context, documentURI lsproto.DocumentUri) (lsproto.CodeLensResponse, error) {
 	_, file := l.getProgramAndFile(documentURI)
 
-	userPrefs := l.UserPreferences().CodeLens
+	userPrefs := l.UserPreferences().CodeLensUserPreferences
 	if !userPrefs.ReferencesCodeLensEnabled.IsTrue() && !userPrefs.ImplementationsCodeLensEnabled.IsTrue() {
 		return lsproto.CodeLensResponse{}, nil
 	}
 
-	// Keeps track of the last symbol to avoid duplicating code lenses across overloads.
-	var lastSymbol *ast.Symbol
 	var result []*lsproto.CodeLens
-	var visit func(node *ast.Node) bool
-	visit = func(node *ast.Node) bool {
-		if ctx.Err() != nil {
-			return true
-		}
-
-		if currentSymbol := node.Symbol(); lastSymbol != currentSymbol {
-			lastSymbol = currentSymbol
-
-			if userPrefs.ReferencesCodeLensEnabled.IsTrue() && isValidReferenceLensNode(node, userPrefs) {
-				result = append(result, l.newCodeLensForNode(documentURI, file, node, lsproto.CodeLensKindReferences))
+	seen := collections.Set[codeLensKey]{}
+	projections := append([]*ast.SourceFile{file}, file.SupplementalSourceFiles()...)
+	for _, projection := range projections {
+		// Keeps track of the last symbol to avoid duplicating code lenses across overloads.
+		var lastSymbol *ast.Symbol
+		var visit func(node *ast.Node) bool
+		visit = func(node *ast.Node) bool {
+			if ctx.Err() != nil {
+				return true
 			}
 
-			if userPrefs.ImplementationsCodeLensEnabled.IsTrue() && isValidImplementationsCodeLensNode(node, userPrefs) {
-				result = append(result, l.newCodeLensForNode(documentURI, file, node, lsproto.CodeLensKindImplementations))
+			if currentSymbol := node.Symbol(); lastSymbol != currentSymbol {
+				lastSymbol = currentSymbol
+
+				if userPrefs.ReferencesCodeLensEnabled.IsTrue() && isValidReferenceLensNode(node, userPrefs) {
+					if codeLens := l.newCodeLensForNode(documentURI, projection, node, lsproto.CodeLensKindReferences); codeLens != nil && seen.AddIfAbsent(keyForCodeLens(codeLens)) {
+						result = append(result, codeLens)
+					}
+				}
+
+				if userPrefs.ImplementationsCodeLensEnabled.IsTrue() && isValidImplementationsCodeLensNode(node, userPrefs) {
+					if codeLens := l.newCodeLensForNode(documentURI, projection, node, lsproto.CodeLensKindImplementations); codeLens != nil && seen.AddIfAbsent(keyForCodeLens(codeLens)) {
+						result = append(result, codeLens)
+					}
+				}
 			}
+
+			savedLastSymbol := lastSymbol
+			node.ForEachChild(visit)
+			lastSymbol = savedLastSymbol
+			return false
 		}
 
-		savedLastSymbol := lastSymbol
-		node.ForEachChild(visit)
-		lastSymbol = savedLastSymbol
-		return false
+		visit(projection.AsNode())
 	}
-
-	visit(file.AsNode())
 
 	return lsproto.CodeLensResponse{
 		CodeLenses: &result,
 	}, nil
 }
 
+type codeLensKey struct {
+	kind                                             lsproto.CodeLensKind
+	startLine, startCharacter, endLine, endCharacter uint32
+}
+
+func keyForCodeLens(codeLens *lsproto.CodeLens) codeLensKey {
+	return codeLensKey{
+		kind:           codeLens.Data.Kind,
+		startLine:      codeLens.Range.Start.Line,
+		startCharacter: codeLens.Range.Start.Character,
+		endLine:        codeLens.Range.End.Line,
+		endCharacter:   codeLens.Range.End.Character,
+	}
+}
+
 func (l *LanguageService) ResolveCodeLens(ctx context.Context, codeLens *lsproto.CodeLens, showLocationsCommandName *string, orchestrator CrossProjectOrchestrator) (*lsproto.CodeLens, error) {
 	uri := codeLens.Data.Uri
 	textDoc := lsproto.TextDocumentIdentifier{Uri: uri}
+	program, file := l.getProgramAndFile(uri)
+	file = sourceFileForSupplementalFileIndex(file, codeLens.Data.SupplementalFileIndex)
+	if file == nil {
+		return nil, fmt.Errorf("supplemental source file index not found: %d", *codeLens.Data.SupplementalFileIndex)
+	}
 	locale := locale.FromContext(ctx)
 	var locs []lsproto.Location
 	var lensTitle string
 	switch codeLens.Data.Kind {
 	case lsproto.CodeLensKindReferences:
-		referencesResp, err := l.ProvideReferences(ctx, &lsproto.ReferenceParams{
+		data, _ := l.provideSymbolsAndEntriesAtPosition(ctx, program, file, int(codeLens.Data.Position), false, false)
+		referencesResp, err := l.provideReferencesFromData(ctx, &lsproto.ReferenceParams{
 			TextDocument: textDoc,
 			Position:     codeLens.Range.Start,
 			Context: &lsproto.ReferenceContext{
 				// Don't include the declaration in the references count.
 				IncludeDeclaration: false,
 			},
-		}, orchestrator)
+		}, orchestrator, data)
 		if err != nil {
 			return nil, err
 		}
@@ -83,8 +115,8 @@ func (l *LanguageService) ResolveCodeLens(ctx context.Context, codeLens *lsproto
 			lensTitle = diagnostics.X_0_references.Localize(locale, len(locs))
 		}
 	case lsproto.CodeLensKindImplementations:
-
-		implementations, err := l.provideImplementationsEx(
+		data, _ := l.provideSymbolsAndEntriesAtPosition(ctx, program, file, int(codeLens.Data.Position), false, true)
+		implementations, err := l.provideImplementationsFromData(
 			ctx,
 			&lsproto.ImplementationParams{
 				TextDocument: textDoc,
@@ -97,6 +129,7 @@ func (l *LanguageService) ResolveCodeLens(ctx context.Context, codeLens *lsproto
 				dropOriginNodes:        true,
 			},
 			orchestrator,
+			data,
 		)
 		if err != nil {
 			return nil, err
@@ -136,15 +169,18 @@ func (l *LanguageService) newCodeLensForNode(fileUri lsproto.DocumentUri, file *
 		nodeForRange = nodeName
 	}
 	pos := scanner.SkipTrivia(file.Text(), nodeForRange.Pos())
+	lspRange, fidelity := l.converters.ToLSPRangeForFeature(file, core.NewTextRange(pos, node.End()), spanmap.FeatureCodeLens)
+	if fidelity.IsNone() {
+		return nil
+	}
 
 	return &lsproto.CodeLens{
-		Range: lsproto.Range{
-			Start: l.converters.PositionToLineAndCharacter(file, core.TextPos(pos)),
-			End:   l.converters.PositionToLineAndCharacter(file, core.TextPos(node.End())),
-		},
+		Range: lspRange,
 		Data: &lsproto.CodeLensData{
-			Kind: kind,
-			Uri:  fileUri,
+			Kind:                  kind,
+			Uri:                   fileUri,
+			Position:              int32(pos),
+			SupplementalFileIndex: supplementalFileIndex(file),
 		},
 	}
 }

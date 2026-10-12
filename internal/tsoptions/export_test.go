@@ -3,6 +3,7 @@ package tsoptions
 import (
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/collections"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs"
 )
 
@@ -17,7 +18,7 @@ func ParseCommandLineTestWorker(
 	decls []*CommandLineOption,
 	commandLine []string,
 	fs vfs.FS,
-	currentDirectory string,
+	currentDirectory tspath.RootedDirectoryPath,
 ) *TestCommandLineParser {
 	parser := &commandLineParser{
 		fs:                fs,

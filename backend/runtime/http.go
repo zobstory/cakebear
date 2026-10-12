@@ -56,7 +56,7 @@ func CreateServer(listener func(*IncomingMessage, *ServerResponse)) *Server {
 func (s *Server) Listen(port float64, callbacks ...func()) *Server {
 	p, ok := portNumber(port)
 	if !ok {
-		fatal("RangeError [ERR_SOCKET_BAD_PORT]: port should be >= 0 and < 65536. Received %s.", NumberToString(port))
+		fatalf("RangeError [ERR_SOCKET_BAD_PORT]: port should be >= 0 and < 65536. Received %s.", NumberToString(port))
 		return s
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(p)))
@@ -66,9 +66,9 @@ func (s *Server) Listen(port float64, callbacks ...func()) *Server {
 			host = "::"
 		}
 		if errors.Is(err, syscall.EADDRINUSE) {
-			fatal("Error: listen EADDRINUSE: address already in use %s:%d", host, p)
+			fatalf("Error: listen EADDRINUSE: address already in use %s:%d", host, p)
 		} else {
-			fatal("Error: listen %s:%d: %v", host, p, err)
+			fatalf("Error: listen %s:%d: %v", host, p, err)
 		}
 		return s
 	}
@@ -88,7 +88,7 @@ func (s *Server) Listen(port float64, callbacks ...func()) *Server {
 func (s *Server) run() {
 	err := s.srv.Serve(s.ln)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		fatal("Error: %v", err)
+		fatalf("Error: %v", err)
 	}
 	unref()
 }
@@ -112,7 +112,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	if !res.ended {
 		// Node would leave the request open until it timed out. net/http
 		// finishes it instead; say so rather than hide the bug.
-		warn("cakebear: the handler for %s %s returned without calling res.end(); sent an empty response", r.Method, r.RequestURI)
+		warnf("cakebear: the handler for %s %s returned without calling res.end(); sent an empty response", r.Method, r.RequestURI)
 	}
 }
 

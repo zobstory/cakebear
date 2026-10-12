@@ -10,6 +10,7 @@ import (
 	"github.com/zeebo/xxh3"
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/spanmap"
 )
 
 func init() {
@@ -58,11 +59,16 @@ const (
 	HeaderOffsetExtendedData
 	HeaderOffsetStructuredData
 	HeaderOffsetNodes
+	HeaderOffsetSourceFileID
+	_
+	HeaderOffsetSourceFileLease
+	_
+	HeaderOffsetBinderData
 	HeaderSize
 )
 
 const (
-	ProtocolVersion uint8 = 5
+	ProtocolVersion uint8 = 9
 )
 
 // Source File Binary Format
@@ -78,14 +84,14 @@ const (
 //
 // | Section            | Length             | Description                                                                                     |
 // | ------------------ | ------------------ | ----------------------------------------------------------------------------------------------- |
-// | Header             | 44 bytes           | Contains the content hash, parse options, flags, and byte offsets to the start of each section. |
+// | Header             | 64 bytes           | Contains the content hash, parse options, flags, file metadata, and byte offsets to the start of each section. |
 // | String offsets     | 8 bytes per string | Pairs of starting byte offsets and ending byte offsets into the **string data** section.        |
 // | String data        | variable           | UTF-8 encoded string data.                                                                      |
 // | Extended node data | variable           | Extra data for some kinds of nodes.                                                             |
 // | Structured data    | variable           | Msgpack-encoded metadata blobs (e.g. file references).                                         |
 // | Nodes              | 28 bytes per node  | Defines the AST structure of the file, with references to strings and extended data.            |
 //
-// Header (44 bytes)
+// Header (64 bytes)
 // -----------------
 //
 // The header contains the following fields:
@@ -101,6 +107,9 @@ const (
 // | 32-35       | uint32    | Byte offset to extended node data section         |
 // | 36-39       | uint32    | Byte offset to structured data section            |
 // | 40-43       | uint32    | Byte offset to nodes section                      |
+// | 44-51       | uint64    | Source file ID (0 = none)                          |
+// | 52-59       | uint64    | Source file lease ID (0 = none)                    |
+// | 60-63       | uint32    | Byte offset to binder data (0 = none)              |
 //
 // String offsets (8 bytes per string)
 // -----------------------------------
@@ -148,6 +157,13 @@ const (
 // | 36-40       | uint32 | Byte offset of `moduleAugmentations` node index array         |
 // | 40-44       | uint32 | Byte offset of `ambientModuleNames` string array              |
 // | 44-48       | uint32 | Node index of `externalModuleIndicator` (0 = nil)             |
+// | 48-52       | uint32 | Index of `originalText` in the string offsets section         |
+// | 52-56       | uint32 | Byte offset of `spanMap` in structured data                    |
+// | 56-60       | uint32 | Byte offset of `supplementalSourceFileNames` in structured data |
+// | 60-64       | uint32 | Index of `canonicalSourceFileName`, or noStructuredData         |
+// | 64-68       | uint32 | Index of `contentMapper`, or noStructuredData                   |
+// | 68-72       | uint32 | Index of `virtualFileName`, or noStructuredData                 |
+// | 72-76       | uint32 | Byte offset of `diagnosticDirectives` in structured data       |
 //
 // Structured data (variable)
 // --------------------------
@@ -160,6 +176,14 @@ const (
 // Node index arrays (imports, moduleAugmentations) are msgpack arrays of uint values, where each
 // value is a node index into the nodes section. String arrays (ambientModuleNames) are msgpack
 // arrays of string values.
+//
+// Span maps are msgpack arrays of tuples in UTF-16 coordinates:
+//
+//	[virtualStart: uint, virtualLength: uint, originalStart: uint, originalLength: uint, kind: uint, features?: uint]
+//
+// Diagnostic directives are msgpack arrays of normalized tuples in UTF-16 coordinates:
+//
+//	[originalStart: uint, originalLength: uint, virtualStart: uint, virtualLength: uint, policy: uint, unusedCode: uint]
 //
 // An offset of 0xFFFFFFFF indicates no data (empty array).
 //
@@ -186,7 +210,8 @@ const (
 // NodeLists are represented as normal nodes with the special `kind` value `0xff_ff_ff_ff`. They are considered the parent
 // of their contents in the encoded format. A client reconstructing an AST similar to TypeScript's internal representation
 // should instead set the `parent` pointers of a NodeList's children to the NodeList's parent. A NodeList's `data` field
-// is the uint32 length of the list, and does not use one of the data types described below.
+// is the uint32 length of the list, and does not use one of the data types described below. A NodeList's `flags` field
+// is not used for AST node flags (NodeLists have none); bit 0 instead encodes `HasTrailingComma`.
 //
 // For node types other than NodeList, the node data field encodes one of the following, determined by the first 2 bits of
 // the field:
@@ -389,7 +414,7 @@ func BuildNodeIndexTable(sourceFile *ast.SourceFile) *NodeIndexTable {
 }
 
 func GetNodeIndexTable(sourceFile *ast.SourceFile) *NodeIndexTable {
-	return ast.GetOrComputeSourceFileData(sourceFile, nodeIndexTableKey, BuildNodeIndexTable)
+	return sourceFile.GetOrComputeData(nodeIndexTableKey, BuildNodeIndexTable)
 }
 
 // EncodeSourceFile encodes an entire source file AST into the binary format.
@@ -399,10 +424,20 @@ func EncodeSourceFile(sourceFile *ast.SourceFile) ([]byte, *NodeIndexTable, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	nodeTable = ast.GetOrComputeSourceFileData(sourceFile, nodeIndexTableKey, func(*ast.SourceFile) *NodeIndexTable {
+	nodeTable = sourceFile.GetOrComputeData(nodeIndexTableKey, func(*ast.SourceFile) *NodeIndexTable {
 		return nodeTable
 	})
 	return data, nodeTable, nil
+}
+
+// SetSourceFileLease sets the session-scoped lease ID in an encoded source file.
+func SetSourceFileLease(data []byte, lease uint64) {
+	binary.LittleEndian.PutUint64(data[HeaderOffsetSourceFileLease:], lease)
+}
+
+// SetSourceFileID sets the source file node ID used to validate remote references.
+func SetSourceFileID(data []byte, id uint64) {
+	binary.LittleEndian.PutUint64(data[HeaderOffsetSourceFileID:], id)
 }
 
 // EncodeNode encodes an arbitrary AST node and its descendants into the binary format.
@@ -486,7 +521,7 @@ func encodeTree(rootNode *ast.Node, sourceFile *ast.SourceFile) ([]byte, *NodeIn
 					nodes[prevIndex*NodeSize+NodeOffsetNext+3] = b3
 				}
 
-				nodes = appendUint32s(nodes, SyntaxKindNodeList, utf16(nodeList.Pos()), utf16(nodeList.End()), 0, parentIndex, uint32(len(nodeList.Nodes)), 0)
+				nodes = appendUint32s(nodes, SyntaxKindNodeList, utf16(nodeList.Pos()), utf16(nodeList.End()), 0, parentIndex, uint32(len(nodeList.Nodes)), uint32(boolToByte(nodeList.HasTrailingComma())))
 
 				saveParentIndex := parentIndex
 
@@ -604,6 +639,9 @@ func encodeTree(rootNode *ast.Node, sourceFile *ast.SourceFile) ([]byte, *NodeIn
 		uint32(offsetExtendedData),
 		uint32(offsetStructuredData),
 		uint32(offsetNodes),
+		0, 0, // source file ID
+		0, 0, // source file lease ID
+		0, // binder data offset
 	}
 
 	var headerBytes, strsBytes []byte
@@ -645,14 +683,37 @@ const noStructuredData = 0xFFFFFFFF
 func recordExtendedData_SourceFile(node *ast.Node, strs *stringTable, positionMap *ast.PositionMap, extendedData *[]byte, structuredData *[]byte) {
 	sf := node.AsSourceFile()
 	textIndex := strs.add(sf.Text(), sf.Kind, sf.Pos(), sf.End())
-	fileNameIndex := strs.add(sf.FileName(), 0, 0, 0)
-	pathIndex := strs.add(string(sf.Path()), 0, 0, 0)
+	originalTextIndex := textIndex
+	if sf.OriginalText() != sf.Text() {
+		originalTextIndex = strs.add(sf.OriginalText(), 0, 0, 0)
+	}
+	fileNameIndex := strs.add(sf.FileName().AsString(), 0, 0, 0)
+	pathIndex := strs.add(string(sf.PathKey()), 0, 0, 0)
 	referencedFilesOffset := encodeFileReferences(sf.ReferencedFiles, positionMap, structuredData)
 	typeRefDirectivesOffset := encodeFileReferences(sf.TypeReferenceDirectives, positionMap, structuredData)
 	libRefDirectivesOffset := encodeFileReferences(sf.LibReferenceDirectives, positionMap, structuredData)
+	spanMapOffset := uint32(noStructuredData)
+	if spanMap := sf.SpanMap(); spanMap != nil {
+		spanMapOffset = encodeSpanMap(spanMap, positionMap, ast.ComputePositionMap(sf.OriginalText()), structuredData)
+	}
+	supplementalFileNames := core.Map(sf.SupplementalSourceFiles(), func(file *ast.SourceFile) string { return file.FileName().AsString() })
+	supplementalFileNamesOffset := encodeStringArray(supplementalFileNames, structuredData)
+	canonicalFileNameIndex := uint32(noStructuredData)
+	if canonical := sf.CanonicalSourceFile(); canonical != nil {
+		canonicalFileNameIndex = strs.add(canonical.FileName().AsString(), 0, 0, 0)
+	}
+	contentMapperIndex := uint32(noStructuredData)
+	if contentMapper := sf.ContentMapper(); contentMapper != "" {
+		contentMapperIndex = strs.add(contentMapper, 0, 0, 0)
+	}
+	virtualFileNameIndex := uint32(noStructuredData)
+	if virtualFileName := sf.VirtualFileName(); virtualFileName != "" {
+		virtualFileNameIndex = strs.add(virtualFileName.AsString(), 0, 0, 0)
+	}
+	diagnosticDirectivesOffset := encodeDiagnosticDirectives(sf.DiagnosticDirectives(), positionMap, ast.ComputePositionMap(sf.OriginalText()), structuredData)
 	// imports, moduleAugmentations, ambientModuleNames offsets are placeholders;
 	// they will be patched after the tree walk when node indices are known.
-	*extendedData = appendUint32s(*extendedData, textIndex, fileNameIndex, pathIndex, uint32(sf.LanguageVariant), uint32(sf.ScriptKind), referencedFilesOffset, typeRefDirectivesOffset, libRefDirectivesOffset, noStructuredData, noStructuredData, noStructuredData, 0)
+	*extendedData = appendUint32s(*extendedData, textIndex, fileNameIndex, pathIndex, uint32(sf.LanguageVariant), uint32(sf.ScriptKind), referencedFilesOffset, typeRefDirectivesOffset, libRefDirectivesOffset, noStructuredData, noStructuredData, noStructuredData, 0, originalTextIndex, spanMapOffset, supplementalFileNamesOffset, canonicalFileNameIndex, contentMapperIndex, virtualFileNameIndex, diagnosticDirectivesOffset)
 }
 
 func recordExtendedData_TemplateHead(node *ast.Node, strs *stringTable, positionMap *ast.PositionMap, extendedData *[]byte, structuredData *[]byte) {
@@ -749,6 +810,57 @@ func encodeStringArray(strs []string, buf *[]byte) uint32 {
 	*buf = msgpackWriteArrayHeader(*buf, len(strs))
 	for _, s := range strs {
 		*buf = msgpackWriteString(*buf, s)
+	}
+	return offset
+}
+
+func encodeSpanMap(m *spanmap.SpanMap, virtualPositions *ast.PositionMap, originalPositions *ast.PositionMap, buf *[]byte) uint32 {
+	if m == nil {
+		return noStructuredData
+	}
+	segments := m.Segments()
+	offset := uint32(len(*buf))
+	*buf = msgpackWriteArrayHeader(*buf, len(segments))
+	for _, segment := range segments {
+		tupleLength := 5
+		if segment.Features != spanmap.FeatureAll {
+			tupleLength = 6
+		}
+		*buf = msgpackWriteArrayHeader(*buf, tupleLength)
+		virtualStart := virtualPositions.UTF8ToUTF16(int(segment.VirtualStart))
+		virtualEnd := virtualPositions.UTF8ToUTF16(int(segment.VirtualEnd))
+		originalStart := originalPositions.UTF8ToUTF16(int(segment.OriginalStart))
+		originalEnd := originalPositions.UTF8ToUTF16(int(segment.OriginalEnd))
+		*buf = msgpackWriteUint(*buf, uint32(virtualStart))
+		*buf = msgpackWriteUint(*buf, uint32(virtualEnd-virtualStart))
+		*buf = msgpackWriteUint(*buf, uint32(originalStart))
+		*buf = msgpackWriteUint(*buf, uint32(originalEnd-originalStart))
+		*buf = msgpackWriteUint(*buf, uint32(segment.Kind))
+		if tupleLength == 6 {
+			*buf = msgpackWriteUint(*buf, uint32(segment.Features))
+		}
+	}
+	return offset
+}
+
+func encodeDiagnosticDirectives(directives []ast.MappedDiagnosticDirective, virtualPositions *ast.PositionMap, originalPositions *ast.PositionMap, buf *[]byte) uint32 {
+	if len(directives) == 0 {
+		return noStructuredData
+	}
+	offset := uint32(len(*buf))
+	*buf = msgpackWriteArrayHeader(*buf, len(directives))
+	for _, directive := range directives {
+		*buf = msgpackWriteArrayHeader(*buf, 6)
+		originalStart := originalPositions.UTF8ToUTF16(directive.OriginalRange.Pos())
+		originalEnd := originalPositions.UTF8ToUTF16(directive.OriginalRange.End())
+		virtualStart := virtualPositions.UTF8ToUTF16(directive.VirtualRange.Pos())
+		virtualEnd := virtualPositions.UTF8ToUTF16(directive.VirtualRange.End())
+		*buf = msgpackWriteUint(*buf, uint32(originalStart))
+		*buf = msgpackWriteUint(*buf, uint32(originalEnd-originalStart))
+		*buf = msgpackWriteUint(*buf, uint32(virtualStart))
+		*buf = msgpackWriteUint(*buf, uint32(virtualEnd-virtualStart))
+		*buf = msgpackWriteUint(*buf, uint32(directive.Policy))
+		*buf = msgpackWriteUint(*buf, uint32(directive.UnusedCode))
 	}
 	return offset
 }

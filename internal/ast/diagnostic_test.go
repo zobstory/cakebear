@@ -6,6 +6,7 @@ import (
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/diagnostics"
 	"github.com/zobstory/cakebear/internal/tspath"
+	"gotest.tools/v3/assert"
 )
 
 func TestDiagnosticsCollectionDeduplicatesExactDiagnosticsOnAdd(t *testing.T) {
@@ -58,12 +59,13 @@ func TestDiagnosticsCollectionPreservesDistinctAdHocMessages(t *testing.T) {
 func TestDiagnosticsCollectionGetsDiagnosticsForEquivalentSourceFile(t *testing.T) {
 	t.Parallel()
 
-	path := tspath.Path("/src/file.ts")
+	fileName := tspath.RootedFilePath("/src/file.ts")
+	path := tspath.CaseSensitive.PathKey(fileName.AsPath())
 	diagnosticFile := &SourceFile{
-		parseOptions: SourceFileParseOptions{FileName: string(path), Path: path},
+		parseOptions: SourceFileParseOptions{FileName: fileName, PathKey: path},
 	}
 	requestedFile := &SourceFile{
-		parseOptions: SourceFileParseOptions{FileName: string(path), Path: path},
+		parseOptions: SourceFileParseOptions{FileName: fileName, PathKey: path},
 	}
 	diagnostic := NewDiagnostic(diagnosticFile, core.TextRange{}, diagnostics.Cannot_find_name_0, "x")
 
@@ -74,4 +76,25 @@ func TestDiagnosticsCollectionGetsDiagnosticsForEquivalentSourceFile(t *testing.
 	if len(collected) != 1 || collected[0] != diagnostic {
 		t.Fatalf("GetDiagnosticsForFile() returned %v, want diagnostic for equivalent source file", collected)
 	}
+}
+
+func TestExternalDiagnosticIdentity(t *testing.T) {
+	t.Parallel()
+	file := &SourceFile{parseOptions: SourceFileParseOptions{FileName: "/src/file.vue", PathKey: "/src/file.vue"}}
+	loc := core.NewTextRange(1, 2)
+	first := NewExternalDiagnostic(file, loc, "mapper-a", diagnostics.CategoryError, 0, "first")
+	diagnostics := []*Diagnostic{
+		first,
+		NewExternalDiagnostic(file, loc, "mapper-a", diagnostics.CategoryError, 0, "second"),
+		NewExternalDiagnostic(file, loc, "mapper-b", diagnostics.CategoryError, 0, "first"),
+		NewExternalDiagnostic(file, loc, "mapper-a", diagnostics.CategoryWarning, 0, "first"),
+	}
+
+	var collection DiagnosticsCollection
+	for _, diagnostic := range diagnostics {
+		assert.Assert(t, !EqualDiagnosticsNoRelatedInfo(first, diagnostic) || diagnostic == first)
+		assert.Assert(t, CompareDiagnostics(first, diagnostic) != 0 || diagnostic == first)
+		collection.Add(diagnostic)
+	}
+	assert.Equal(t, len(collection.GetDiagnostics()), len(diagnostics))
 }

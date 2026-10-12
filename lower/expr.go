@@ -18,7 +18,7 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 	case ast.KindNumericLiteral:
 		v, err := strconv.ParseFloat(n.Text(), 64)
 		if err != nil {
-			l.fail(n, "numeric literal %s cannot be represented", n.Text())
+			l.failf(n, "numeric literal %s cannot be represented", n.Text())
 			return nil
 		}
 		return &ir.NumberLit{Value: v, Span: l.span(n)}
@@ -33,12 +33,12 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 		return &ir.BoolLit{Value: false, Span: l.span(n)}
 
 	case ast.KindNullKeyword:
-		l.fail(n, "null is not supported yet; the backend has no nullable representation")
+		l.failf(n, "null is not supported yet; the backend has no nullable representation")
 		return nil
 
 	case ast.KindIdentifier:
 		if n.Text() == "undefined" {
-			l.fail(n, "undefined is not supported yet; the backend has no nullable representation")
+			l.failf(n, "undefined is not supported yet; the backend has no nullable representation")
 			return nil
 		}
 		// A bundled function such as createServer is not a Go binding.
@@ -47,12 +47,12 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			return nil
 		}
 		if l.libraryName(n) {
-			l.fail(n, "%s is a library global cakebear does not implement yet", n.Text())
+			l.failf(n, "%s is a library global cakebear does not implement yet", n.Text())
 			return nil
 		}
 		t := l.typeOf(n)
 		if t == ir.Invalid {
-			l.fail(n, "%s has a type the backend cannot represent yet", n.Text())
+			l.failf(n, "%s has a type the backend cannot represent yet", n.Text())
 			return nil
 		}
 		return &ir.Ident{Name: n.Text(), Typ: t, Span: l.span(n)}
@@ -78,7 +78,7 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 		return l.property(n)
 
 	default:
-		l.fail(n, "%s is not supported yet", describeKind(n.Kind))
+		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
 	}
 }
@@ -95,7 +95,7 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 	case ast.KindMinusToken:
 		op = ir.OpNeg
 		if !operand.ExprType().IsNumeric() {
-			l.fail(n, "unary minus needs a number, got %s", operand.ExprType())
+			l.failf(n, "unary minus needs a number, got %s", operand.ExprType())
 			return nil
 		}
 		// Fold negation of a literal into the literal. This is not an
@@ -108,19 +108,19 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 	case ast.KindExclamationToken:
 		op = ir.OpNot
 		if operand.ExprType() != ir.Boolean {
-			l.fail(n, "! needs a boolean, got %s", operand.ExprType())
+			l.failf(n, "! needs a boolean, got %s", operand.ExprType())
 			return nil
 		}
 	case ast.KindPlusToken:
 		// Unary plus is identity on a number and a coercion otherwise; only
 		// the identity case is representable today.
 		if !operand.ExprType().IsNumeric() {
-			l.fail(n, "unary plus as a coercion is not supported yet")
+			l.failf(n, "unary plus as a coercion is not supported yet")
 			return nil
 		}
 		return operand
 	default:
-		l.fail(n, "unary %s is not supported yet", describeKind(u.Operator))
+		l.failf(n, "unary %s is not supported yet", describeKind(u.Operator))
 		return nil
 	}
 
@@ -140,9 +140,9 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 	if !ok {
 		switch b.OperatorToken.Kind {
 		case ast.KindEqualsEqualsToken, ast.KindExclamationEqualsToken:
-			l.fail(n, "loose equality is not supported; use === or !==")
+			l.failf(n, "loose equality is not supported; use === or !==")
 		default:
-			l.fail(n, "operator %s is not supported yet", describeKind(b.OperatorToken.Kind))
+			l.failf(n, "operator %s is not supported yet", describeKind(b.OperatorToken.Kind))
 		}
 		return nil
 	}
@@ -153,13 +153,13 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 		// Mixed-type `+` is legal TypeScript (`"a" + 1` is a string) but needs
 		// a conversion node the IR does not have yet. Refusing beats emitting
 		// Go that would not compile.
-		l.fail(n, "%s between %s and %s is not supported yet; both operands must have the same type", op, lt, rt)
+		l.failf(n, "%s between %s and %s is not supported yet; both operands must have the same type", op, lt, rt)
 		return nil
 	}
 
 	typ, ok := resultType(op, lt)
 	if !ok {
-		l.fail(n, "%s is not supported on %s", op, lt)
+		l.failf(n, "%s is not supported on %s", op, lt)
 		return nil
 	}
 
@@ -231,7 +231,7 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	// nothing to resolve it against. See ir.ConsoleLog.
 	if isConsoleLog(c.Expression) {
 		if c.Arguments == nil || len(c.Arguments.Nodes) != 1 {
-			l.fail(n, "console.log takes exactly one argument in this phase")
+			l.failf(n, "console.log takes exactly one argument in this phase")
 			return nil
 		}
 		arg := l.expr(c.Arguments.Nodes[0])
@@ -240,13 +240,13 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		}
 		switch t := arg.ExprType(); {
 		case t == ir.Invalid:
-			l.fail(n, "console.log cannot print this type yet")
+			l.failf(n, "console.log cannot print this type yet")
 			return nil
 		case t.Kind == ir.KindFunc:
-			l.fail(n, "console.log cannot print a function yet")
+			l.failf(n, "console.log cannot print a function yet")
 			return nil
 		case t.Kind == ir.KindHost:
-			l.fail(n, "console.log cannot print a %s yet", t)
+			l.failf(n, "console.log cannot print a %s yet", t)
 			return nil
 		}
 		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
@@ -259,7 +259,7 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	// A callee is a name: a top-level function, or a parameter or variable
 	// holding a function value. Go spells calls to both the same way.
 	if c.Expression.Kind != ast.KindIdentifier {
-		l.fail(n, "only calls to a function by name are supported yet")
+		l.failf(n, "only calls to a function by name are supported yet")
 		return nil
 	}
 
@@ -276,7 +276,7 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	}
 
 	if l.libraryName(c.Expression) {
-		l.fail(n, "%s is a library function cakebear does not implement yet", c.Expression.Text())
+		l.failf(n, "%s is a library function cakebear does not implement yet", c.Expression.Text())
 		return nil
 	}
 
@@ -304,15 +304,15 @@ func (l *lowerer) libraryName(n *ast.Node) bool {
 	if sym == nil {
 		return false
 	}
-	if sym.Flags&ast.SymbolFlagsAlias != 0 {
+	if sym.Flags()&ast.SymbolFlagsAlias != 0 {
 		if target := l.checker.GetAliasedSymbol(sym); target != nil {
 			sym = target
 		}
 	}
-	if len(sym.Declarations) == 0 {
+	if len(sym.Declarations()) == 0 {
 		return false
 	}
-	for _, d := range sym.Declarations {
+	for _, d := range sym.Declarations() {
 		if ast.GetSourceFileOfNode(d) == l.file {
 			return false // the program's own, such as a function named parseInt
 		}
@@ -334,8 +334,8 @@ func (l *lowerer) conversionBrand(callee *ast.Node) string {
 	if symbol == nil {
 		return ""
 	}
-	for _, decl := range symbol.Declarations {
-		if file := ast.GetSourceFileOfNode(decl); file != nil && file.FileName() == types.DeclarationPath() {
+	for _, decl := range symbol.Declarations() {
+		if file := ast.GetSourceFileOfNode(decl); file != nil && string(file.FileName()) == types.DeclarationPath() {
 			return callee.Text()
 		}
 	}
@@ -346,11 +346,11 @@ func (l *lowerer) conversionBrand(callee *ast.Node) string {
 func (l *lowerer) convert(n *ast.Node, c *ast.CallExpression, brand string) ir.Expr {
 	target := extensionType(brand)
 	if target == ir.Invalid {
-		l.fail(n, "%s is not a type the backend can represent yet", brand)
+		l.failf(n, "%s is not a type the backend can represent yet", brand)
 		return nil
 	}
 	if c.Arguments == nil || len(c.Arguments.Nodes) != 1 {
-		l.fail(n, "%s takes exactly one argument", brand)
+		l.failf(n, "%s takes exactly one argument", brand)
 		return nil
 	}
 
@@ -364,7 +364,7 @@ func (l *lowerer) convert(n *ast.Node, c *ast.CallExpression, brand string) ir.E
 	// runtime. This is the part a plain number or string could not do, and the
 	// reason these types are worth having at all.
 	if msg := l.validateLiteral(brand, value); msg != "" {
-		l.invalid(argNode, "%s", msg)
+		l.invalidf(argNode, "%s", msg)
 		return nil
 	}
 
