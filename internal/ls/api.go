@@ -8,6 +8,7 @@ import (
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/astnav"
 	"github.com/zobstory/cakebear/internal/checker"
+	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 var (
@@ -15,7 +16,7 @@ var (
 	ErrNoTokenAtPosition = errors.New("no token found at position")
 )
 
-func (l *LanguageService) GetSymbolAtPosition(ctx context.Context, fileName string, position int) (*ast.Symbol, error) {
+func (l *LanguageService) GetSymbolAtPosition(ctx context.Context, fileName tspath.RootedFilePath, position int) (*ast.Symbol, error) {
 	program, file := l.tryGetProgramAndFile(fileName)
 	if file == nil {
 		return nil, fmt.Errorf("%w: %s", ErrNoSourceFile, fileName)

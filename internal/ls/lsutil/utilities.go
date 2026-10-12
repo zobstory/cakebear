@@ -9,7 +9,6 @@ import (
 	"github.com/zobstory/cakebear/internal/compiler"
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/scanner"
-	"github.com/zobstory/cakebear/internal/stringutil"
 	"github.com/zobstory/cakebear/internal/tspath"
 )
 
@@ -114,11 +113,15 @@ func GetQuotePreference(sourceFile *ast.SourceFile, preferences UserPreferences)
 }
 
 func ModuleSymbolToValidIdentifier(moduleSymbol *ast.Symbol, forceCapitalize bool) string {
-	return ModuleSpecifierToValidIdentifier(stringutil.StripQuotes(moduleSymbol.Name), forceCapitalize)
+	moduleName := moduleSymbol.Name()
+	if ambientModuleName, ok := ast.TryGetAmbientModuleNameFromSymbolName(moduleName); ok {
+		moduleName = ambientModuleName
+	}
+	return ModuleSpecifierToValidIdentifier(moduleName, forceCapitalize)
 }
 
 func ModuleSpecifierToValidIdentifier(moduleSpecifier string, forceCapitalize bool) string {
-	baseName := tspath.GetBaseFileName(strings.TrimSuffix(tspath.RemoveFileExtension(moduleSpecifier), "/index"))
+	baseName := tspath.GetBaseFileName(strings.TrimSuffix(tspath.RemoveAnyFileExtension(moduleSpecifier), "/index"))
 	res := []rune{}
 	lastCharWasValid := true
 	baseNameRunes := []rune(baseName)

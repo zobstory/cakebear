@@ -9,7 +9,6 @@ import (
 )
 
 func TestOrganizeImports_Shebang_PreserveAndSort(t *testing.T) {
-	fourslash.SkipIfFailing(t)
 	t.Parallel()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 
@@ -33,7 +32,7 @@ import Foo from "foo";
 import Foobar from "foobar";
 
 console.log(Foo, Bar, Foobar);`,
-		lsproto.CodeActionKindSourceOrganizeImports,
+		lsproto.CodeActionKindSourceOrganizeImportsTs,
 		nil,
 	)
 }

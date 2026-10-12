@@ -44,12 +44,12 @@ var optionRegex = regexp.MustCompile(`(?m)^\/{2}\s*@(\w+)\s*:\s*([^\r\n]*)`)
 var linkRegex = regexp.MustCompile(`(?m)^\/{2}\s*@link\s*:\s*([^\r\n]*)\s*->\s*([^\r\n]*)`)
 
 // File-specific directives used by fourslash tests
-var fourslashDirectives = []string{"emitthisfile"}
+var fourslashDirectives = []string{"emitthisfile", "noopen"}
 
 // Given a test file containing // @FileName directives,
 // return an array of named units of code to be added to an existing compiler instance.
 func makeUnitsFromTest(code string, fileName string) testCaseContent {
-	testUnits, symlinks, currentDirectory, _, _ := ParseTestFilesAndSymlinks(
+	testUnits, symlinks, rawCurrentDirectory, globalOptions, _ := ParseTestFilesAndSymlinks(
 		code,
 		fileName,
 		func(filename string, content string, fileOptions map[string]string) (*testUnit, error) {
@@ -57,41 +57,48 @@ func makeUnitsFromTest(code string, fileName string) testCaseContent {
 		},
 	)
 
-	if currentDirectory == "" {
-		currentDirectory = srcFolder
+	currentDirectory := srcFolder
+	if rawCurrentDirectory != "" {
+		currentDirectory = tspath.ToRootedDirectoryPath(rawCurrentDirectory, srcFolder)
 	}
 
 	// unit tests always list files explicitly
 	allFiles := make(map[string]string)
 	for _, data := range testUnits {
-		allFiles[tspath.GetNormalizedAbsolutePath(data.name, currentDirectory)] = data.content
+		allFiles[tspath.ToRootedFilePath(data.name, currentDirectory).AsString()] = data.content
 	}
-	parseConfigHost := tsoptionstest.NewVFSParseConfigHost(allFiles, currentDirectory, true /*useCaseSensitiveFileNames*/)
+	configFS := tsoptionstest.NewVFSWithSymlinks(allFiles, symlinks, currentDirectory, tspath.CaseSensitive /*caseSensitivity*/)
+
+	// Content mappers are gated behind --runExternalCode, a command-line-only option. A test
+	// opts in with a top-level `// @runExternalCode: true`, which we surface to the config
+	// parse as an existing option so the gate passes and the mappers register.
+	var existingOptions *core.CompilerOptions
+	if globalOptions["runexternalcode"] == "true" {
+		existingOptions = &core.CompilerOptions{RunExternalCode: core.TSTrue}
+	}
 
 	// check if project has tsconfig.json in the list of files
 	var tsConfig *tsoptions.ParsedCommandLine
 	var tsConfigFileUnitData *testUnit
 	for i, data := range testUnits {
 		if harnessutil.GetConfigNameFromFileName(data.name) != "" {
-			configFileName := tspath.GetNormalizedAbsolutePath(data.name, currentDirectory)
-			path := tspath.ToPath(data.name, parseConfigHost.GetCurrentDirectory(), parseConfigHost.Vfs.UseCaseSensitiveFileNames())
+			configFileName := tspath.ToRootedFilePath(data.name, currentDirectory)
+			path := configFS.CaseSensitivity().PathKey(tspath.RootedPath(configFileName))
 			configJson := parser.ParseSourceFile(ast.SourceFileParseOptions{
 				FileName: configFileName,
-				Path:     path,
+				PathKey:  path,
 			}, data.content, core.ScriptKindJSON)
 			tsConfigSourceFile := &tsoptions.TsConfigSourceFile{
 				SourceFile: configJson,
 			}
-			configDir := tspath.GetDirectoryPath(configFileName)
+			configDir := configFileName.Directory()
 			tsConfig = tsoptions.ParseJsonSourceFileConfigFileContent(
 				tsConfigSourceFile,
-				parseConfigHost,
+				configFS,
 				configDir,
-				nil, /*existingOptions*/
+				existingOptions,
 				nil, /*existingOptionsRaw*/
-				configFileName,
 				nil, /*resolutionStack*/
-				nil, /*extraFileExtensions*/
 				nil, /*extendedConfigCache*/
 			)
 			tsConfigFileUnitData = data
@@ -181,7 +188,7 @@ func ParseTestFilesAndSymlinksWithOptions[T any](
 				} else {
 					// Global option
 					if existingValue, ok := globalOptions[metaDataName]; ok && existingValue != metaDataValue {
-						// !!! This would break existing submodule tests
+						// !!! This would break existing baseline tests
 						// panic("Duplicate global option: " + metaDataName)
 					}
 					globalOptions[metaDataName] = metaDataValue

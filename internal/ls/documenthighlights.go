@@ -2,6 +2,7 @@ package ls
 
 import (
 	"context"
+	"slices"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/astnav"
@@ -10,7 +11,9 @@ import (
 	"github.com/zobstory/cakebear/internal/ls/lsconv"
 	"github.com/zobstory/cakebear/internal/ls/lsutil"
 	"github.com/zobstory/cakebear/internal/scanner"
+	"github.com/zobstory/cakebear/internal/spanmap"
 	"github.com/zobstory/cakebear/internal/stringutil"
+	"github.com/zobstory/cakebear/internal/tspath"
 
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 )
@@ -38,7 +41,17 @@ func (l *LanguageService) ProvideMultiDocumentHighlights(ctx context.Context, do
 
 func (l *LanguageService) provideDocumentHighlightsWorker(ctx context.Context, documentUri lsproto.DocumentUri, documentPosition lsproto.Position, filesToSearch []lsproto.DocumentUri) (lsproto.MultiDocumentHighlightsOrNull, error) {
 	program, sourceFile := l.getProgramAndFile(documentUri)
-	position := int(l.converters.LineAndCharacterToPosition(sourceFile, documentPosition))
+	positions := l.converters.FromLSPPositionForSourceFile(sourceFile, documentPosition, spanmap.FeatureDocumentHighlights)
+	results := make([]lsproto.MultiDocumentHighlightsOrNull, 0, len(positions))
+	for _, mapped := range positions {
+		if mapped.Fidelity.IsSingleSegment() {
+			results = append(results, l.provideDocumentHighlightsAtPosition(ctx, documentUri, int(mapped.Position), program, mapped.Script, filesToSearch))
+		}
+	}
+	return combineMultiDocumentHighlights(results), nil
+}
+
+func (l *LanguageService) provideDocumentHighlightsAtPosition(ctx context.Context, documentUri lsproto.DocumentUri, position int, program *compiler.Program, sourceFile *ast.SourceFile, filesToSearch []lsproto.DocumentUri) lsproto.MultiDocumentHighlightsOrNull {
 	node := astnav.GetTouchingPropertyName(sourceFile, position)
 
 	// Cheap JSX check before resolving files to search.
@@ -51,28 +64,26 @@ func (l *LanguageService) provideDocumentHighlightsWorker(ctx context.Context, d
 		var highlights []*lsproto.DocumentHighlight
 		kind := lsproto.DocumentHighlightKindRead
 		if openingElement != nil {
-			highlights = append(highlights, &lsproto.DocumentHighlight{
-				Range: l.createLspRangeFromNode(openingElement, sourceFile),
-				Kind:  &kind,
-			})
+			if lspRange, fidelity := l.createLspRangeFromNodeForFeature(openingElement, sourceFile, spanmap.FeatureDocumentHighlights); !fidelity.IsNone() {
+				highlights = append(highlights, &lsproto.DocumentHighlight{Range: lspRange, Kind: &kind})
+			}
 		}
 		if closingElement != nil {
-			highlights = append(highlights, &lsproto.DocumentHighlight{
-				Range: l.createLspRangeFromNode(closingElement, sourceFile),
-				Kind:  &kind,
-			})
+			if lspRange, fidelity := l.createLspRangeFromNodeForFeature(closingElement, sourceFile, spanmap.FeatureDocumentHighlights); !fidelity.IsNone() {
+				highlights = append(highlights, &lsproto.DocumentHighlight{Range: lspRange, Kind: &kind})
+			}
 		}
 		multiHighlights := []*lsproto.MultiDocumentHighlight{
 			{Uri: documentUri, Highlights: highlights},
 		}
 		return lsproto.MultiDocumentHighlightsOrNull{
 			MultiDocumentHighlights: &multiHighlights,
-		}, nil
+		}
 	}
 
 	// Resolve the source files to search, deduplicating by file name.
 	var sourceFiles []*ast.SourceFile
-	seenFiles := collections.NewSetWithSizeHint[string](len(filesToSearch))
+	seenFiles := collections.NewSetWithSizeHint[tspath.RootedFilePath](len(filesToSearch))
 	for _, uri := range filesToSearch {
 		fileName := uri.FileName()
 		if !seenFiles.AddIfAbsent(fileName) {
@@ -96,7 +107,34 @@ func (l *LanguageService) provideDocumentHighlightsWorker(ctx context.Context, d
 			}
 		}
 	}
-	return lsproto.MultiDocumentHighlightsOrNull{MultiDocumentHighlights: &multiHighlights}, nil
+	return lsproto.MultiDocumentHighlightsOrNull{MultiDocumentHighlights: &multiHighlights}
+}
+
+func combineMultiDocumentHighlights(results []lsproto.MultiDocumentHighlightsOrNull) lsproto.MultiDocumentHighlightsOrNull {
+	byURI := make(map[lsproto.DocumentUri]*lsproto.MultiDocumentHighlight)
+	seen := make(map[lsproto.DocumentUri]collections.Set[lsproto.Range])
+	var combinedDocuments []*lsproto.MultiDocumentHighlight
+	for _, result := range results {
+		if result.MultiDocumentHighlights == nil {
+			continue
+		}
+		for _, document := range *result.MultiDocumentHighlights {
+			combinedDocument := byURI[document.Uri]
+			if combinedDocument == nil {
+				combinedDocument = &lsproto.MultiDocumentHighlight{Uri: document.Uri}
+				byURI[document.Uri] = combinedDocument
+				combinedDocuments = append(combinedDocuments, combinedDocument)
+			}
+			ranges := seen[document.Uri]
+			for _, highlight := range document.Highlights {
+				if ranges.AddIfAbsent(highlight.Range) {
+					combinedDocument.Highlights = append(combinedDocument.Highlights, highlight)
+				}
+			}
+			seen[document.Uri] = ranges
+		}
+	}
+	return lsproto.MultiDocumentHighlightsOrNull{MultiDocumentHighlights: &combinedDocuments}
 }
 
 func (l *LanguageService) getSemanticDocumentHighlights(ctx context.Context, position int, node *ast.Node, program *compiler.Program, sourceFiles []*ast.SourceFile) []*lsproto.MultiDocumentHighlight {
@@ -111,15 +149,19 @@ func (l *LanguageService) getSemanticDocumentHighlights(ctx context.Context, pos
 	for _, entry := range referenceEntries {
 		for _, ref := range entry.references {
 			fileName, highlight := l.toDocumentHighlight(ref)
+			if highlight == nil {
+				continue
+			}
 			fileHighlights[fileName] = append(fileHighlights[fileName], highlight)
 		}
 	}
 
 	var result []*lsproto.MultiDocumentHighlight
 	for _, sf := range sourceFiles {
-		if highlights, ok := fileHighlights[sf.FileName()]; ok {
+		fileName := sf.OriginalFileName()
+		if highlights, ok := fileHighlights[fileName.AsString()]; ok {
 			result = append(result, &lsproto.MultiDocumentHighlight{
-				Uri:        lsconv.FileNameToDocumentURI(sf.FileName()),
+				Uri:        lsconv.FileNameToDocumentURI(fileName),
 				Highlights: highlights,
 			})
 		}
@@ -129,11 +171,16 @@ func (l *LanguageService) getSemanticDocumentHighlights(ctx context.Context, pos
 
 func (l *LanguageService) toDocumentHighlight(entry *ReferenceEntry) (string, *lsproto.DocumentHighlight) {
 	entry = l.resolveEntry(entry)
+	fileName := entry.sourceFile.OriginalFileName().AsString()
 
 	kind := lsproto.DocumentHighlightKindRead
+	lspRange, ok := l.getRangeOfEntryForFeature(entry, spanmap.FeatureDocumentHighlights)
+	if !ok {
+		return fileName, nil
+	}
 	if entry.kind == entryKindRange {
-		return entry.fileName, &lsproto.DocumentHighlight{
-			Range: l.getRangeOfEntry(entry),
+		return fileName, &lsproto.DocumentHighlight{
+			Range: lspRange,
 			Kind:  &kind,
 		}
 	}
@@ -144,11 +191,11 @@ func (l *LanguageService) toDocumentHighlight(entry *ReferenceEntry) (string, *l
 	}
 
 	dh := &lsproto.DocumentHighlight{
-		Range: l.getRangeOfEntry(entry),
+		Range: lspRange,
 		Kind:  &kind,
 	}
 
-	return entry.fileName, dh
+	return fileName, dh
 }
 
 func (l *LanguageService) getSyntacticDocumentHighlights(node *ast.Node, sourceFile *ast.SourceFile) []*lsproto.DocumentHighlight {
@@ -218,10 +265,9 @@ func (l *LanguageService) highlightSpans(nodes []*ast.Node, sourceFile *ast.Sour
 	kind := lsproto.DocumentHighlightKindRead
 	for _, node := range nodes {
 		if node != nil {
-			highlights = append(highlights, &lsproto.DocumentHighlight{
-				Range: l.createLspRangeFromNode(node, sourceFile),
-				Kind:  &kind,
-			})
+			if lspRange, fidelity := l.createLspRangeFromNodeForFeature(node, sourceFile, spanmap.FeatureDocumentHighlights); !fidelity.IsNone() {
+				highlights = append(highlights, &lsproto.DocumentHighlight{Range: lspRange, Kind: &kind})
+			}
 		}
 	}
 	return highlights
@@ -232,7 +278,7 @@ func (l *LanguageService) getFromAllDeclarations(nodeTest func(*ast.Node) bool, 
 		var symbolDecls []*ast.Node
 		if ast.CanHaveSymbol(decl) {
 			if symbol := decl.Symbol(); symbol != nil {
-				for _, d := range symbol.Declarations {
+				for _, d := range symbol.Declarations() {
 					if nodeTest(d) {
 					outer:
 						for _, c := range getChildrenFromNonJSDocNode(d, sourceFile) {
@@ -276,19 +322,18 @@ func (l *LanguageService) getIfElseOccurrences(ifStatement *ast.IfStatement, sou
 				}
 			}
 			if shouldCombine {
-				highlights = append(highlights, &lsproto.DocumentHighlight{
-					Range: l.createLspRangeFromBounds(scanner.SkipTrivia(sourceFile.Text(), elseKeyword.Pos()), ifKeyword.End(), sourceFile),
-					Kind:  &kind,
-				})
+				lspRange, fidelity := l.createLspRangeFromBounds(scanner.SkipTrivia(sourceFile.Text(), elseKeyword.Pos()), ifKeyword.End(), sourceFile)
+				if !fidelity.IsNone() {
+					highlights = append(highlights, &lsproto.DocumentHighlight{Range: lspRange, Kind: &kind})
+				}
 				i++ // skip the next keyword
 				continue
 			}
 		}
 		// Ordinary case: just highlight the keyword.
-		highlights = append(highlights, &lsproto.DocumentHighlight{
-			Range: l.createLspRangeFromNode(keywords[i], sourceFile),
-			Kind:  &kind,
-		})
+		if lspRange, fidelity := l.createLspRangeFromNodeForFeature(keywords[i], sourceFile, spanmap.FeatureDocumentHighlights); !fidelity.IsNone() {
+			highlights = append(highlights, &lsproto.DocumentHighlight{Range: lspRange, Kind: &kind})
+		}
 	}
 	return highlights
 }
@@ -321,9 +366,9 @@ func getIfElseKeywords(ifStatement *ast.IfStatement, sourceFile *ast.SourceFile)
 			keywords = append(keywords, children[0])
 		}
 		// Generally the 'else' keyword is second-to-last, so traverse backwards.
-		for i := len(children) - 1; i >= 0; i-- {
-			if children[i].Kind == ast.KindElseKeyword {
-				keywords = append(keywords, children[i])
+		for _, c := range slices.Backward(children) {
+			if c.Kind == ast.KindElseKeyword {
+				keywords = append(keywords, c)
 				break
 			}
 		}
@@ -596,9 +641,9 @@ func getLoopBreakContinueOccurrences(node *ast.Node, sourceFile *ast.SourceFile)
 		keywords = append(keywords, token)
 		if node.Kind == ast.KindDoStatement {
 			loopTokens := getChildrenFromNonJSDocNode(node, sourceFile)
-			for i := len(loopTokens) - 1; i >= 0; i-- {
-				if loopTokens[i].Kind == ast.KindWhileKeyword {
-					keywords = append(keywords, loopTokens[i])
+			for _, loopToken := range slices.Backward(loopTokens) {
+				if loopToken.Kind == ast.KindWhileKeyword {
+					keywords = append(keywords, loopToken)
 					break
 				}
 			}

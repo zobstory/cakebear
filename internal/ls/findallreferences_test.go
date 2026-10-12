@@ -12,6 +12,7 @@ import (
 	"github.com/zobstory/cakebear/internal/ls/lsconv"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/tsoptions"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 	"gotest.tools/v3/assert"
 )
@@ -47,25 +48,25 @@ func TestImplementationsWorklistDoesNotBlowUp(t *testing.T) {
 		fs := vfstest.FromMap(map[string]string{
 			"/repro.ts":      content,
 			"/tsconfig.json": `{ "compilerOptions": {}, "files": ["repro.ts"] }`,
-		}, false /*useCaseSensitiveFileNames*/)
+		}, tspath.CaseInsensitive /*caseSensitivity*/)
 		fs = bundled.WrapFS(fs)
 
-		host := compiler.NewCompilerHost("/", fs, bundled.LibPath(), nil, nil)
-		parsed, errors := tsoptions.GetParsedCommandLineOfConfigFile("/tsconfig.json", &core.CompilerOptions{}, nil, host, nil)
+		host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil, nil, nil)
+		parsed, errors := tsoptions.GetParsedCommandLineOfConfigFile("/tsconfig.json", &core.CompilerOptions{}, nil, fs, nil)
 		assert.Equal(t, len(errors), 0)
 		program := compiler.NewProgram(compiler.ProgramOptions{Config: parsed, Host: host})
 		program.BindSourceFiles()
 		program.GetSemanticDiagnostics(context.Background(), program.GetSourceFile("/repro.ts"))
 
 		sourceFile := program.GetSourceFile("/repro.ts")
-		converters := lsconv.NewConverters(lsproto.PositionEncodingKindUTF8, func(_ string) *lsconv.LSPLineMap {
+		converters := lsconv.NewConverters(lsproto.PositionEncodingKindUTF8, func(_ tspath.RootedFilePath) *lsconv.LSPLineMap {
 			return lsconv.ComputeLSPLineStarts(content)
 		})
 		l := &LanguageService{program: program, converters: converters}
 
 		// Position of the `m` property in the final `i.m();`.
 		offset := strings.LastIndex(content, "i.m") + len("i.")
-		pos := converters.PositionToLineAndCharacter(sourceFile, core.TextPos(offset))
+		pos, _ := converters.ToLSPPosition(sourceFile, core.TextPos(offset))
 
 		data, ok := l.provideSymbolsAndEntries(context.Background(), "file:///repro.ts", pos, false /*isRename*/, true /*implementations*/)
 		assert.Assert(t, ok)

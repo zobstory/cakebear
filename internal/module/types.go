@@ -13,7 +13,29 @@ import (
 
 type ResolutionHost interface {
 	FS() vfs.FS
-	GetCurrentDirectory() string
+	GetCurrentDirectory() tspath.RootedDirectoryPath
+}
+
+type Resolver interface {
+	BaseDirectory() tspath.RootedDirectoryPath
+	ResolveModuleName(
+		moduleName string,
+		containingFile tspath.RootedFilePath,
+		resolutionMode core.ResolutionMode,
+		redirectedReference ResolvedProjectReference,
+	) (*ResolvedModule, []DiagAndArgs, error)
+	ResolveModuleNameFromDirectory(
+		moduleName string,
+		containingDirectory tspath.RootedDirectoryPath,
+		resolutionMode core.ResolutionMode,
+	) (*ResolvedModule, []DiagAndArgs, error)
+	ResolveTypeReferenceDirective(
+		typeReferenceDirectiveName string,
+		containingFile tspath.RootedFilePath,
+		resolutionMode core.ResolutionMode,
+		redirectedReference ResolvedProjectReference,
+	) (*ResolvedTypeReferenceDirective, []DiagAndArgs)
+	GetResolutionData() *ResolutionData
 }
 
 type ModeAwareCacheKey struct {
@@ -22,7 +44,7 @@ type ModeAwareCacheKey struct {
 }
 
 type ResolvedProjectReference interface {
-	ConfigName() string
+	ConfigName() tspath.RootedFilePath
 	CompilerOptions() *core.CompilerOptions
 }
 
@@ -63,14 +85,17 @@ func (p *PackageId) PackageName() string {
 }
 
 type ResolvedModule struct {
-	ResolutionDiagnostics    []*ast.Diagnostic
-	ResolvedFileName         string
-	OriginalPath             string
-	Extension                string
-	ResolvedUsingTsExtension bool
-	PackageId                PackageId
-	IsExternalLibraryImport  bool
-	AlternateResult          string
+	ResolutionDiagnostics        []*ast.Diagnostic
+	ResolvedFileName             tspath.RootedFilePath
+	ResolvedPath                 tspath.PathKey
+	OriginalPath                 tspath.RootedFilePath
+	Extension                    string
+	ResolvedUsingTsExtension     bool
+	ResolvedUsingExtraExtensions bool
+	IsExternalLibraryImport      bool
+	IsCustomResolution           bool
+	PackageId                    PackageId
+	AlternateResult              tspath.RootedFilePath
 }
 
 func (r *ResolvedModule) IsResolved() bool {
@@ -80,8 +105,9 @@ func (r *ResolvedModule) IsResolved() bool {
 type ResolvedTypeReferenceDirective struct {
 	ResolutionDiagnostics   []*ast.Diagnostic
 	Primary                 bool
-	ResolvedFileName        string
-	OriginalPath            string
+	ResolvedFileName        tspath.RootedFilePath
+	ResolvedPath            tspath.PathKey
+	OriginalPath            tspath.RootedFilePath
 	PackageId               PackageId
 	IsExternalLibraryImport bool
 }

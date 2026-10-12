@@ -1,22 +1,37 @@
 package autoimport
 
 import (
-	"strings"
-
 	"github.com/zobstory/cakebear/internal/modulespecifiers"
+	"github.com/zobstory/cakebear/internal/tspath"
 )
 
 func (v *View) GetModuleSpecifier(
 	export *Export,
 	userPreferences modulespecifiers.UserPreferences,
-) (string, modulespecifiers.ResultKind) {
-	// Ambient module
-	if modulespecifiers.PathIsBareSpecifier(string(export.ModuleID)) {
-		specifier := string(export.ModuleID)
-		if modulespecifiers.IsExcludedByRegex(specifier, userPreferences.AutoImportSpecifierExcludeRegexes) {
+) (tspath.ModuleSpecifier, modulespecifiers.ResultKind) {
+	if export.UnresolvedModuleSpecifier != "" {
+		specifier := export.UnresolvedModuleSpecifier
+		if specifier.IsRelative() {
+			relativePath, ok := v.program.CaseSensitivity().RelativePathFromDirectory(
+				v.importingFile.FileName().Directory(),
+				export.ModuleFileName,
+			)
+			if !ok {
+				return "", modulespecifiers.ResultKindNone
+			}
+			specifier = relativePath.AsModuleSpecifier()
+		}
+		if modulespecifiers.IsExcludedByRegex(specifier.AsString(), userPreferences.AutoImportSpecifierExcludeRegexes) {
 			return "", modulespecifiers.ResultKindNone
 		}
-		return string(export.ModuleID), modulespecifiers.ResultKindAmbient
+		return specifier, modulespecifiers.ResultKindRelative
+	}
+
+	if specifier, ok := export.ModuleID.AsModuleSpecifier(); ok {
+		if modulespecifiers.IsExcludedByRegex(specifier.AsString(), userPreferences.AutoImportSpecifierExcludeRegexes) {
+			return "", modulespecifiers.ResultKindNone
+		}
+		return specifier, modulespecifiers.ResultKindAmbient
 	}
 
 	if export.PackageName != "" {
@@ -32,7 +47,7 @@ func (v *View) GetModuleSpecifier(
 						v.getAllowedEndings(),
 					)
 
-					if !modulespecifiers.IsExcludedByRegex(specifier, userPreferences.AutoImportSpecifierExcludeRegexes) {
+					if !modulespecifiers.IsExcludedByRegex(specifier.AsString(), userPreferences.AutoImportSpecifierExcludeRegexes) {
 						return specifier, modulespecifiers.ResultKindNodeModules
 					}
 				}
@@ -41,7 +56,7 @@ func (v *View) GetModuleSpecifier(
 		}
 	}
 
-	cache := v.registry.specifierCache[v.importingFile.Path()]
+	cache := v.registry.specifierCache[v.importingFilePath]
 	if export.PackageName == "" {
 		if specifier, ok := cache.Load(export.Path); ok {
 			if specifier == "" {
@@ -64,7 +79,7 @@ func (v *View) GetModuleSpecifier(
 	//     new node_modules code. Possibly with local symlinks, which should be
 	//     very rare.
 	for _, specifier := range specifiers {
-		if strings.Contains(specifier, "/node_modules/") {
+		if specifier.Contains("/node_modules/") {
 			continue
 		}
 		cache.Store(export.Path, specifier)

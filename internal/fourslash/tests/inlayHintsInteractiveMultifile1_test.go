@@ -1,0 +1,31 @@
+package fourslash_test
+
+import (
+	"testing"
+
+	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/fourslash"
+	"github.com/zobstory/cakebear/internal/ls/lsutil"
+	"github.com/zobstory/cakebear/internal/testutil"
+)
+
+func TestInlayHintsInteractiveMultifile1(t *testing.T) {
+	t.Parallel()
+	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
+	const content = `// @lib: es5
+// @Filename: /a.ts
+export interface Foo { a: string }
+// @Filename: /b.ts
+async function foo () {
+    return {} as any as import('./a').Foo
+}
+function bar () { return import('./a') }
+async function main () {
+    const a = await foo()
+    const b = await bar()
+}`
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
+	f.GoToFile(t, "/b.ts")
+	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{IncludeInlayVariableTypeHints: core.TSTrue, IncludeInlayFunctionLikeReturnTypeHints: core.TSTrue})
+}

@@ -6,8 +6,11 @@ import (
 	"io"
 
 	"github.com/zobstory/cakebear/internal/bundled"
+	"github.com/zobstory/cakebear/internal/contentmapper"
+	"github.com/zobstory/cakebear/internal/ipc"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/project"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
 )
 
@@ -16,14 +19,16 @@ type StdioServerOptions struct {
 	In                 io.ReadCloser
 	Out                io.WriteCloser
 	Err                io.Writer
-	Cwd                string
-	DefaultLibraryPath string
+	Cwd                tspath.RootedDirectoryPath
+	DefaultLibraryPath tspath.RootedDirectoryPath
 	// PipePath, if set, listens on a named pipe (Windows) or Unix domain
 	// socket instead of using In/Out for communication.
 	PipePath string
 	// Callbacks specifies which filesystem operations should be delegated
 	// to the client (e.g., "readFile", "fileExists"). Empty means no callbacks.
 	Callbacks []string
+	// UseCaseSensitiveFileNames overrides the base filesystem's case sensitivity.
+	UseCaseSensitiveFileNames *bool
 	// Async enables JSON-RPC protocol with async connection handling.
 	// When false (default), uses MessagePack protocol with sync connection.
 	Async bool
@@ -33,6 +38,9 @@ type StdioServerOptions struct {
 	// left unchanged; the client folds this data into its own timing snapshot
 	// on demand via getServerTiming / resetServerTiming requests.
 	CollectTiming bool
+	// RunExternalCode allows configured content mappers to execute.
+	RunExternalCode      bool
+	ContentMapperSpawner contentmapper.Spawner
 }
 
 // StdioServer runs an API session over STDIO using MessagePack protocol.
@@ -55,30 +63,30 @@ func NewStdioServer(options *StdioServerOptions) *StdioServer {
 
 // Run starts the server and blocks until the connection closes.
 func (s *StdioServer) Run(ctx context.Context) error {
-	var transport Transport
+	var transport ipc.Transport
 	if s.options.PipePath != "" {
-		t, err := NewPipeTransport(s.options.PipePath)
+		t, err := ipc.NewPipeTransport(s.options.PipePath)
 		if err != nil {
 			return fmt.Errorf("failed to create pipe transport: %w", err)
 		}
 		defer t.Close()
 		transport = t
 	} else {
-		t := NewStdioTransport(s.options.In, s.options.Out)
+		t := ipc.NewStdioTransport(s.options.In, s.options.Out)
 		defer t.Close()
 		transport = t
 	}
 
 	fs := bundled.WrapFS(osvfs.FS())
 
-	// Wrap the base FS with callbackFS if callbacks are requested
+	// Wrap the base FS when callbacks or an explicit case-sensitivity setting are requested.
 	var callbackFS *callbackFS
-	if len(s.options.Callbacks) > 0 {
-		callbackFS = newCallbackFS(fs, s.options.Callbacks)
+	if len(s.options.Callbacks) > 0 || s.options.UseCaseSensitiveFileNames != nil {
+		callbackFS = newCallbackFS(fs, s.options.Callbacks, s.options.UseCaseSensitiveFileNames)
 		fs = callbackFS
 	}
 
-	projectSession := project.NewSession(&project.SessionInit{
+	sessionInit := &project.SessionInit{
 		BackgroundCtx: ctx,
 		Logger:        nil, // TODO: Add logging support
 		FS:            fs,
@@ -87,10 +95,12 @@ func (s *StdioServer) Run(ctx context.Context) error {
 			DefaultLibraryPath: s.options.DefaultLibraryPath,
 			PositionEncoding:   lsproto.PositionEncodingKindUTF8,
 			LoggingEnabled:     false,
+			RunExternalCode:    s.options.RunExternalCode,
 		},
-	})
+		Spawner: s.options.ContentMapperSpawner,
+	}
 
-	session := NewSession(projectSession, &SessionOptions{
+	session := NewStandaloneSession(sessionInit, &SessionOptions{
 		UseBinaryResponses: !s.options.Async, // Only msgpack uses binary responses
 	})
 	defer session.Close()
@@ -102,15 +112,15 @@ func (s *StdioServer) Run(ctx context.Context) error {
 	}
 
 	// Create protocol and connection based on async mode
-	var conn Conn
+	var conn ipc.Conn
 	if s.options.Async {
-		protocol := NewJSONRPCProtocol(rwc)
-		asyncConn := NewAsyncConnWithProtocol(rwc, protocol, session)
+		protocol := ipc.NewJSONRPCProtocol(rwc)
+		asyncConn := ipc.NewAsyncConnWithProtocol(rwc, protocol, session)
 		asyncConn.SetCollectTiming(s.options.CollectTiming)
 		conn = asyncConn
 	} else {
 		protocol := NewMessagePackProtocol(rwc)
-		syncConn := NewSyncConn(rwc, protocol, session)
+		syncConn := ipc.NewSyncConn(rwc, protocol, session)
 		syncConn.SetCollectTiming(s.options.CollectTiming)
 		conn = syncConn
 	}
@@ -119,6 +129,14 @@ func (s *StdioServer) Run(ctx context.Context) error {
 	if callbackFS != nil {
 		callbackFS.SetConnection(ctx, conn)
 	}
+	session.SetConnection(conn)
 
-	return conn.Run(ctx)
+	return serverRunError(ctx, conn.Run(ctx))
+}
+
+func serverRunError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	return err
 }

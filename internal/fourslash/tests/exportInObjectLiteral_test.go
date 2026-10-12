@@ -1,0 +1,20 @@
+package fourslash_test
+
+import (
+	"testing"
+
+	"github.com/zobstory/cakebear/internal/fourslash"
+	"github.com/zobstory/cakebear/internal/testutil"
+)
+
+func TestExportInObjectLiteral(t *testing.T) {
+	t.Parallel()
+	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
+	const content = `// @Filename: a.ts
+const k = {
+    [|export|] f() { }
+}`
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
+	f.VerifyBaselineDocumentHighlightsWithOptions(t, nil /*preferences*/, []string{f.Ranges()[0].FileName().AsString()}, f.Ranges()[0])
+}

@@ -5,12 +5,11 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/zobstory/cakebear/internal/stringutil"
 )
-
-type Path string
 
 // Internally, we represent paths as strings with '/' as the directory separator.
 // When we make system calls (eg: LanguageServiceHost.getDirectory()),
@@ -36,12 +35,6 @@ func IsUrl(path string) bool {
 // like `c:`, `c:\` or `c:/`).
 func IsRootedDiskPath(path string) bool {
 	return GetEncodedRootLength(path) > 0
-}
-
-// Determines whether a path consists only of a path root.
-func IsDiskPathRoot(path string) bool {
-	rootLength := GetEncodedRootLength(path)
-	return rootLength > 0 && rootLength == len(path)
 }
 
 // IsDynamicFileName returns true if the file name represents a dynamic/virtual file
@@ -117,7 +110,9 @@ func CombinePaths(firstPath string, paths ...string) string {
 			continue
 		}
 		trailingPath = NormalizeSlashes(trailingPath)
-		if result() == "" || GetRootLength(trailingPath) != 0 {
+		resultIsEmpty := result() == ""
+		trailingPathIsRooted := !resultIsEmpty && GetRootLength(trailingPath) != 0
+		if resultIsEmpty || trailingPathIsRooted {
 			// `trailingPath` is absolute.
 			setResult(trailingPath)
 		} else {
@@ -130,7 +125,12 @@ func CombinePaths(firstPath string, paths ...string) string {
 	return result()
 }
 
-func GetPathComponents(path string, currentDirectory string) []string {
+func GetPathComponents(path string) []string {
+	path = NormalizeSlashes(path)
+	return pathComponents(path, GetRootLength(path))
+}
+
+func resolvePathComponents(path string, currentDirectory string) []string {
 	path = CombinePaths(currentDirectory, path)
 	return pathComponents(path, GetRootLength(path))
 }
@@ -200,6 +200,16 @@ func GetEncodedRootLength(path string) int {
 
 	// Untitled paths (e.g., "^/untitled/ts-nul-authority/Untitled-1")
 	if ch0 == '^' && ln > 1 && path[1] == '/' {
+		if strings.HasPrefix(path, DynamicURIFileNamePrefix) {
+			schemeEnd := strings.IndexByte(path[len(DynamicURIFileNamePrefix):], '/')
+			if schemeEnd != -1 {
+				authorityStart := len(DynamicURIFileNamePrefix) + schemeEnd + 1
+				if authorityEnd := strings.IndexByte(path[authorityStart:], '/'); authorityEnd != -1 {
+					return authorityStart + authorityEnd + 1
+				}
+				return ^ln
+			}
+		}
 		return 2 // Untitled: "^/"
 	}
 
@@ -216,7 +226,10 @@ func GetEncodedRootLength(path string) int {
 			// special case interpreted as "the machine from which the URL is being interpreted".
 			scheme := path[:schemeEnd]
 			authority := path[authorityStart:authorityEnd]
-			if scheme == "file" && (authority == "" || authority == "localhost") && (len(path) > authorityEnd+2) && IsVolumeCharacter(path[authorityEnd+1]) {
+			if stringutil.EquateStringCaseInsensitive(scheme, "file") &&
+				(authority == "" || stringutil.EquateStringCaseInsensitive(authority, "localhost")) &&
+				(len(path) > authorityEnd+2) &&
+				IsVolumeCharacter(path[authorityEnd+1]) {
 				volumeSeparatorEnd := getFileUrlVolumeSeparatorEnd(path, authorityEnd+2)
 				if volumeSeparatorEnd != -1 {
 					if volumeSeparatorEnd == len(path) {
@@ -248,8 +261,10 @@ func GetRootLength(path string) int {
 }
 
 func GetDirectoryPath(path string) string {
-	path = NormalizeSlashes(path)
+	return getDirectoryPathFromNormalized(NormalizeSlashes(path))
+}
 
+func getDirectoryPathFromNormalized(path string) string {
 	// If the path provided is itself a root, then return it.
 	rootLength := GetRootLength(path)
 	if rootLength == len(path) {
@@ -260,10 +275,6 @@ func GetDirectoryPath(path string) string {
 	// but not including any trailing directory separator.
 	path = RemoveTrailingDirectorySeparator(path)
 	return path[:max(rootLength, strings.LastIndex(path, "/"))]
-}
-
-func (p Path) GetDirectoryPath() Path {
-	return Path(GetDirectoryPath(string(p)))
 }
 
 func GetPathFromPathComponents(pathComponents []string) string {
@@ -329,12 +340,12 @@ func ResolvePath(path string, paths ...string) string {
 	return NormalizePath(combinedPath)
 }
 
-func ResolveTripleslashReference(moduleName string, containingFile string) string {
-	basePath := GetDirectoryPath(containingFile)
-	if IsRootedDiskPath(moduleName) {
-		return NormalizePath(moduleName)
+func ResolvePathWithoutTrailingDirectorySeparator(path string, paths ...string) string {
+	resolved := ResolvePath(path, paths...)
+	if len(resolved) > GetRootLength(resolved) {
+		return RemoveTrailingDirectorySeparator(resolved)
 	}
-	return NormalizePath(CombinePaths(basePath, moduleName))
+	return resolved
 }
 
 func GetNormalizedPathComponents(path string, currentDirectory string) []string {
@@ -384,22 +395,34 @@ func getNormalizedPathComponentsFromCombined(path string) []string {
 	return components
 }
 
-func GetNormalizedAbsolutePathWithoutRoot(fileName string, currentDirectory string) string {
-	absolutePath := GetNormalizedAbsolutePath(fileName, currentDirectory)
-	rootLength := GetRootLength(absolutePath)
-	return absolutePath[rootLength:]
-}
-
-func GetNormalizedAbsolutePath(fileName string, currentDirectory string) string {
+func GetNormalizedAbsolutePath(fileName string, currentDirectory RootedDirectoryPath) string {
 	rootLength := GetRootLength(fileName)
 	if rootLength == 0 && currentDirectory != "" {
-		fileName = CombinePaths(currentDirectory, fileName)
+		fileName = CombinePaths(currentDirectory.AsString(), fileName)
 	} else {
 		// CombinePaths normalizes slashes, so not necessary in other branch
 		fileName = NormalizeSlashes(fileName)
 	}
-	rootLength = GetRootLength(fileName)
+	return getNormalizedAbsolutePathFromNormalizedSlashes(fileName)
+}
 
+func getNormalizedAbsolutePathFromDirectory(fileName string, currentDirectory RootedDirectoryPath) string {
+	rootLength := GetRootLength(fileName)
+	if rootLength == 0 && currentDirectory != "" {
+		if fileName == "" {
+			fileName = currentDirectory.AsString()
+		} else {
+			fileName = appendPathToDirectory(currentDirectory, NormalizeSlashes(fileName))
+		}
+	} else {
+		// CombinePaths normalizes slashes, so not necessary in other branch
+		fileName = NormalizeSlashes(fileName)
+	}
+	return getNormalizedAbsolutePathFromNormalizedSlashes(fileName)
+}
+
+func getNormalizedAbsolutePathFromNormalizedSlashes(fileName string) string {
+	rootLength := GetRootLength(fileName)
 	if simpleNormalized, ok := simpleNormalizePath(fileName); ok {
 		length := len(simpleNormalized)
 		if length > rootLength {
@@ -503,7 +526,7 @@ func GetNormalizedAbsolutePath(fileName string, currentDirectory string) string 
 		return normalized
 	}
 	if length > rootLength {
-		return RemoveTrailingDirectorySeparators(fileName)
+		return removeTrailingDirectorySeparators(fileName)
 	}
 	if length == rootLength {
 		return EnsureTrailingDirectorySeparator(fileName)
@@ -598,21 +621,25 @@ func hasRelativePathSegment(p string) bool {
 
 func NormalizePath(path string) string {
 	path = NormalizeSlashes(path)
-	if normalized, ok := simpleNormalizePath(path); ok {
-		return normalized
-	}
-	normalized := GetNormalizedAbsolutePath(path, "")
+	normalized := getNormalizedAbsolutePathFromNormalizedSlashes(path)
 	if normalized != "" && HasTrailingDirectorySeparator(path) {
 		normalized = EnsureTrailingDirectorySeparator(normalized)
 	}
 	return normalized
 }
 
-func GetCanonicalFileName(fileName string, useCaseSensitiveFileNames bool) string {
-	if useCaseSensitiveFileNames {
-		return fileName
+// trimRuneCount returns the suffix of s after skipping up to runeCount runes,
+// clamping to the end of s if it has fewer runes than runeCount.
+func trimRuneCount(s string, runeCount int) string {
+	i := 0
+	for range runeCount {
+		if i >= len(s) {
+			break
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
 	}
-	return ToFileNameLowerCase(fileName)
+	return s[i:]
 }
 
 // We convert the file names to lower case as key for file name on case insensitive file system
@@ -684,16 +711,6 @@ func ToFileNameLowerCase(fileName string) string {
 	}, fileName)
 }
 
-func ToPath(fileName string, basePath string, useCaseSensitiveFileNames bool) Path {
-	var nonCanonicalizedPath string
-	if IsRootedDiskPath(fileName) {
-		nonCanonicalizedPath = NormalizePath(fileName)
-	} else {
-		nonCanonicalizedPath = GetNormalizedAbsolutePath(fileName, basePath)
-	}
-	return Path(GetCanonicalFileName(nonCanonicalizedPath, useCaseSensitiveFileNames))
-}
-
 func RemoveTrailingDirectorySeparator(path string) string {
 	if HasTrailingDirectorySeparator(path) {
 		return path[:len(path)-1]
@@ -701,11 +718,7 @@ func RemoveTrailingDirectorySeparator(path string) string {
 	return path
 }
 
-func (p Path) RemoveTrailingDirectorySeparator() Path {
-	return Path(RemoveTrailingDirectorySeparator(string(p)))
-}
-
-func RemoveTrailingDirectorySeparators(path string) string {
+func removeTrailingDirectorySeparators(path string) string {
 	for HasTrailingDirectorySeparator(path) {
 		path = RemoveTrailingDirectorySeparator(path)
 	}
@@ -720,19 +733,28 @@ func EnsureTrailingDirectorySeparator(path string) string {
 	return path
 }
 
-func (p Path) EnsureTrailingDirectorySeparator() Path {
-	return Path(EnsureTrailingDirectorySeparator(string(p)))
-}
-
 //// Relative Paths
 
-func GetPathComponentsRelativeTo(from string, to string, options ComparePathsOptions) []string {
-	fromComponents := reducePathComponents(GetPathComponents(from, options.CurrentDirectory))
-	toComponents := reducePathComponents(GetPathComponents(to, options.CurrentDirectory))
+func GetPathComponentsRelativeTo(from string, to string, caseSensitivity CaseSensitivity) []string {
+	return getPathComponentsRelativeTo(
+		reducePathComponents(GetPathComponents(from)),
+		reducePathComponents(GetPathComponents(to)),
+		caseSensitivity,
+	)
+}
 
+func resolvePathComponentsRelativeTo(from string, to string, currentDirectory RootedDirectoryPath, caseSensitivity CaseSensitivity) []string {
+	return getPathComponentsRelativeTo(
+		reducePathComponents(resolvePathComponents(from, currentDirectory.AsString())),
+		reducePathComponents(resolvePathComponents(to, currentDirectory.AsString())),
+		caseSensitivity,
+	)
+}
+
+func getPathComponentsRelativeTo(fromComponents []string, toComponents []string, caseSensitivity CaseSensitivity) []string {
 	start := 0
 	maxCommonComponents := min(len(fromComponents), len(toComponents))
-	stringEqualer := options.getEqualityComparer()
+	stringEqualer := caseSensitivity.getEqualityComparer()
 	for ; start < maxCommonComponents; start++ {
 		fromComponent := fromComponents[start]
 		toComponent := toComponents[start]
@@ -770,33 +792,54 @@ func GetPathComponentsRelativeTo(from string, to string, options ComparePathsOpt
 	return result
 }
 
-func GetRelativePathFromDirectory(fromDirectory string, to string, options ComparePathsOptions) string {
+func GetRelativePathFromDirectory(fromDirectory string, to string, caseSensitivity CaseSensitivity) string {
 	if (GetRootLength(fromDirectory) > 0) != (GetRootLength(to) > 0) {
 		panic("paths must either both be absolute or both be relative")
 	}
-	pathComponents := GetPathComponentsRelativeTo(fromDirectory, to, options)
+	pathComponents := GetPathComponentsRelativeTo(fromDirectory, to, caseSensitivity)
 	return GetPathFromPathComponents(pathComponents)
 }
 
-func GetRelativePathFromFile(from string, to string, options ComparePathsOptions) string {
-	return EnsurePathIsNonModuleName(GetRelativePathFromDirectory(GetDirectoryPath(from), to, options))
+func ResolveRelativePathFromDirectory(fromDirectory string, to string, currentDirectory RootedDirectoryPath, caseSensitivity CaseSensitivity) string {
+	if (GetRootLength(fromDirectory) > 0) != (GetRootLength(to) > 0) {
+		panic("paths must either both be absolute or both be relative")
+	}
+	pathComponents := resolvePathComponentsRelativeTo(fromDirectory, to, currentDirectory, caseSensitivity)
+	return GetPathFromPathComponents(pathComponents)
 }
 
-func ConvertToRelativePath(absoluteOrRelativePath string, options ComparePathsOptions) string {
+func GetRelativePathFromFile(from string, to string, caseSensitivity CaseSensitivity) string {
+	return EnsurePathIsNonModuleName(GetRelativePathFromDirectory(GetDirectoryPath(from), to, caseSensitivity))
+}
+
+func ConvertToRelativePath(absoluteOrRelativePath string, currentDirectory RootedDirectoryPath, caseSensitivity CaseSensitivity) string {
 	if !IsRootedDiskPath(absoluteOrRelativePath) {
 		return absoluteOrRelativePath
 	}
 
-	return GetRelativePathToDirectoryOrUrl(options.CurrentDirectory, absoluteOrRelativePath, false /*isAbsolutePathAnUrl*/, options)
+	return ResolveRelativePathToDirectoryOrUrl(currentDirectory.AsString(), absoluteOrRelativePath, false /*isAbsolutePathAnUrl*/, currentDirectory, caseSensitivity)
 }
 
-func GetRelativePathToDirectoryOrUrl(directoryPathOrUrl string, relativeOrAbsolutePath string, isAbsolutePathAnUrl bool, options ComparePathsOptions) string {
+func GetRelativePathToDirectoryOrUrl(directoryPathOrUrl string, relativeOrAbsolutePath string, isAbsolutePathAnUrl bool, caseSensitivity CaseSensitivity) string {
 	pathComponents := GetPathComponentsRelativeTo(
 		directoryPathOrUrl,
 		relativeOrAbsolutePath,
-		options,
+		caseSensitivity,
 	)
+	return getRelativePathToDirectoryOrUrl(pathComponents, isAbsolutePathAnUrl)
+}
 
+func ResolveRelativePathToDirectoryOrUrl(directoryPathOrUrl string, relativeOrAbsolutePath string, isAbsolutePathAnUrl bool, currentDirectory RootedDirectoryPath, caseSensitivity CaseSensitivity) string {
+	pathComponents := resolvePathComponentsRelativeTo(
+		directoryPathOrUrl,
+		relativeOrAbsolutePath,
+		currentDirectory,
+		caseSensitivity,
+	)
+	return getRelativePathToDirectoryOrUrl(pathComponents, isAbsolutePathAnUrl)
+}
+
+func getRelativePathToDirectoryOrUrl(pathComponents []string, isAbsolutePathAnUrl bool) string {
 	firstComponent := pathComponents[0]
 	if isAbsolutePathAnUrl && IsRootedDiskPath(firstComponent) {
 		var prefix string
@@ -838,8 +881,10 @@ func GetRelativePathToDirectoryOrUrl(directoryPathOrUrl string, relativeOrAbsolu
 //	GetBaseFileName("file:///") == ""
 //	GetBaseFileName("file://") == ""
 func GetBaseFileName(path string) string {
-	path = NormalizeSlashes(path)
+	return getBaseFileNameFromNormalized(NormalizeSlashes(path))
+}
 
+func getBaseFileNameFromNormalized(path string) string {
 	// if the path provided is itself the root, then it has no file name.
 	rootLength := GetRootLength(path)
 	if rootLength == len(path) {
@@ -855,27 +900,45 @@ func GetBaseFileName(path string) string {
 // Gets the file extension for a path.
 // If extensions are provided, gets the file extension for a path, provided it is one of the provided extensions.
 //
-//	GetAnyExtensionFromPath("/path/to/file.ext", nil, false) == ".ext"
-//	GetAnyExtensionFromPath("/path/to/file.ext/", nil, false) == ".ext"
-//	GetAnyExtensionFromPath("/path/to/file", nil, false) == ""
-//	GetAnyExtensionFromPath("/path/to.ext/file", nil, false) == ""
-//	GetAnyExtensionFromPath("/path/to/file.ext", ".ext", true) === ".ext"
-//	GetAnyExtensionFromPath("/path/to/file.js", ".ext", true) === ""
-//	GetAnyExtensionFromPath("/path/to/file.js", [".ext", ".js"], true) === ".js"
-//	GetAnyExtensionFromPath("/path/to/file.ext", ".EXT", false) === ""
-func GetAnyExtensionFromPath(path string, extensions []string, ignoreCase bool) string {
+//	GetAnyExtensionFromPath("/path/to/file.ext", nil, CaseSensitive) == ".ext"
+//	GetAnyExtensionFromPath("/path/to/file.ext/", nil, CaseSensitive) == ".ext"
+//	GetAnyExtensionFromPath("/path/to/file", nil, CaseSensitive) == ""
+//	GetAnyExtensionFromPath("/path/to.ext/file", nil, CaseSensitive) == ""
+//	GetAnyExtensionFromPath("/path/to/file.ext", ".ext", CaseInsensitive) === ".ext"
+//	GetAnyExtensionFromPath("/path/to/file.js", ".ext", CaseInsensitive) === ""
+//	GetAnyExtensionFromPath("/path/to/file.js", [".ext", ".js"], CaseInsensitive) === ".js"
+//	GetAnyExtensionFromPath("/path/to/file.ext", ".EXT", CaseSensitive) === ""
+func GetAnyExtensionFromPath(path string, extensions []string, caseSensitivity CaseSensitivity) string {
 	// Retrieves any string from the final "." onwards from a base file name.
 	// Unlike extensionFromPath, which throws an exception on unrecognized extensions.
 	if len(extensions) > 0 {
-		return getAnyExtensionFromPathWorker(RemoveTrailingDirectorySeparator(path), extensions, stringutil.GetStringEqualityComparer(ignoreCase))
+		return getAnyExtensionFromPathWorker(RemoveTrailingDirectorySeparator(path), extensions, caseSensitivity.getEqualityComparer())
 	}
 
-	baseFileName := GetBaseFileName(path)
+	return getAnyExtensionFromNormalizedPath(NormalizeSlashes(path))
+}
+
+func getAnyExtensionFromNormalizedPath(path string) string {
+	baseFileName := getBaseFileNameFromNormalized(path)
 	extensionIndex := strings.LastIndex(baseFileName, ".")
 	if extensionIndex >= 0 {
 		return baseFileName[extensionIndex:]
 	}
 	return ""
+}
+
+func GetLongestExtensionFromPath(path string, extensions []string, caseSensitivity CaseSensitivity) string {
+	path = RemoveTrailingDirectorySeparator(path)
+	comparer := caseSensitivity.getEqualityComparer()
+	longest := ""
+	for _, extension := range extensions {
+		if len(extension) > len(longest) {
+			if matched := tryGetExtensionFromPath(path, extension, comparer); matched != "" {
+				longest = matched
+			}
+		}
+	}
+	return longest
 }
 
 func getAnyExtensionFromPathWorker(path string, extensions []string, stringEqualityComparer func(a, b string) bool) string {
@@ -935,23 +998,75 @@ func IsExternalModuleNameRelative(moduleName string) bool {
 	return PathIsRelative(moduleName) || IsRootedDiskPath(moduleName)
 }
 
-type ComparePathsOptions struct {
-	UseCaseSensitiveFileNames bool
-	CurrentDirectory          string
+// CaseSensitivity controls canonical path identity and comparison.
+// Its zero value is CaseInsensitive.
+type CaseSensitivity uint8
+
+const (
+	CaseInsensitive CaseSensitivity = iota
+	CaseSensitive
+)
+
+func (c CaseSensitivity) IsCaseSensitive() bool {
+	return c == CaseSensitive
 }
 
-func (o ComparePathsOptions) GetComparer() func(a, b string) int {
-	return stringutil.GetStringComparer(!o.UseCaseSensitiveFileNames)
+func (c CaseSensitivity) IsCaseInsensitive() bool {
+	return c == CaseInsensitive
 }
 
-func (o ComparePathsOptions) getEqualityComparer() func(a, b string) bool {
-	return stringutil.GetStringEqualityComparer(!o.UseCaseSensitiveFileNames)
+// Canonicalize applies c to text used for path comparison or keys.
+func (c CaseSensitivity) Canonicalize(text string) string {
+	if c.IsCaseSensitive() {
+		return text
+	}
+	return ToFileNameLowerCase(text)
 }
 
-func ComparePaths(a string, b string, options ComparePathsOptions) int {
-	a = CombinePaths(options.CurrentDirectory, a)
-	b = CombinePaths(options.CurrentDirectory, b)
+// TrimPrefix removes prefix from text according to c. It
+// returns text unchanged and false when the prefix does not match.
+//
+// This must not slice text using len(prefix): canonicalization can change a
+// string's UTF-8 byte length without changing its rune count.
+func (c CaseSensitivity) TrimPrefix(text string, prefix string) (string, bool) {
+	if c.IsCaseSensitive() {
+		return strings.CutPrefix(text, prefix)
+	}
+	canonicalPrefix := c.Canonicalize(prefix)
+	if !strings.HasPrefix(c.Canonicalize(text), canonicalPrefix) {
+		return text, false
+	}
+	return trimRuneCount(text, utf8.RuneCountInString(canonicalPrefix)), true
+}
 
+func (c CaseSensitivity) String() string {
+	switch c {
+	case CaseInsensitive:
+		return "false"
+	case CaseSensitive:
+		return "true"
+	default:
+		return "unknown"
+	}
+}
+
+func (c CaseSensitivity) GetComparer() func(a, b string) int {
+	return stringutil.GetStringComparer(!c.IsCaseSensitive())
+}
+
+func (c CaseSensitivity) getEqualityComparer() func(a, b string) bool {
+	return stringutil.GetStringEqualityComparer(!c.IsCaseSensitive())
+}
+
+func ComparePathsRelativeTo(a string, b string, currentDirectory RootedDirectoryPath, caseSensitivity CaseSensitivity) int {
+	a = CombinePaths(currentDirectory.AsString(), a)
+	b = CombinePaths(currentDirectory.AsString(), b)
+	return ComparePaths(a, b, caseSensitivity)
+}
+
+func ComparePaths(a string, b string, caseSensitivity CaseSensitivity) int {
+	a = CombinePaths("", a)
+	b = CombinePaths("", b)
 	if a == b {
 		return 0
 	}
@@ -976,16 +1091,16 @@ func ComparePaths(a string, b string, options ComparePathsOptions) int {
 	aRest := a[len(aRoot):]
 	bRest := b[len(bRoot):]
 	if !hasRelativePathSegment(aRest) && !hasRelativePathSegment(bRest) {
-		return options.GetComparer()(aRest, bRest)
+		return caseSensitivity.GetComparer()(aRest, bRest)
 	}
 
 	// The path contains a relative path segment. Normalize the paths and perform a slower component
 	// by component comparison.
-	aComponents := reducePathComponents(GetPathComponents(a, ""))
-	bComponents := reducePathComponents(GetPathComponents(b, ""))
+	aComponents := reducePathComponents(GetPathComponents(a))
+	bComponents := reducePathComponents(GetPathComponents(b))
 	sharedLength := min(len(aComponents), len(bComponents))
 	for i := 1; i < sharedLength; i++ {
-		result := options.GetComparer()(aComponents[i], bComponents[i])
+		result := caseSensitivity.GetComparer()(aComponents[i], bComponents[i])
 		if result != 0 {
 			return result
 		}
@@ -993,30 +1108,22 @@ func ComparePaths(a string, b string, options ComparePathsOptions) int {
 	return cmp.Compare(len(aComponents), len(bComponents))
 }
 
-func ComparePathsCaseSensitive(a string, b string, currentDirectory string) int {
-	return ComparePaths(a, b, ComparePathsOptions{UseCaseSensitiveFileNames: true, CurrentDirectory: currentDirectory})
-}
-
-func ComparePathsCaseInsensitive(a string, b string, currentDirectory string) int {
-	return ComparePaths(a, b, ComparePathsOptions{UseCaseSensitiveFileNames: false, CurrentDirectory: currentDirectory})
-}
-
-func ContainsPath(parent string, child string, options ComparePathsOptions) bool {
-	parent = CombinePaths(options.CurrentDirectory, parent)
-	child = CombinePaths(options.CurrentDirectory, child)
+func ContainsPath(parent string, child string, caseSensitivity CaseSensitivity) bool {
+	parent = CombinePaths("", parent)
+	child = CombinePaths("", child)
 	if parent == "" || child == "" {
 		return false
 	}
 	if parent == child {
 		return true
 	}
-	parentComponents := reducePathComponents(GetPathComponents(parent, ""))
-	childComponents := reducePathComponents(GetPathComponents(child, ""))
+	parentComponents := reducePathComponents(GetPathComponents(parent))
+	childComponents := reducePathComponents(GetPathComponents(child))
 	if len(childComponents) < len(parentComponents) {
 		return false
 	}
 
-	componentComparer := options.getEqualityComparer()
+	componentComparer := caseSensitivity.getEqualityComparer()
 	for i, parentComponent := range parentComponents {
 		var comparer func(a, b string) bool
 		if i == 0 {
@@ -1030,16 +1137,6 @@ func ContainsPath(parent string, child string, options ComparePathsOptions) bool
 	}
 
 	return true
-}
-
-// ContainsPath checks whether child is contained within or equal to p.
-// Since Path values are already rooted, reduced, and case-canonicalized,
-// this is a simple string prefix check.
-func (p Path) ContainsPath(child Path) bool {
-	if len(p) == 0 {
-		return false
-	}
-	return p == child || len(child) > len(p) && strings.HasPrefix(string(child), string(p)) && (p[len(p)-1] == '/' || child[len(p)] == '/')
 }
 
 func FileExtensionIs(path string, extension string) bool {
@@ -1080,12 +1177,6 @@ func ForEachAncestorDirectory[T any](directory string, callback func(directory s
 	}
 }
 
-func ForEachAncestorDirectoryPath[T any](directory Path, callback func(directory Path) (result T, stop bool)) (result T, ok bool) {
-	return ForEachAncestorDirectory(string(directory), func(directory string) (T, bool) {
-		return callback(Path(directory))
-	})
-}
-
 func HasExtension(fileName string) bool {
 	return strings.Contains(GetBaseFileName(fileName), ".")
 }
@@ -1105,11 +1196,11 @@ func SplitVolumePath(path string) (volume string, rest string, ok bool) {
 //	/a/b/c/d, /a/b/c/e, /a/b/f/g, /x/y  =>  /
 //	/a/b/c/d, /a/b/c/e, /a/b/f/g, /x/y  (minComponents: 2)	=>  /a/b, /x/y
 //	c:/a/b/c/d, d:/a/b/c/d =>	c:/a/b/c/d, d:/a/b/c/d
-func GetCommonParents(
+func getCommonParents(
 	paths []string,
 	minComponents int,
-	getPathComponents func(path string, currentDirectory string) []string,
-	options ComparePathsOptions,
+	getPathComponents func(path string) []string,
+	caseSensitivity CaseSensitivity,
 ) (parents []string, ignored map[string]struct{}) {
 	if minComponents < 1 {
 		panic("minComponents must be at least 1")
@@ -1118,7 +1209,7 @@ func GetCommonParents(
 		return nil, nil
 	}
 	if len(paths) == 1 {
-		if len(reducePathComponents(getPathComponents(paths[0], options.CurrentDirectory))) < minComponents {
+		if len(reducePathComponents(getPathComponents(paths[0]))) < minComponents {
 			return nil, map[string]struct{}{paths[0]: {}}
 		}
 		return paths, nil
@@ -1127,7 +1218,7 @@ func GetCommonParents(
 	ignored = make(map[string]struct{})
 	pathComponents := make([][]string, 0, len(paths))
 	for _, path := range paths {
-		components := reducePathComponents(getPathComponents(path, options.CurrentDirectory))
+		components := reducePathComponents(getPathComponents(path))
 		if len(components) < minComponents {
 			ignored[path] = struct{}{}
 		} else {
@@ -1135,7 +1226,7 @@ func GetCommonParents(
 		}
 	}
 
-	results := getCommonParentsWorker(pathComponents, minComponents, options)
+	results := getCommonParentsWorker(pathComponents, minComponents, caseSensitivity)
 	resultPaths := make([]string, len(results))
 	for i, comps := range results {
 		resultPaths[i] = GetPathFromPathComponents(comps)
@@ -1144,7 +1235,7 @@ func GetCommonParents(
 	return resultPaths, ignored
 }
 
-func getCommonParentsWorker(componentGroups [][]string, minComponents int, options ComparePathsOptions) [][]string {
+func getCommonParentsWorker(componentGroups [][]string, minComponents int, caseSensitivity CaseSensitivity) [][]string {
 	if len(componentGroups) == 0 {
 		return nil
 	}
@@ -1156,20 +1247,20 @@ func getCommonParentsWorker(componentGroups [][]string, minComponents int, optio
 		}
 	}
 
-	equality := options.getEqualityComparer()
+	equality := caseSensitivity.getEqualityComparer()
 	for lastCommonIndex := range maxDepth {
 		candidate := componentGroups[0][lastCommonIndex]
 		for j, comps := range componentGroups[1:] {
 			if !equality(candidate, comps[lastCommonIndex]) { // divergence
 				if lastCommonIndex < minComponents {
 					// Not enough components, we need to fan out
-					orderedGroups := make([]Path, 0, len(componentGroups)-j)
-					newGroups := make(map[Path]struct {
+					orderedGroups := make([]string, 0, len(componentGroups)-j)
+					newGroups := make(map[string]struct {
 						head  []string
 						tails [][]string
 					})
 					for _, g := range componentGroups {
-						key := ToPath(g[lastCommonIndex], options.CurrentDirectory, options.UseCaseSensitiveFileNames)
+						key := caseSensitivity.Canonicalize(g[lastCommonIndex])
 						if _, ok := newGroups[key]; !ok {
 							orderedGroups = append(orderedGroups, key)
 						}
@@ -1185,9 +1276,13 @@ func getCommonParentsWorker(componentGroups [][]string, minComponents int, optio
 					result := make([][]string, 0, len(newGroups))
 					for _, key := range orderedGroups {
 						group := newGroups[key]
-						subResults := getCommonParentsWorker(group.tails, minComponents-(lastCommonIndex+1), options)
+						subResults := getCommonParentsWorker(group.tails, minComponents-(lastCommonIndex+1), caseSensitivity)
 						for _, sr := range subResults {
-							result = append(result, append(group.head, sr...))
+							if len(sr) == 0 {
+								result = append(result, slices.Clip(group.head))
+							} else {
+								result = append(result, slices.Concat(group.head, sr))
+							}
 						}
 					}
 					return result
@@ -1200,13 +1295,13 @@ func getCommonParentsWorker(componentGroups [][]string, minComponents int, optio
 	return [][]string{componentGroups[0][:maxDepth]}
 }
 
-func StartsWithDirectory(fileName string, directoryName string, useCaseSensitiveFileNames bool) bool {
+func StartsWithDirectory(fileName string, directoryName string, caseSensitivity CaseSensitivity) bool {
 	if directoryName == "" {
 		return false
 	}
 
-	canonicalFileName := GetCanonicalFileName(fileName, useCaseSensitiveFileNames)
-	canonicalDirectoryName := GetCanonicalFileName(directoryName, useCaseSensitiveFileNames)
+	canonicalFileName := caseSensitivity.Canonicalize(fileName)
+	canonicalDirectoryName := caseSensitivity.Canonicalize(directoryName)
 	canonicalDirectoryName = strings.TrimSuffix(canonicalDirectoryName, "/")
 	canonicalDirectoryName = strings.TrimSuffix(canonicalDirectoryName, "\\")
 

@@ -9,7 +9,6 @@ import (
 
 // https://github.com/zobstory/cakebear/issues/3944
 func TestCodeFixImportNonTextualSpecifierText(t *testing.T) {
-	fourslash.SkipIfFailing(t)
 	t.Parallel()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = "// @Filename: /a.ts\n" +

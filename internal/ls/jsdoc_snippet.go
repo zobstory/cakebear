@@ -27,7 +27,7 @@ type commentOwnerInfo struct {
 }
 
 func (l *LanguageService) getJSDocSnippetCompletion(ctx context.Context, file *ast.SourceFile, position int) *CompletionList {
-	if l.UserPreferences().EnableJSDocCompletions.IsFalse() {
+	if l.UserPreferences().CompleteJSDocs.IsFalse() {
 		return nil
 	}
 	if !isPotentiallyValidJSDocSnippetCompletionPosition(file, position) {
@@ -100,7 +100,10 @@ func (l *LanguageService) getJSDocSnippetCompletionRange(ctx context.Context, fi
 		end += suffixEnd
 	}
 
-	replacementRange := l.createLspRangeFromBounds(start, end, file)
+	replacementRange, fidelity := l.createLspRangeFromBounds(start, end, file)
+	if !fidelity.IsExact() {
+		return nil
+	}
 	if clientSupportsItemInsertReplace(ctx) {
 		return &lsproto.TextEditOrInsertReplaceEdit{
 			InsertReplaceEdit: &lsproto.InsertReplaceEdit{

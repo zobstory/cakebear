@@ -3,7 +3,30 @@ package compiler
 import (
 	"slices"
 	"testing"
+
+	"github.com/zobstory/cakebear/internal/ast"
+	"github.com/zobstory/cakebear/internal/module"
+	"github.com/zobstory/cakebear/internal/tspath"
 )
+
+func TestGetSourceFileForResolvedModuleUsesResolvedPath(t *testing.T) {
+	t.Parallel()
+	path := tspath.PathKey("/resolved.ts")
+	file := &ast.SourceFile{}
+	program := &Program{
+		filesByPath: map[tspath.PathKey]*ast.SourceFile{
+			path: file,
+		},
+	}
+
+	resolved := &module.ResolvedModule{
+		ResolvedFileName: tspath.RootedFilePath("/different.ts"),
+		ResolvedPath:     path,
+	}
+	if got := program.GetSourceFileForResolvedModule(resolved); got != file {
+		t.Fatalf("GetSourceFileForResolvedModule() = %p, want %p", got, file)
+	}
+}
 
 func TestGetCheckerAssociationBaseWeight(t *testing.T) {
 	t.Parallel()

@@ -37,13 +37,14 @@ type tscInput struct {
 	cwd              string
 	edits            []*tscEdit
 	env              map[string]string
+	outputIsTTY      *bool
 	ignoreCase       bool
 	windowsStyleRoot string
 }
 
-func (test *tscInput) executeCommand(sys *TestSys, baselineBuilder *strings.Builder, commandLineArgs []string) tsc.CommandLineResult {
+func (test *tscInput) executeCommand(ctx context.Context, sys *TestSys, baselineBuilder *strings.Builder, commandLineArgs []string) tsc.CommandLineResult {
 	fmt.Fprint(baselineBuilder, "tsgo ", strings.Join(commandLineArgs, " "), "\n")
-	result := execute.CommandLine(context.Background(), sys, commandLineArgs, sys)
+	result := execute.CommandLine(ctx, sys, commandLineArgs, sys)
 	switch result.Status {
 	case tsc.ExitStatusSuccess:
 		baselineBuilder.WriteString("ExitStatus:: Success")
@@ -67,6 +68,8 @@ func (test *tscInput) run(t *testing.T, scenario string) {
 	t.Helper()
 	t.Run(test.getBaselineSubFolder()+"/"+test.subScenario, func(t *testing.T) {
 		t.Parallel()
+		// ctx is cancelled when the subtest ends, tearing down any content mapper host created during the run.
+		ctx := t.Context()
 		// initial test tsc compile
 		baselineBuilder := &strings.Builder{}
 		sys := newTestSys(test, false)
@@ -75,11 +78,11 @@ func (test *tscInput) run(t *testing.T, scenario string) {
 			"currentDirectory::",
 			sys.GetCurrentDirectory(),
 			"\nuseCaseSensitiveFileNames::",
-			sys.FS().UseCaseSensitiveFileNames(),
+			sys.FS().CaseSensitivity(),
 			"\nInput::\n",
 		)
 		sys.baselineFSwithDiff(baselineBuilder)
-		result := test.executeCommand(sys, baselineBuilder, test.commandLineArgs)
+		result := test.executeCommand(ctx, sys, baselineBuilder, test.commandLineArgs)
 		sys.serializeState(baselineBuilder)
 		if result.Watcher != nil && sys.mockWatchBackend.HasWatches() {
 			baselineBuilder.WriteString(sys.mockWatchBackend.WatchState())
@@ -101,7 +104,7 @@ func (test *tscInput) run(t *testing.T, scenario string) {
 				sys.baselineFSwithDiff(baselineBuilder)
 
 				if result.Watcher == nil {
-					test.executeCommand(sys, baselineBuilder, commandLineArgs)
+					test.executeCommand(ctx, sys, baselineBuilder, commandLineArgs)
 				} else {
 					sys.mockWatchBackend.SendChangedPaths(changedPaths)
 					result.Watcher.DoCycle()
@@ -120,7 +123,7 @@ func (test *tscInput) run(t *testing.T, scenario string) {
 						test.edits[i].edit(nonIncrementalSys)
 					}
 				}
-				execute.CommandLine(context.Background(), nonIncrementalSys, commandLineArgs, nonIncrementalSys)
+				execute.CommandLine(ctx, nonIncrementalSys, commandLineArgs, nonIncrementalSys)
 			})
 			wg.RunAndWait()
 
@@ -149,21 +152,22 @@ func getDiffForIncremental(incrementalSys *TestSys, nonIncrementalSys *TestSys) 
 	nonIncrementalOutputs := nonIncrementalSys.fs.writtenFiles.ToSlice()
 	slices.Sort(nonIncrementalOutputs)
 	for _, nonIncrementalOutput := range nonIncrementalOutputs {
-		if tspath.FileExtensionIs(nonIncrementalOutput, tspath.ExtensionTsBuildInfo) ||
-			strings.HasSuffix(nonIncrementalOutput, ".readable.baseline.txt") {
+		nonIncrementalOutputText := nonIncrementalOutput.AsString()
+		if nonIncrementalOutput.ExtensionIs(tspath.ExtensionTsBuildInfo) ||
+			strings.HasSuffix(nonIncrementalOutputText, ".readable.baseline.txt") {
 			// Just check existence
 			if !incrementalSys.fsFromFileMap().FileExists(nonIncrementalOutput) {
-				diffBuilder.WriteString(baseline.DiffText("nonIncremental "+nonIncrementalOutput, "incremental "+nonIncrementalOutput, "Exists", ""))
+				diffBuilder.WriteString(baseline.DiffText("nonIncremental "+nonIncrementalOutputText, "incremental "+nonIncrementalOutputText, "Exists", ""))
 				diffBuilder.WriteString("\n")
 			}
 		} else {
 			nonIncrementalText, ok := nonIncrementalSys.fsFromFileMap().ReadFile(nonIncrementalOutput)
 			if !ok {
-				panic("Written file not found " + nonIncrementalOutput)
+				panic("Written file not found " + nonIncrementalOutputText)
 			}
 			incrementalText, ok := incrementalSys.fsFromFileMap().ReadFile(nonIncrementalOutput)
 			if !ok || incrementalText != nonIncrementalText {
-				diffBuilder.WriteString(baseline.DiffText("nonIncremental "+nonIncrementalOutput, "incremental "+nonIncrementalOutput, nonIncrementalText, incrementalText))
+				diffBuilder.WriteString(baseline.DiffText("nonIncremental "+nonIncrementalOutputText, "incremental "+nonIncrementalOutputText, nonIncrementalText, incrementalText))
 				diffBuilder.WriteString("\n")
 			}
 		}

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zobstory/cakebear/internal/collections"
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/diagnosticwriter"
 	"github.com/zobstory/cakebear/internal/outputpaths"
-	"github.com/zobstory/cakebear/internal/repo"
 	"github.com/zobstory/cakebear/internal/testutil/baseline"
 	"github.com/zobstory/cakebear/internal/testutil/harnessutil"
 	"github.com/zobstory/cakebear/internal/testutil/tsbaseline"
@@ -22,11 +22,7 @@ import (
 
 var transpileBaselineRegex = regexp.MustCompile(`\.[cm]?[tj]sx?$`)
 
-var transpileVaryBy = map[string]struct{}{
-	"declarationmap":  {},
-	"sourcemap":       {},
-	"inlinesourcemap": {},
-}
+var transpileVaryBy = collections.NewSetFromItems("declarationmap", "sourcemap", "inlinesourcemap")
 
 type TranspileBaselineRunner struct {
 	testFiles []string
@@ -37,7 +33,7 @@ var _ Runner = (*TranspileBaselineRunner)(nil)
 
 func NewTranspileBaselineRunner() *TranspileBaselineRunner {
 	return &TranspileBaselineRunner{
-		basePath: "../_submodules/TypeScript/tests/cases/transpile",
+		basePath: "../testdata/tests/cases/transpile",
 	}
 }
 
@@ -60,7 +56,7 @@ func (r *TranspileBaselineRunner) RunTests(t *testing.T) {
 }
 
 func (r *TranspileBaselineRunner) runTest(t *testing.T, fileName string) {
-	content, ok := osvfs.FS().ReadFile(fileName)
+	content, ok := osvfs.FS().ReadFile(tspath.RootedFilePathFromNormalized(fileName))
 	if !ok {
 		panic("Could not read transpile test file: " + fileName)
 	}
@@ -70,7 +66,7 @@ func (r *TranspileBaselineRunner) runTest(t *testing.T, fileName string) {
 		configurations = []*harnessutil.NamedTestConfiguration{{Config: settings}}
 	}
 
-	extension := tspath.GetAnyExtensionFromPath(fileName, nil, false)
+	extension := tspath.GetAnyExtensionFromPath(fileName, nil, tspath.CaseSensitive)
 	baseName := tspath.GetBaseFileName(fileName)
 	justName := strings.TrimSuffix(baseName, extension)
 	units := makeUnitsFromTest(content, baseName).testUnitData
@@ -144,7 +140,7 @@ func (r *TranspileBaselineRunner) runKind(
 			result.WriteString("\r\n\r\n//// [Diagnostics reported]\r\n")
 			diagnosticFileName := unit.name
 			if file := output.Diagnostics[0].File(); file != nil {
-				diagnosticFileName = file.FileName()
+				diagnosticFileName = file.FileName().AsString()
 			}
 			errorBaseline := tsbaseline.GetErrorBaseline(
 				t,
@@ -165,7 +161,7 @@ func (r *TranspileBaselineRunner) runKind(
 		baselineExtension = tspath.GetDeclarationEmitExtensionForPath(configuredName + extension)
 	}
 	baselineName := configuredName + baselineExtension
-	baseline.Run(t, "transpile/"+baselineName, result.String(), baseline.Options{IsSubmodule: true})
+	baseline.Run(t, "transpile/"+baselineName, result.String(), baseline.Options{})
 }
 
 func appendTranspileSection(result *strings.Builder, fileName string, content string) {
@@ -177,15 +173,12 @@ func appendTranspileSection(result *strings.Builder, fileName string, content st
 }
 
 func cleanTranspileBaselines() {
-	for _, folder := range []string{"submodule", "submoduleAccepted", "submoduleTriaged"} {
-		if err := os.RemoveAll(filepath.Join(localBasePath, folder, "transpile")); err != nil {
-			panic("Could not clean up transpile baselines: " + err.Error())
-		}
+	if err := os.RemoveAll(filepath.Join(localBasePath, "transpile")); err != nil {
+		panic("Could not clean up transpile baselines: " + err.Error())
 	}
 }
 
 func RunTranspileTests(t *testing.T) {
-	repo.SkipIfNoTypeScriptSubmodule(t)
 	cleanTranspileBaselines()
 	NewTranspileBaselineRunner().RunTests(t)
 }

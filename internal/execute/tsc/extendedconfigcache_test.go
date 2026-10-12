@@ -5,17 +5,9 @@ import (
 
 	"github.com/zobstory/cakebear/internal/execute/tsc"
 	"github.com/zobstory/cakebear/internal/tsoptions"
-	"github.com/zobstory/cakebear/internal/vfs"
+	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 )
-
-type testParseConfigHost struct {
-	fs  vfs.FS
-	cwd string
-}
-
-func (h *testParseConfigHost) FS() vfs.FS                  { return h.fs }
-func (h *testParseConfigHost) GetCurrentDirectory() string { return h.cwd }
 
 func TestExtendedConfigCacheExtendsCircularity(t *testing.T) {
 	t.Parallel()
@@ -31,11 +23,10 @@ func TestExtendedConfigCacheExtendsCircularity(t *testing.T) {
 			"/project/main.ts":       `// Hello World!`,
 		}
 
-		fs := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
-		host := &testParseConfigHost{fs: fs, cwd: "/project"}
+		fs := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 		cache := &tsc.ExtendedConfigCache{}
 
-		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, host, cache)
+		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, fs, cache)
 		if cmd == nil {
 			t.Fatal("expected non-nil ParsedCommandLine")
 		}
@@ -52,11 +43,10 @@ func TestExtendedConfigCacheExtendsCircularity(t *testing.T) {
 			"/project/main.ts":       `// Hello World!`,
 		}
 
-		fs := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
-		host := &testParseConfigHost{fs: fs, cwd: "/project"}
+		fs := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 		cache := &tsc.ExtendedConfigCache{}
 
-		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, host, cache)
+		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, fs, cache)
 		if cmd == nil {
 			t.Fatal("expected non-nil ParsedCommandLine")
 		}
@@ -74,11 +64,10 @@ func TestExtendedConfigCacheExtendsCircularity(t *testing.T) {
 			"/project/main.ts":       `// Hello World!`,
 		}
 
-		fs := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
-		host := &testParseConfigHost{fs: fs, cwd: "/project"}
+		fs := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 		cache := &tsc.ExtendedConfigCache{}
 
-		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, host, cache)
+		cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, fs, cache)
 		if cmd == nil {
 			t.Fatal("expected non-nil ParsedCommandLine")
 		}
@@ -94,11 +83,10 @@ func TestExtendedConfigCacheNullExtendsDoesNotPanic(t *testing.T) {
 		"/project/main.ts":       `// Hello World!`,
 	}
 
-	fs := vfstest.FromMap(files, false /*useCaseSensitiveFileNames*/)
-	host := &testParseConfigHost{fs: fs, cwd: "/project"}
+	fs := vfstest.FromMap(files, tspath.CaseInsensitive /*caseSensitivity*/)
 	cache := &tsc.ExtendedConfigCache{}
 
-	cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, host, cache)
+	cmd, _ := tsoptions.GetParsedCommandLineOfConfigFile("/project/tsconfig.json", nil, nil, fs, cache)
 	if cmd == nil {
 		t.Fatal("expected non-nil ParsedCommandLine")
 	}

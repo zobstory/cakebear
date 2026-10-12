@@ -108,7 +108,7 @@ func (adder *importAdder) AddImportFromExportedSymbol(exportedSymbol *ast.Symbol
 		// debug.Assert(len(adder.ls.UserPreferences().AutoImportFileExcludePatterns) > 0)
 		return
 	}
-	fix := adder.getImportFixForSymbol(adder.view, adder.view.importingFile, exportInfos, isValidTypeOnlyUseSite)
+	fix := adder.getImportFixForSymbol(adder.view, exportInfos, isValidTypeOnlyUseSite)
 	if fix != nil {
 		// !!! referenceImport -> propertyName
 		adder.AddImportFix(fix)
@@ -169,7 +169,10 @@ func (adder *importAdder) Edits() []*lsproto.TextEdit {
 		insertImports(tracker, adder.view.importingFile, newDeclarations, true /*blankLineBetween*/, adder.preferences)
 	}
 
-	return tracker.GetChanges()[adder.view.importingFile.FileName()]
+	// Unmappable files are dropped by GetChanges, so a content-mapped importing file that cannot be
+	// faithfully rewritten yields no edits rather than a corrupting one.
+	changes, _ := tracker.GetChanges()
+	return changes[adder.view.importingFile.OriginalFileName()]
 }
 
 func sortedNamedImports(m map[string]*newImportBinding) []*newImportBinding {
@@ -460,7 +463,7 @@ func TryGetAutoImportableReferenceFromTypeNode(importTypeNode *ast.TypeNode, idT
 // If a type checker and multiple files are available, consider using `forEachNameOfDefaultExport`
 // instead, which searches for names of re-exported defaults/namespaces in target files.
 func getNameForExportedSymbol(symbol *ast.Symbol, preferCapitalized bool) string {
-	if symbol.Name == ast.InternalSymbolNameExportEquals || symbol.Name == ast.InternalSymbolNameDefault {
+	if symbol.Name() == ast.InternalSymbolNameExportEquals || symbol.Name() == ast.InternalSymbolNameDefault {
 		// Names for default exports:
 		// - export default foo => foo
 		// - export { foo as default } => foo
@@ -469,10 +472,10 @@ func getNameForExportedSymbol(symbol *ast.Symbol, preferCapitalized bool) string
 		if name != "" {
 			return name
 		}
-		debug.Assert(symbol.Parent != nil, "Expected exported symbol to have module symbol as parent")
-		return lsutil.ModuleSymbolToValidIdentifier(symbol.Parent, preferCapitalized)
+		debug.Assert(symbol.Parent() != nil, "Expected exported symbol to have module symbol as parent")
+		return lsutil.ModuleSymbolToValidIdentifier(symbol.Parent(), preferCapitalized)
 	}
-	return symbol.Name
+	return symbol.Name()
 }
 
 func replaceFirstIdentifierOfEntityName(factory *ast.NodeFactory, name *ast.EntityName, newIdentifier *ast.IdentifierNode) *ast.EntityName {
@@ -485,9 +488,9 @@ func replaceFirstIdentifierOfEntityName(factory *ast.NodeFactory, name *ast.Enti
 	)
 }
 
-func (adder *importAdder) getImportFixForSymbol(view *View, file *ast.SourceFile, exports []*Export, isValidTypeOnlyUseSite bool) *Fix {
+func (adder *importAdder) getImportFixForSymbol(view *View, exports []*Export, isValidTypeOnlyUseSite bool) *Fix {
 	fixes := core.FlatMap(exports, func(export *Export) []*Fix {
-		return view.GetFixes(adder.ctx, export, false /*forJSX*/, isValidTypeOnlyUseSite, nil /*usagePosition*/)
+		return view.GetFixes(export, false /*forJSX*/, isValidTypeOnlyUseSite, nil /*usagePosition*/)
 	})
 	slices.SortFunc(fixes, func(a, b *Fix) int {
 		return view.CompareFixesForRanking(a, b)

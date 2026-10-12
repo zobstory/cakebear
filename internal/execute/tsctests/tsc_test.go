@@ -7,13 +7,32 @@ import (
 	"testing"
 
 	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/testutil/contentmappertest"
 	"github.com/zobstory/cakebear/internal/testutil/stringtestutil"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
 )
 
 func TestTscCommandline(t *testing.T) {
 	t.Parallel()
+	colorTest := func(subScenario string, env map[string]string, outputIsTTY bool) *tscInput {
+		return &tscInput{
+			subScenario: subScenario,
+			files: FileMap{
+				"/home/src/workspaces/project/index.ts": "const x: string = 1;",
+			},
+			commandLineArgs: []string{"index.ts", "--noEmit"},
+			env:             env,
+			outputIsTTY:     new(outputIsTTY),
+		}
+	}
 	testCases := []*tscInput{
+		{
+			subScenario: "global diagnostics produced during ordinary semantic checking",
+			files: FileMap{
+				"/home/src/workspaces/project/index.ts": `export function* values() { yield 1; }`,
+			},
+			commandLineArgs: []string{"index.ts", "--noEmit"},
+		},
 		{
 			subScenario: "show help with ExitStatus.DiagnosticsPresent_OutputsSkipped",
 			env: map[string]string{
@@ -25,28 +44,20 @@ func TestTscCommandline(t *testing.T) {
 			subScenario:     "show help with ExitStatus.DiagnosticsPresent_OutputsSkipped when host cannot provide terminal width",
 			commandLineArgs: nil,
 		},
-		{
-			subScenario: "does not add color when NO_COLOR is set",
-			env: map[string]string{
-				"NO_COLOR": "true",
-			},
-			commandLineArgs: nil,
-		},
-		{
-			subScenario: "adds color when FORCE_COLOR is set",
-			env: map[string]string{
-				"FORCE_COLOR": "true",
-			},
-			commandLineArgs: nil,
-		},
-		{
-			subScenario: "does not add color when NO_COLOR is set even if FORCE_COLOR is set",
-			env: map[string]string{
-				"NO_COLOR":    "true",
-				"FORCE_COLOR": "true",
-			},
-			commandLineArgs: nil,
-		},
+		colorTest("does not add color when NO_COLOR is set", map[string]string{"NO_COLOR": "true"}, true),
+		colorTest("adds color when NO_COLOR is empty", map[string]string{"NO_COLOR": ""}, true),
+		colorTest("adds color when FORCE_COLOR is empty and output is not a TTY", map[string]string{"FORCE_COLOR": ""}, false),
+		colorTest("does not add color when FORCE_COLOR is zero", map[string]string{"FORCE_COLOR": "0"}, true),
+		colorTest("adds color when FORCE_COLOR is one and output is not a TTY", map[string]string{"FORCE_COLOR": "1"}, false),
+		colorTest("adds color when FORCE_COLOR is two and output is not a TTY", map[string]string{"FORCE_COLOR": "2"}, false),
+		colorTest("adds color when FORCE_COLOR is three and output is not a TTY", map[string]string{"FORCE_COLOR": "3"}, false),
+		colorTest("does not add color when FORCE_COLOR is four", map[string]string{"FORCE_COLOR": "4"}, true),
+		colorTest("adds color when FORCE_COLOR is true and output is not a TTY", map[string]string{"FORCE_COLOR": "true"}, false),
+		colorTest("does not add color when FORCE_COLOR is false", map[string]string{"FORCE_COLOR": "false"}, true),
+		colorTest("does not add color when FORCE_COLOR is invalid", map[string]string{"FORCE_COLOR": "invalid"}, true),
+		colorTest("FORCE_COLOR overrides NO_COLOR", map[string]string{"NO_COLOR": "true", "FORCE_COLOR": "true"}, false),
+		colorTest("does not add color when TERM is dumb", map[string]string{"TERM": "dumb"}, true),
+		colorTest("FORCE_COLOR overrides dumb TERM", map[string]string{"TERM": "dumb", "FORCE_COLOR": "true"}, false),
 		{
 			subScenario:     "when build not first argument",
 			commandLineArgs: []string{"--verbose", "--build"},
@@ -220,7 +231,7 @@ func TestTscCommandline(t *testing.T) {
 			commandLineArgs: []string{"--moduleResolution", "nodenext ", "first.ts", "--module", "nodenext", "--target", "esnext", "--moduleDetection", "auto", "--jsx", "react", "--newLine", "crlf"},
 		},
 		{
-			subScenario: "Parse watch interval option",
+			subScenario: "Reject removed watch interval option",
 			files: FileMap{
 				"/home/src/workspaces/project/first.ts": `export const a = 1`,
 				"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
@@ -234,7 +245,7 @@ func TestTscCommandline(t *testing.T) {
 			commandLineArgs: []string{"-w", "--watchInterval", "1000"},
 		},
 		{
-			subScenario:     "Parse watch interval option without tsconfig.json",
+			subScenario:     "Reject removed watch interval option without tsconfig.json",
 			commandLineArgs: []string{"-w", "--watchInterval", "1000"},
 		},
 		{
@@ -1091,9 +1102,6 @@ func TestTscExtends(t *testing.T) {
 							"@myscope/*": ["${configDir}/types/*"],
 						},
 					},
-					"watchOptions": {
-						"excludeFiles": ["${configDir}/main.ts"],
-					},
 				}`),
 				"/home/src/projects/myproject/tsconfig.json": stringtestutil.Dedent(`
 				{
@@ -1345,6 +1353,33 @@ func TestTscIgnoreConfig(t *testing.T) {
 
 func TestTscIncremental(t *testing.T) {
 	t.Parallel()
+	libWithReadonlyArray := strings.Replace(tscDefaultLibContent, "interface ReadonlyArray<T> {}", "interface ReadonlyArray<T> { readonly length: number; readonly [n: number]: T; }", 1)
+	getRecursiveTypeTest := func(name string, source string) *tscInput {
+		return &tscInput{
+			subScenario: name + " after comment only edit",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": `{"compilerOptions": {"strict": true, "noEmit": true, "incremental": true}}`,
+				"/home/src/workspaces/project/repro.ts":      stringtestutil.Dedent(source),
+				tscLibPath + "/lib.es2026.full.d.ts":         libWithReadonlyArray,
+			},
+			edits: []*tscEdit{
+				{
+					caption: "add a comment",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/repro.ts", "\n// comment-only edit\n")
+					},
+				},
+				noChange,
+				{
+					caption: "add another comment",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/repro.ts", "\n// another comment\n")
+					},
+				},
+				noChange,
+			},
+		}
+	}
 	getConstEnumTest := func(bdsContents string, changeEnumFile string, testSuffix string) *tscInput {
 		return &tscInput{
 			subScenario: "const enums" + testSuffix,
@@ -2265,6 +2300,224 @@ func TestTscIncremental(t *testing.T) {
 				`),
 			},
 			commandLineArgs: []string{"--noEmit"},
+		},
+		getRecursiveTypeTest("recursive mapped type", `
+			type Json = string | Json[];
+			type Parsed<T> = T extends object ? { [K in keyof T]: Parsed<T[K]> } : T;
+			declare function wrap<T>(value: T): Parsed<T>;
+			export const value = wrap({ items: [] as Json[] });
+		`),
+		getRecursiveTypeTest("recursive readonly mapped type", `
+			type Json = string | readonly Json[];
+			type Parsed<T> = T extends object ? { [K in keyof T]: Parsed<T[K]> } : T;
+			declare function wrap<T>(value: T): Parsed<T>;
+			export const value = wrap({ items: [] as readonly Json[] });
+		`),
+		{
+			subScenario: "global diagnostics produced during semantic checking",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": `{"compilerOptions": {"noEmit": true, "incremental": true}}`,
+				"/home/src/workspaces/project/repro.ts":      `export function* values() { yield 1; }`,
+			},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "add a comment",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/repro.ts", "\n// comment-only edit\n")
+					},
+					expectedDiff: "Like Strada, signature generation produces the missing-global diagnostic before semantic checking, so it is excluded from the file's semantic diagnostics.",
+				},
+				{
+					caption:      "no change",
+					edit:         noChange.edit,
+					expectedDiff: "Like Strada, the cached semantic diagnostics do not include the missing-global diagnostic produced during signature generation.",
+				},
+				{
+					caption: "delete build info to restore the semantic diagnostic",
+					edit: func(sys *TestSys) {
+						sys.removeNoError("/home/src/workspaces/project/tsconfig.tsbuildinfo")
+					},
+				},
+			},
+		},
+		{
+			subScenario: "global diagnostics from function bodies after incremental edits",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": `{"compilerOptions": {"noEmit": true, "incremental": true}}`,
+				"/home/src/workspaces/project/repro.ts": stringtestutil.Dedent(`
+					export function values() {
+						// @ts-ignore
+						function* generator() { yield 1; }
+					}
+				`),
+			},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "add a comment",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/repro.ts", "\n// comment-only edit\n")
+					},
+				},
+				noChange,
+			},
+		},
+		{
+			subScenario: "global diagnostics produced during unchecked javascript checking",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": `{"compilerOptions": {"allowJs": true, "noEmit": true, "incremental": true}}`,
+				"/home/src/workspaces/project/repro.js":      `export function* values() { yield 1; }`,
+			},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "enable javascript checking",
+					edit: func(sys *TestSys) {
+						sys.replaceFileText("/home/src/workspaces/project/tsconfig.json", `"allowJs": true`, `"allowJs": true, "checkJs": true`)
+					},
+				},
+				noChange,
+			},
+		},
+		{
+			subScenario: "reverse mapped declaration consumption",
+			files: FileMap{
+				"/home/src/workspaces/project/producer/tsconfig.json": `{
+					"compilerOptions": { "strict": true, "composite": true, "outDir": "dist" }
+				}`,
+				"/home/src/workspaces/project/producer/index.ts": stringtestutil.Dedent(`
+					declare function unwrap<T>(input: { [K in keyof T]: { value: T[K] } }): T;
+					declare const indexedInput: { [key: string]: { value: string } };
+					export const indexed = unwrap(indexedInput);
+					type Validator<T> = ((input: unknown) => T | undefined) | {
+						[K in keyof T]: Validator<T[K]>;
+					};
+					declare function decode<T>(input: { [K in keyof T]: Validator<T[K]> }): T;
+					declare const stringValidator: (input: unknown) => string | undefined;
+					export const deep = decode({ a: { b: { c: { d: stringValidator } } } });
+					interface NamedInput { leaf: typeof stringValidator }
+					declare const namedInput: { node: NamedInput };
+					export const named = decode(namedInput);
+				`),
+				"/home/src/workspaces/project/consumer/tsconfig.json": `{
+					"compilerOptions": { "strict": true, "noEmit": true },
+					"references": [{ "path": "../producer" }]
+				}`,
+				"/home/src/workspaces/project/consumer/index.ts": stringtestutil.Dedent(`
+					import { indexed, deep, named } from "../producer/dist/index.js";
+					const a: string = indexed["name"];
+					const b: string = deep.a.b.c.d;
+					const c: string = named.node.leaf;
+					type IsAny<T> = 0 extends (1 & T) ? true : false;
+					const notAny: false = null as unknown as
+						IsAny<typeof indexed[string] | typeof deep.a.b.c.d | typeof named.node.leaf>;
+					const invalidIndex: number = indexed["name"];
+					const invalidDeep: number = deep.a.b.c.d;
+					const invalidNamed: number = named.node.leaf;
+				`),
+			},
+			commandLineArgs: []string{"--build", "consumer"},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "add a comment to the producer",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/producer/index.ts", "\n// comment-only edit\n")
+					},
+				},
+				noChange,
+			},
+		},
+		{
+			subScenario: "recursive tagged tuple after incremental edits",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": `{"compilerOptions": {"strict": true, "incremental": true, "noEmit": true, "module": "esnext", "moduleResolution": "bundler"}}`,
+				tscLibPath + "/lib.es2026.full.d.ts":         libWithReadonlyArray,
+				"/home/src/workspaces/project/doc.ts": stringtestutil.Dedent(`
+					type Doc =
+						| string
+						| { [k: string]: Doc }
+						| readonly ["array", Doc]
+						| readonly ["array", Doc, { length: number }]
+						| readonly ["array", Doc, { min?: number; max?: number }]
+						| readonly ["union", Doc, ...Doc[]];
+					export declare const doc: Doc;
+				`),
+				"/home/src/workspaces/project/consumer.ts": stringtestutil.Dedent(`
+					import { doc } from "./doc";
+					export const value = doc;
+				`),
+			},
+			edits: []*tscEdit{
+				noChange,
+				{
+					caption: "add a comment to the recursive type",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/doc.ts", "\n// comment-only edit\n")
+					},
+				},
+				noChange,
+				{
+					caption: "add a union constituent",
+					edit: func(sys *TestSys) {
+						sys.replaceFileText("/home/src/workspaces/project/doc.ts", "| string", "| number\n    | string")
+					},
+				},
+				noChange,
+				{
+					caption: "verify the consumer type was not weakened",
+					edit: func(sys *TestSys) {
+						sys.appendFile("/home/src/workspaces/project/consumer.ts", "\nexport const invalid: number = value;\n")
+					},
+				},
+				noChange,
+				{
+					caption: "delete build info and check the edited source afresh",
+					edit: func(sys *TestSys) {
+						sys.removeNoError("/home/src/workspaces/project/tsconfig.tsbuildinfo")
+					},
+				},
+				noChange,
+			},
+		},
+		{
+			subScenario: "json module diagnostics are cleared after fixing the json file",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+					{
+						"compilerOptions": {
+							"strict": true,
+							"noEmit": true,
+							"incremental": true,
+							"resolveJsonModule": true,
+							"esModuleInterop": true
+						}
+					}`),
+				"/home/src/workspaces/project/data.json": `{ "title": "hello" }`,
+				"/home/src/workspaces/project/check.ts": stringtestutil.Dedent(`
+					import type data from "./data.json";
+
+					type Shape = { title: string };
+					type Covers<T extends Shape> = T;
+
+					export type Check = Covers<typeof data>;
+				`),
+			},
+			edits: []*tscEdit{
+				{
+					caption: "remove required property",
+					edit: func(sys *TestSys) {
+						sys.writeFileNoError("/home/src/workspaces/project/data.json", `{}`)
+					},
+				},
+				{
+					caption: "restore required property",
+					edit: func(sys *TestSys) {
+						sys.writeFileNoError("/home/src/workspaces/project/data.json", `{ "title": "fixed" }`)
+					},
+				},
+			},
 		},
 	}
 
@@ -4145,6 +4398,34 @@ func TestTscProjectReferences(t *testing.T) {
 			commandLineArgs: []string{"--p", "project"},
 		},
 		{
+			subScenario: "incremental nested triple-slash reference to composite project source",
+			files: FileMap{
+				"/home/src/workspaces/solution/utils/index.ts":   "interface ReferencedType {}",
+				"/home/src/workspaces/solution/utils/index.d.ts": "interface ReferencedType {}",
+				"/home/src/workspaces/solution/utils/tsconfig.json": stringtestutil.Dedent(`
+				{
+					"compilerOptions": {
+						"composite": true
+					}
+				}`),
+				"/home/src/workspaces/solution/project/src/index.ts": `/// <reference path="../../utils/index.ts" />
+let value: ReferencedType;`,
+				"/home/src/workspaces/solution/project/tsconfig.json": stringtestutil.Dedent(`
+				{
+					"compilerOptions": {
+						"disableSourceOfProjectReferenceRedirect": true,
+						"incremental": true
+					},
+					"files": ["src/index.ts"],
+					"references": [
+						{ "path": "../utils" }
+					]
+				}`),
+			},
+			cwd:             "/home/src/workspaces/solution",
+			commandLineArgs: []string{"--p", "project"},
+		},
+		{
 			subScenario: "when project reference is not built",
 			files: FileMap{
 				"/home/src/workspaces/solution/utils/index.ts": "export const x = 10;",
@@ -4802,4 +5083,190 @@ func TestGenerateTrace(t *testing.T) {
 	for _, c := range cases {
 		c.run(t, "generateTrace")
 	}
+}
+
+func TestTscContentMapperEmit(t *testing.T) {
+	t.Parallel()
+	(&tscInput{
+		subScenario: "content-mapped files are not emitted",
+		files: FileMap{
+			"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+			{
+				"compilerOptions": {
+					"outDir": "./dist"
+				},
+				"contentMappers": [
+					{ "package": "vue-ts-mapper", "extensions": [".vue"] }
+				]
+			}`),
+			"/home/src/workspaces/project/index.ts": `export const local = 1;`,
+			"/home/src/workspaces/project/app.vue":  `export const app = 1;`,
+			"/home/src/workspaces/project/node_modules/vue-ts-mapper/package.json": stringtestutil.Dedent(`
+			{
+				"name": "vue-ts-mapper",
+				"version": "1.0.0",
+				"typescript": { "contentMapper": { "exec": ["verbatim-mapper"] } }
+			}`),
+		},
+		commandLineArgs: []string{"--runExternalCode"},
+	}).run(t, "contentMapperEmit")
+}
+
+func TestTscContentMapperExplainFiles(t *testing.T) {
+	t.Parallel()
+	(&tscInput{
+		subScenario: "supplemental virtual file include reason",
+		files: FileMap{
+			"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+			{
+				"contentMappers": [
+					{ "package": "mapper", "extensions": [".vue"] }
+				]
+			}`),
+			"/home/src/workspaces/project/app.vue": `export const value = 1;`,
+			"/home/src/workspaces/project/node_modules/mapper/package.json": stringtestutil.Dedent(`
+			{
+				"name": "mapper",
+				"version": "1.0.0",
+				"typescript": { "contentMapper": { "exec": ["supplemental-mapper"] } }
+			}`),
+		},
+		commandLineArgs: []string{"--runExternalCode", "--explainFiles"},
+	}).run(t, "contentMapperExplainFiles")
+}
+
+func TestTscContentMapperOptionDiagnostics(t *testing.T) {
+	t.Parallel()
+	(&tscInput{
+		subScenario: "nested mapper option diagnostic",
+		files: FileMap{
+			"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+			{
+				"contentMappers": [
+					{
+						"package": "mapper",
+						"extensions": [".vue"],
+						"options": { "plugins": [{ "name": 1 }] }
+					}
+				]
+			}`),
+			"/home/src/workspaces/project/app.vue":                          `export const value = 1;`,
+			"/home/src/workspaces/project/node_modules/mapper/package.json": contentmappertest.PackageJSON(contentmappertest.DynamicVerbatimMapper),
+		},
+		commandLineArgs: []string{"--runExternalCode", "--pretty", "false"},
+	}).run(t, "contentMapperOptionDiagnostics")
+}
+
+func TestTscContentMapperFailures(t *testing.T) {
+	t.Parallel()
+	failMapperPackageJSON := stringtestutil.Dedent(`
+	{
+		"name": "fail",
+		"version": "1.0.0",
+		"typescript": { "contentMapper": { "exec": ["failing-mapper"] } }
+	}`)
+	failMapperTSConfig := stringtestutil.Dedent(`
+	{
+		"contentMappers": [
+			{ "package": "fail", "extensions": [".vue"] }
+		]
+	}`)
+	testCases := []*tscInput{
+		{
+			subScenario: "initialization failure reports one project error",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+				{
+					"contentMappers": [
+						{ "package": "missing", "extensions": [".vue"] }
+					]
+				}`),
+				"/home/src/workspaces/project/index.ts": stringtestutil.Dedent(`
+					import "./a.vue";
+					import "./b.vue";
+					import "./c.vue";
+					import "./d.vue";
+					import "./e.vue";
+					import "./f.vue";`),
+				"/home/src/workspaces/project/a.vue": `<template>a</template>`,
+				"/home/src/workspaces/project/b.vue": `<template>b</template>`,
+				"/home/src/workspaces/project/c.vue": `<template>c</template>`,
+				"/home/src/workspaces/project/d.vue": `<template>d</template>`,
+				"/home/src/workspaces/project/e.vue": `<template>e</template>`,
+				"/home/src/workspaces/project/f.vue": `<template>f</template>`,
+				"/home/src/workspaces/project/node_modules/missing/package.json": stringtestutil.Dedent(`
+				{
+					"name": "missing",
+					"version": "1.0.0",
+					"typescript": { "contentMapper": { "exec": ["missing-mapper"] } }
+				}`),
+			},
+			commandLineArgs: []string{"--runExternalCode", "--singleThreaded"},
+		},
+		{
+			subScenario: "transform failure reports a per-file error",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json":                  failMapperTSConfig,
+				"/home/src/workspaces/project/index.ts":                       `import "./app.vue";`,
+				"/home/src/workspaces/project/app.vue":                        `<template>hi</template>`,
+				"/home/src/workspaces/project/node_modules/fail/package.json": failMapperPackageJSON,
+			},
+			commandLineArgs: []string{"--runExternalCode"},
+		},
+		{
+			subScenario: "mapper is disabled after repeated failures",
+			files: FileMap{
+				"/home/src/workspaces/project/tsconfig.json": failMapperTSConfig,
+				"/home/src/workspaces/project/index.ts": stringtestutil.Dedent(`
+					import "./a.vue";
+					import "./b.vue";
+					import "./c.vue";
+					import "./d.vue";
+					import "./e.vue";
+					import "./f.vue";
+					import "./g.vue";`),
+				"/home/src/workspaces/project/a.vue":                          `<template>a</template>`,
+				"/home/src/workspaces/project/b.vue":                          `<template>b</template>`,
+				"/home/src/workspaces/project/c.vue":                          `<template>c</template>`,
+				"/home/src/workspaces/project/d.vue":                          `<template>d</template>`,
+				"/home/src/workspaces/project/e.vue":                          `<template>e</template>`,
+				"/home/src/workspaces/project/f.vue":                          `<template>f</template>`,
+				"/home/src/workspaces/project/g.vue":                          `<template>g</template>`,
+				"/home/src/workspaces/project/node_modules/fail/package.json": failMapperPackageJSON,
+			},
+			// --singleThreaded makes file loading order deterministic so the same files exceed the failure
+			// threshold on every run.
+			commandLineArgs: []string{"--runExternalCode", "--singleThreaded"},
+		},
+	}
+	for _, test := range testCases {
+		test.run(t, "contentMapperFailures")
+	}
+}
+
+func TestTscContentMapperSynthesized(t *testing.T) {
+	t.Parallel()
+	(&tscInput{
+		subScenario: "diagnostics in synthesized code render on the virtual text",
+		files: FileMap{
+			"/home/src/workspaces/project/tsconfig.json": stringtestutil.Dedent(`
+			{
+				"contentMappers": [
+					{ "package": "synth", "extensions": [".vue"] }
+				]
+			}`),
+			"/home/src/workspaces/project/index.ts": `import "./app.vue";`,
+			"/home/src/workspaces/project/app.vue": stringtestutil.Dedent(`
+				<template>
+					<Widget />
+				</template>`),
+			"/home/src/workspaces/project/node_modules/synth/package.json": stringtestutil.Dedent(`
+			{
+				"name": "synth",
+				"version": "1.0.0",
+				"typescript": { "contentMapper": { "exec": ["synthesizing-mapper"] } }
+			}`),
+		},
+		commandLineArgs: []string{"--runExternalCode"},
+	}).run(t, "contentMapperSynthesized")
 }

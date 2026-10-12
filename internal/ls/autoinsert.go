@@ -7,10 +7,11 @@ import (
 	"github.com/zobstory/cakebear/internal/astnav"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
 	"github.com/zobstory/cakebear/internal/scanner"
+	"github.com/zobstory/cakebear/internal/spanmap"
 )
 
 func (l *LanguageService) ProvideOnAutoInsert(ctx context.Context, params *lsproto.VSOnAutoInsertParams) (lsproto.VSOnAutoInsertResponse, error) {
-	if l.UserPreferences().EnableAutoClosingTags.IsFalse() {
+	if l.UserPreferences().AutoClosingTags.IsFalse() {
 		return lsproto.VSOnAutoInsertResponse{}, nil
 	}
 	if params.VSCh != ">" {
@@ -18,7 +19,12 @@ func (l *LanguageService) ProvideOnAutoInsert(ctx context.Context, params *lspro
 	}
 
 	_, sourceFile := l.getProgramAndFile(params.VSTextDocument.Uri)
-	position := l.converters.LineAndCharacterToPosition(sourceFile, params.VSPosition)
+	positions := l.converters.FromLSPPositionForSourceFile(sourceFile, params.VSPosition, spanmap.FeatureAutoInsert)
+	if len(positions) != 1 || !positions[0].Fidelity.IsExact() {
+		return lsproto.VSOnAutoInsertResponse{}, nil
+	}
+	sourceFile = positions[0].Script
+	position := positions[0].Position
 
 	token := astnav.FindPrecedingToken(sourceFile, int(position))
 	if token == nil {

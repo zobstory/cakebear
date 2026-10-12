@@ -1,7 +1,10 @@
 package tsc
 
 import (
+	"bytes"
+	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +16,40 @@ import (
 	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/internal/vfs"
 	"github.com/zobstory/cakebear/internal/vfs/vfstest"
+	"gotest.tools/v3/assert"
 )
+
+type contentMapperLoggingTestSystem struct {
+	*timingTestSystem
+	enabled bool
+	stderr  bytes.Buffer
+}
+
+func (s *contentMapperLoggingTestSystem) GetEnvironmentVariable(name string) (string, bool) {
+	if name == "TS_CONTENT_MAPPER_DEBUG" && s.enabled {
+		return "1", true
+	}
+	return "", false
+}
+
+func (s *contentMapperLoggingTestSystem) ErrorWriter() io.Writer {
+	return &s.stderr
+}
+
+func TestContentMapperLoggerEnvironmentVariable(t *testing.T) {
+	t.Parallel()
+	sys := &contentMapperLoggingTestSystem{timingTestSystem: &timingTestSystem{}}
+	assert.Assert(t, newContentMapperLogger(sys) == nil)
+	sys.enabled = true
+	logger := newContentMapperLogger(sys)
+	assert.Assert(t, logger != nil)
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() { logger("mapper log") })
+	}
+	wg.Wait()
+	assert.Equal(t, sys.stderr.String(), strings.Repeat("mapper log\n", 10))
+}
 
 type controlledClock struct {
 	mu                   sync.Mutex
@@ -70,15 +106,22 @@ type timingTestSystem struct {
 	clock *controlledClock
 }
 
-func (s *timingTestSystem) Writer() io.Writer                         { return io.Discard }
-func (s *timingTestSystem) FS() vfs.FS                                { return s.fs }
-func (s *timingTestSystem) DefaultLibraryPath() string                { return "/lib" }
-func (s *timingTestSystem) GetCurrentDirectory() string               { return "/project" }
-func (s *timingTestSystem) WriteOutputIsTTY() bool                    { return false }
-func (s *timingTestSystem) GetWidthOfTerminal() int                   { return 0 }
-func (s *timingTestSystem) GetEnvironmentVariable(name string) string { return "" }
-func (s *timingTestSystem) Now() time.Time                            { return s.clock.Now() }
-func (s *timingTestSystem) SinceStart() time.Duration                 { return s.clock.SinceStart() }
+func (s *timingTestSystem) Writer() io.Writer                               { return io.Discard }
+func (s *timingTestSystem) ErrorWriter() io.Writer                          { return io.Discard }
+func (s *timingTestSystem) FS() vfs.FS                                      { return s.fs }
+func (s *timingTestSystem) DefaultLibraryPath() tspath.RootedDirectoryPath  { return "/lib" }
+func (s *timingTestSystem) GetCurrentDirectory() tspath.RootedDirectoryPath { return "/project" }
+func (s *timingTestSystem) WriteOutputIsTTY() bool                          { return false }
+func (s *timingTestSystem) GetWidthOfTerminal() int                         { return 0 }
+func (s *timingTestSystem) GetEnvironmentVariable(name string) (string, bool) {
+	return "", false
+}
+func (s *timingTestSystem) Now() time.Time            { return s.clock.Now() }
+func (s *timingTestSystem) SinceStart() time.Duration { return s.clock.SinceStart() }
+
+func (s *timingTestSystem) Spawn([]string, string, io.Writer) (io.ReadWriteCloser, error) {
+	return nil, errors.New("spawn not implemented in timingTestSystem")
+}
 
 func TestIncrementalDeclarationEmitTimeIsExcludedFromCheckTime(t *testing.T) {
 	t.Parallel()
@@ -106,7 +149,7 @@ export const make = (): Box => ({ value: "ok" });
 	}
 	clock := &controlledClock{now: time.Unix(0, 0)}
 	sys := &timingTestSystem{
-		fs:    vfstest.FromMapWithClock(files, true, &fileClock{}),
+		fs:    vfstest.FromMapWithClock(files, tspath.CaseSensitive, &fileClock{}),
 		clock: clock,
 	}
 	options := &core.CompilerOptions{
@@ -116,13 +159,13 @@ export const make = (): Box => ({ value: "ok" });
 		NoEmit:          core.TSTrue,
 		TsBuildInfoFile: "/project/tsconfig.tsbuildinfo",
 	}
-	config := tsoptions.NewParsedCommandLine(options, []string{"/lib/lib.d.ts", "/project/hub.ts", "/project/spoke.ts"}, tspath.ComparePathsOptions{
-		UseCaseSensitiveFileNames: true,
-		CurrentDirectory:          "/project",
-	})
+	currentDirectory := tspath.RootedDirectoryPath("/project")
+	config := tsoptions.NewParsedCommandLine(options, core.Map([]string{"/lib/lib.d.ts", "/project/hub.ts", "/project/spoke.ts"}, func(fileName string) tspath.RootedFilePath {
+		return tspath.ToRootedFilePath(fileName, currentDirectory)
+	}), nil, currentDirectory, tspath.CaseSensitive)
 
 	compile := func(oldProgram *incremental.Program) (*incremental.Program, *CompileTimes) {
-		host := compiler.NewCachedFSCompilerHost(sys.GetCurrentDirectory(), sys.FS(), sys.DefaultLibraryPath(), nil, nil)
+		host := compiler.NewCachedFSCompilerHost(sys.FS(), sys.DefaultLibraryPath(), nil, nil, nil)
 		program := compiler.NewProgram(compiler.ProgramOptions{
 			Config: config,
 			Host:   host,
@@ -140,7 +183,7 @@ export const make = (): Box => ({ value: "ok" });
 			ReportDiagnostic:   QuietDiagnosticReporter,
 			ReportErrorSummary: QuietDiagnosticsReporter,
 			Writer:             io.Discard,
-			WriteFile: func(fileName string, text string, data *compiler.WriteFileData) error {
+			WriteFile: func(fileName tspath.RootedFilePath, text string, data *compiler.WriteFileData) error {
 				return sys.fs.WriteFile(fileName, text)
 			},
 			CompileTimes: times,

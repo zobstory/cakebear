@@ -14,6 +14,7 @@ import (
 	"github.com/zobstory/cakebear/internal/locale"
 	"github.com/zobstory/cakebear/internal/ls/lsconv"
 	"github.com/zobstory/cakebear/internal/lsp/lsproto"
+	"github.com/zobstory/cakebear/internal/spanmap"
 )
 
 // CodeFixProvider represents a provider for a specific type of code fix
@@ -113,35 +114,35 @@ func (l *LanguageService) ProvideCodeActions(ctx context.Context, params *lsprot
 			errorCode := *diag.Code.Integer
 
 			for _, provider := range codeFixProviders {
-				if !containsErrorCode(provider.ErrorCodes, errorCode) {
+				if !codeFixProviderMatchesLSPDiagnostic(provider, diag) {
 					continue
 				}
 
-				position := l.converters.LineAndCharacterToPosition(file, diag.Range.Start)
-				endPosition := l.converters.LineAndCharacterToPosition(file, diag.Range.End)
-				fixContext := &CodeFixContext{
-					SourceFile: file,
-					Span:       core.NewTextRange(int(position), int(endPosition)),
-					ErrorCode:  errorCode,
-					Program:    program,
-					LS:         l,
-					Diagnostic: diag,
-					Params:     params,
-				}
-
-				providerActions, err := provider.GetCodeActions(ctx, fixContext)
-				if err != nil {
-					return lsproto.CodeActionResponse{}, err
-				}
-				for _, action := range providerActions {
-					i, found := slices.BinarySearchFunc(seen, action, (*CodeAction).Compare)
-					if found {
-						continue
+				for _, mapped := range l.converters.FromLSPRangeForSourceFile(file, diag.Range, spanmap.FeatureCodeActions) {
+					fixContext := &CodeFixContext{
+						SourceFile: mapped.Script,
+						Span:       mapped.Span,
+						ErrorCode:  errorCode,
+						Program:    program,
+						LS:         l,
+						Diagnostic: diag,
+						Params:     params,
 					}
-					seen = slices.Insert(seen, i, action)
-					actions = append(actions, convertToLSPCodeAction(action, diag, params.TextDocument.Uri))
-					if action.FixID != "" {
-						fixIdSeen[action.FixID] = provider
+
+					providerActions, err := provider.GetCodeActions(ctx, fixContext)
+					if err != nil {
+						return lsproto.CodeActionResponse{}, err
+					}
+					for _, action := range providerActions {
+						i, found := slices.BinarySearchFunc(seen, action, (*CodeAction).Compare)
+						if found {
+							continue
+						}
+						seen = slices.Insert(seen, i, action)
+						actions = append(actions, convertToLSPCodeAction(action, diag, params.TextDocument.Uri))
+						if action.FixID != "" {
+							fixIdSeen[action.FixID] = provider
+						}
 					}
 				}
 			}
@@ -218,7 +219,7 @@ func hasMultipleFixableDiagnostics(ctx context.Context, program *compiler.Progra
 	allDiags := getAllDiagnostics(ctx, program, file)
 	count := 0
 	for _, d := range allDiags {
-		if containsErrorCode(errorCodes, d.Code()) {
+		if isFixableDiagnostic(d, errorCodes) {
 			count++
 			if count >= 2 {
 				return true
@@ -228,18 +229,20 @@ func hasMultipleFixableDiagnostics(ctx context.Context, program *compiler.Progra
 	return false
 }
 
-// codeActionKindContains returns true if the requested kind equals or is a
-// hierarchical parent of actionKind, using '.' as the separator. This matches
-// the semantics of VS Code's HierarchicalKind.contains.
-func codeActionKindContains(requestedKind, actionKind lsproto.CodeActionKind) bool {
-	return requestedKind == actionKind ||
-		requestedKind == "" ||
-		strings.HasPrefix(string(actionKind), string(requestedKind)+".")
+func codeFixProviderMatchesLSPDiagnostic(provider *CodeFixProvider, diagnostic *lsproto.Diagnostic) bool {
+	if diagnostic.Source != nil && *diagnostic.Source != "ts" {
+		return false
+	}
+	return diagnostic.Code != nil && diagnostic.Code.Integer != nil && containsErrorCode(provider.ErrorCodes, *diagnostic.Code.Integer)
+}
+
+func isFixableDiagnostic(diagnostic *ast.Diagnostic, errorCodes []int32) bool {
+	return diagnostic.Source() == "" && containsErrorCode(errorCodes, diagnostic.Code())
 }
 
 // isFixAllKind returns true if the requested kind matches source.fixAll
 func isFixAllKind(kind lsproto.CodeActionKind) bool {
-	return codeActionKindContains(kind, lsproto.CodeActionKindSourceFixAll)
+	return kind.Contains(lsproto.CodeActionKindSourceFixAllTs)
 }
 
 // wantsQuickFixes returns true if the Only filter is nil/empty (meaning all kinds are wanted)
@@ -249,7 +252,7 @@ func wantsQuickFixes(only *[]lsproto.CodeActionKind) bool {
 		return true
 	}
 	for _, kind := range *only {
-		if codeActionKindContains(kind, lsproto.CodeActionKindQuickFix) {
+		if kind.Contains(lsproto.CodeActionKindQuickFix) {
 			return true
 		}
 	}
@@ -264,7 +267,7 @@ func (l *LanguageService) createFixAllAction(
 	file *ast.SourceFile,
 	uri lsproto.DocumentUri,
 ) (*lsproto.CommandOrCodeAction, error) {
-	kind := lsproto.CodeActionKindSourceFixAll
+	kind := lsproto.CodeActionKindSourceFixAllTs
 	lspChanges := make(map[lsproto.DocumentUri][]*lsproto.TextEdit)
 
 	for _, provider := range codeFixProviders {
@@ -304,9 +307,9 @@ func (l *LanguageService) createFixAllAction(
 func getOrganizeImportsActionTitle(ctx context.Context, kind lsproto.CodeActionKind) string {
 	loc := locale.FromContext(ctx)
 	switch kind {
-	case lsproto.CodeActionKindSourceRemoveUnusedImports:
+	case lsproto.CodeActionKindSourceRemoveUnusedImportsTs:
 		return diagnostics.Remove_Unused_Imports.Localize(loc)
-	case lsproto.CodeActionKindSourceSortImports:
+	case lsproto.CodeActionKindSourceSortImportsTs:
 		return diagnostics.Sort_Imports.Localize(loc)
 	default:
 		return diagnostics.Organize_Imports.Localize(loc)
@@ -317,14 +320,14 @@ func getOrganizeImportsActionTitle(ctx context.Context, kind lsproto.CodeActionK
 // returned for the given requested kind.
 func getOrganizeImportsActionsForKind(requestedKind lsproto.CodeActionKind) []lsproto.CodeActionKind {
 	organizeImportsKinds := []lsproto.CodeActionKind{
-		lsproto.CodeActionKindSourceOrganizeImports,
-		lsproto.CodeActionKindSourceRemoveUnusedImports,
-		lsproto.CodeActionKindSourceSortImports,
+		lsproto.CodeActionKindSourceOrganizeImportsTs,
+		lsproto.CodeActionKindSourceRemoveUnusedImportsTs,
+		lsproto.CodeActionKindSourceSortImportsTs,
 	}
 
 	var result []lsproto.CodeActionKind
 	for _, organizeKind := range organizeImportsKinds {
-		if codeActionKindContains(requestedKind, organizeKind) {
+		if requestedKind.Contains(organizeKind) {
 			result = append(result, organizeKind)
 		}
 	}

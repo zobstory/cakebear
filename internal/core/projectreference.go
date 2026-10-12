@@ -3,18 +3,22 @@ package core
 import "github.com/zobstory/cakebear/internal/tspath"
 
 type ProjectReference struct {
-	Path         string `json:"path"`
-	OriginalPath string `json:"originalPath"`
-	Circular     bool   `json:"circular"`
+	// Path is a normalized path on disk.
+	Path tspath.RootedPath `json:"path"`
+	// OriginalPath is the path as it was originally written.
+	OriginalPath string `json:"originalPath,omitempty"`
+	// Circular indicates that this reference is intended to form a circularity.
+	Circular bool `json:"circular,omitempty"`
 }
 
-func ResolveProjectReferencePath(ref *ProjectReference) string {
+func ResolveProjectReferencePath(ref *ProjectReference) tspath.RootedFilePath {
 	return ResolveConfigFileNameOfProjectReference(ref.Path)
 }
 
-func ResolveConfigFileNameOfProjectReference(path string) string {
-	if tspath.FileExtensionIs(path, tspath.ExtensionJson) {
-		return path
+func ResolveConfigFileNameOfProjectReference(path tspath.RootedPath) tspath.RootedFilePath {
+	fileName := tspath.RootedFilePathFromPath(path)
+	if fileName.ExtensionIs(tspath.ExtensionJson) {
+		return fileName
 	}
-	return tspath.CombinePaths(path, "tsconfig.json")
+	return tspath.RootedDirectoryPathFromPath(path).ResolveFile("tsconfig.json")
 }
