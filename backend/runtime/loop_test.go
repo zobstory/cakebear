@@ -31,14 +31,16 @@ func (b *syncBuffer) String() string {
 }
 
 // isolate swaps the runtime's process-wide state (stdout, stderr, exit, the
-// queue and the handle count) for test doubles, and restores it afterwards.
+// queue, the handle count and the main domain) for test doubles, and restores
+// it afterwards.
 // A test that calls it must not be parallel: Go runs those only after every
 // sequential test has finished, so they never see the doubles.
 func isolate(t *testing.T) (stdout, stderr *syncBuffer, exits chan int) {
 	t.Helper()
 	stdout, stderr, exits = &syncBuffer{}, &syncBuffer{}, make(chan int, 4)
 
-	savedOut, savedErr, savedExit, savedHost := out, errOut, exit, listenHost
+	savedOut, savedErr, savedExit, savedHost, savedMain := out, errOut, exit, listenHost, mainDomain
+	mainDomain = newDomain()
 	outMu.Lock()
 	out = bufio.NewWriter(stdout)
 	outMu.Unlock()
@@ -55,7 +57,7 @@ func isolate(t *testing.T) (stdout, stderr *syncBuffer, exits chan int) {
 		errMu.Lock()
 		errOut = savedErr
 		errMu.Unlock()
-		exit, listenHost = savedExit, savedHost
+		exit, listenHost, mainDomain = savedExit, savedHost, savedMain
 		_ = takeQueue()
 		liveHandles.Store(0)
 		select {
