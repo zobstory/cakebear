@@ -112,6 +112,10 @@ type buildOptions struct {
 	emitGo    bool
 	goos      string
 	goarch    string
+
+	// race builds with Go's race detector. Tests set it (M1 check 8); there
+	// is no flag for it, since it needs cgo and slows the program severalfold.
+	race bool
 }
 
 func parseBuildArgs(args []string) (buildOptions, error) {

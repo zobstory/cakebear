@@ -97,20 +97,66 @@ program is compiled, which is the part a plain `number` or `string` could not do
 Per the project's own rule, any of these is retired the moment TypeScript ships
 an equivalent.
 
+## A server
+
+```ts
+import { createServer } from "node:http";
+
+const server = createServer((req, res) => {
+  res.setHeader("Content-Type", "text/plain");
+  if (req.url === "/health") {
+    res.end("ok\n");
+  } else {
+    res.end("hello from cakebear\n");
+  }
+});
+
+server.listen(3000, () => {
+  console.log("listening on http://localhost:3000");
+});
+```
+
+`cakec build` turns this into one binary that serves HTTP, and the same file
+runs unmodified under Node (it is
+[`examples/http-hello/main.ts`](examples/http-hello/main.ts)). `node:http`'s
+declarations ship with `cakec`, so there is no npm install and no
+`@types/node`. They declare only what the runtime implements, so a missing API
+such as `res.flushHeaders()` is a type error at the call site.
+
+The difference from Node: every request runs on its own goroutine, genuinely in
+parallel, so a CPU-heavy handler doesn't hold up the others. Eight requests to
+a handler computing `fib(38)` take about 1.3× as long as one; under Node they
+take about 7.7×, because its handlers share one thread.
+
+Because handlers overlap, one that changes shared state would be a data race.
+`cakec` refuses it at compile time:
+
+```console
+server.ts:10:3: cannot compile yet: this handler runs on many requests at once, so it can't change `hits`, which they all share
+server.ts:11:3: cannot compile yet: this handler runs on many requests at once, so it can't call `bump()`, which changes `hits`, shared by them all
+```
+
 ## The language subset
 
 Supported today: `number`, `string`, `boolean` and the extension types above;
 `const`/`let` with explicit annotations; function declarations with typed
 parameters and return; arithmetic; string concatenation; comparisons; `===` and
 `!==`; `&&`, `||`, `!`; unary minus; `if`/`else`; `while`; `return`;
-`console.log` of one primitive; calls to top-level functions.
+`console.log` of one primitive; calls to a function by name; arrow functions
+and function expressions as values (closures); `import` from `node:http`, and
+the members its bundled declarations list.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
-equality, arrays, objects, classes, generics, imports, `for`, multi-file
-programs, bitwise operators, `async`.
+equality, arrays, objects, classes, generics, imports from anything but
+`node:http`, `for`, multi-file programs, bitwise operators, `async`.
 
 Programs are compared against Node for behavioural equivalence, down to
-`console.log(-0)` and `1e-7`.
+`console.log(-0)` and `1e-7`, with one deliberate exception: request handlers
+run in parallel, where Node runs them one at a time. The compiler refuses
+shared mutable state in a handler, so that difference cannot become a data
+race. [`CLAUDE.md`](CLAUDE.md) lists the other accepted differences, such as log
+lines interleaving across requests and response header names being
+canonicalised.
 
 ## Contributing
 

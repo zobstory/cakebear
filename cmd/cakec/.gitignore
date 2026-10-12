@@ -1,0 +1,6 @@
+# A `go build` run inside this directory drops a binary here, which is how a
+# 2.2 MB cmd/cakec/main was once committed. The repo-root .gitignore is
+# upstream's and must not be edited (CLAUDE.md, "The golden rule"), so this one
+# covers the directory we own. Build with `go build -o bin/cakec ./cmd/cakec`.
+/cakec
+/main

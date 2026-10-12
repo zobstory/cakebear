@@ -43,6 +43,10 @@ type Options struct {
 	// most of what "cross-compilation for free" means in practice.
 	GOOS   string
 	GOARCH string
+	// Race builds with Go's race detector. It is for tests that check a
+	// compiled program's concurrency (M1 check 8), not a user-facing flag:
+	// it needs cgo, and it slows the program severalfold.
+	Race bool
 }
 
 // ErrNoToolchain reports that the Go toolchain could not be found. It is a
@@ -86,7 +90,11 @@ func Build(m *ir.Module, opts Options) (goSource string, err error) {
 		return goSource, fmt.Errorf("resolving output path: %w", err)
 	}
 
-	cmd := exec.Command("go", "build", "-o", out, ".")
+	args := []string{"build", "-o", out}
+	if opts.Race {
+		args = append(args, "-race")
+	}
+	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
 	// GOFLAGS from the surrounding environment can break a build that has no
 	// network access; -mod=mod on a module with no requirements is safe.

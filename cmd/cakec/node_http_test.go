@@ -197,24 +197,31 @@ func TestNodeHTTPHelloServes(t *testing.T) {
 }
 
 type runningServer struct {
-	cmd   *exec.Cmd
-	out   *io.PipeWriter
-	lines chan string
-	done  bool
+	cmd    *exec.Cmd
+	out    *io.PipeWriter
+	lines  chan string
+	stderr bytes.Buffer // read only after the process has exited
+	done   bool
 }
 
 func startServer(t *testing.T, bin string) *runningServer {
 	t.Helper()
 	pr, pw := io.Pipe()
-	s := &runningServer{cmd: exec.Command(bin), out: pw, lines: make(chan string, 16)}
+	// The scanner never blocks on lines: a full channel would stall the copy
+	// from the process's stdout, and with it every handler that logs.
+	s := &runningServer{cmd: exec.Command(bin), out: pw, lines: make(chan string, 64)}
 	s.cmd.Stdout = pw
+	s.cmd.Stderr = &s.stderr
 	if err := s.cmd.Start(); err != nil {
 		t.Fatalf("starting %s: %v", bin, err)
 	}
 	go func() {
 		sc := bufio.NewScanner(pr)
 		for sc.Scan() {
-			s.lines <- sc.Text()
+			select {
+			case s.lines <- sc.Text():
+			default: // nobody is reading; drop it
+			}
 		}
 	}()
 	t.Cleanup(func() {
@@ -233,14 +240,47 @@ func (s *runningServer) interrupt(t *testing.T) int {
 	if err := s.cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("sending SIGINT: %v", err)
 	}
-	err := s.cmd.Wait()
+	return s.exited(t, 30*time.Second)
+}
+
+// exited waits for the process to end and returns its exit code, failing the
+// test if it is still running after timeout.
+func (s *runningServer) exited(t *testing.T, timeout time.Duration) int {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- s.cmd.Wait() }()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(timeout):
+		t.Fatalf("the process was still running after %v", timeout)
+	}
 	s.done = true
 	_ = s.out.Close()
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		t.Fatalf("after SIGINT, Wait = %v, want an exit error", err)
+		if err == nil {
+			return 0
+		}
+		t.Fatalf("Wait = %v, want an exit status", err)
 	}
 	return exitErr.ExitCode()
+}
+
+// waitForLine fails the test unless the process prints want within timeout.
+func (s *runningServer) waitForLine(t *testing.T, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case line := <-s.lines:
+			if line == want {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("no %q within %v", want, timeout)
+		}
+	}
 }
 
 func freePort(t *testing.T) int {
