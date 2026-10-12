@@ -148,7 +148,8 @@ the members its bundled declarations list.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but
-`node:http`, `for`, multi-file programs, bitwise operators, `async`.
+`node:http`, `for`, multi-file programs, bitwise operators, `async`, and the
+standard library's globals (`parseInt`, `NaN`, `isNaN`, `setTimeout`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers

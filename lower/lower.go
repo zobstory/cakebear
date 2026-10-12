@@ -370,8 +370,9 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 
 // explainInitializer reports why a variable's initialiser cannot be stored,
 // for the initialisers that can say more than "has a type the backend cannot
-// represent": a function literal (async, a rest parameter, …) and one of
-// node:http's members used as a value. It reports whether it said anything.
+// represent": a function literal (async, a rest parameter, …), one of
+// node:http's members used as a value, and a library global such as parseInt.
+// It reports whether it said anything.
 func (l *lowerer) explainInitializer(init *ast.Node) bool {
 	var name *ast.Node
 	switch init.Kind {
@@ -386,6 +387,10 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 	}
 	if m, found, _ := l.hostMemberOf(l.checker.GetSymbolAtLocation(name)); found {
 		l.failHostValue(init, m)
+		return true
+	}
+	if init.Kind == ast.KindIdentifier && l.libraryName(init) {
+		l.fail(init, "%s is a library global cakebear does not implement yet", init.Text())
 		return true
 	}
 	return false
