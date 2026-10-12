@@ -66,6 +66,8 @@ func TestExpressionsCarryTypeAndSpan(t *testing.T) {
 	t.Parallel()
 
 	span := Span{File: "t.ts", Line: 1, Col: 1}
+	// One value for both sides: == on a promise type compares Elem pointers.
+	promise := PromiseOf(Number)
 
 	cases := []struct {
 		name string
@@ -82,6 +84,8 @@ func TestExpressionsCarryTypeAndSpan(t *testing.T) {
 		{"unary", &Unary{Typ: Number, Span: span}, Number},
 		{"call", &Call{Typ: Number, Span: span}, Number},
 		{"console.log", &ConsoleLog{Span: span}, Void},
+		{"await", &Await{Value: &Ident{Name: "p", Typ: promise}, Typ: Number, Span: span}, Number},
+		{"new Promise", &NewPromise{Typ: promise, Span: span}, promise},
 	}
 
 	for _, tt := range cases {
@@ -290,7 +294,7 @@ func TestTypeEqualFunc(t *testing.T) {
 func TestFuncAndHostTypesAreNeitherExtensionNorNumeric(t *testing.T) {
 	t.Parallel()
 
-	for _, typ := range []Type{FuncType([]Type{Number}, Number), HostOf(HostHTTPServer)} {
+	for _, typ := range []Type{FuncType([]Type{Number}, Number), HostOf(HostHTTPServer), PromiseOf(Number), PromiseOf(Int32)} {
 		if typ.IsExtension() || typ.IsNumeric() {
 			t.Errorf("%v: IsExtension() = %v, IsNumeric() = %v, want both false",
 				typ, typ.IsExtension(), typ.IsNumeric())
@@ -312,9 +316,83 @@ func TestFuncAndHostTypeStrings(t *testing.T) {
 		{HostOf(HostIncomingMessage), "IncomingMessage"},
 		{HostOf(HostServerResponse), "ServerResponse"},
 		{Type{Kind: KindFunc}, "() => invalid"},
+		{PromiseOf(Void), "Promise<void>"},
+		{PromiseOf(Int32), "Promise<i32>"},
+		{FuncType([]Type{Number}, PromiseOf(String)), "(number) => Promise<string>"},
+		{Type{Kind: KindPromise}, "Promise<invalid>"},
 	} {
 		if got := tt.in.String(); got != tt.want {
 			t.Errorf("String() = %q, want %q", got, tt.want)
+		}
+	}
+}
+
+func TestTypeEqualPromise(t *testing.T) {
+	t.Parallel()
+
+	a, b := PromiseOf(Number), PromiseOf(Number)
+	if a == b {
+		t.Fatal("two separately built promise types compared == ; the test no longer shows why Equal exists")
+	}
+	if !a.Equal(b) || !b.Equal(a) {
+		t.Errorf("%v.Equal(%v) = false, want true", a, b)
+	}
+
+	for _, other := range []Type{
+		PromiseOf(Int32),
+		PromiseOf(Void),
+		PromiseOf(PromiseOf(Number)),
+		Number, // the element itself
+		FuncType(nil, Number),
+		{Kind: KindPromise}, // nil Elem
+	} {
+		if a.Equal(other) || other.Equal(a) {
+			t.Errorf("%v.Equal(%v) = true, want false", a, other)
+		}
+	}
+
+	// Equality recurses through the element: a promise of a function.
+	cb := func() Type { return PromiseOf(FuncType([]Type{String}, Void)) }
+	if !cb().Equal(cb()) {
+		t.Errorf("%v.Equal(an identical promise) = false, want true", cb())
+	}
+	if !(Type{Kind: KindPromise}).Equal(Type{Kind: KindPromise}) {
+		t.Error("two promise types with nil elements are not Equal")
+	}
+}
+
+// PromiseOf keeps its own copy of the element, so a caller reusing the
+// variable it passed cannot change a promise type built earlier.
+func TestPromiseOfCopiesElement(t *testing.T) {
+	t.Parallel()
+
+	elem := Number
+	p := PromiseOf(elem)
+	elem = String
+	if !p.Equal(PromiseOf(Number)) {
+		t.Errorf("PromiseOf(Number) became %v after its argument variable changed to %v", p, elem)
+	}
+}
+
+func TestResolveAndExecutorTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		elem              Type
+		resolve, executor string
+	}{
+		// Promise<void>: resolve takes nothing, which is what lets a timer
+		// call it, as in `setTimeout(resolve, ms)`.
+		{Void, "() => void", "(() => void) => void"},
+		{Number, "(number) => void", "((number) => void) => void"},
+		{Int64, "(i64) => void", "((i64) => void) => void"},
+		{PromiseOf(Void), "(Promise<void>) => void", "((Promise<void>) => void) => void"},
+	} {
+		if got := ResolveType(tt.elem).String(); got != tt.resolve {
+			t.Errorf("ResolveType(%v) = %s, want %s", tt.elem, got, tt.resolve)
+		}
+		if got := ExecutorType(tt.elem).String(); got != tt.executor {
+			t.Errorf("ExecutorType(%v) = %s, want %s", tt.elem, got, tt.executor)
 		}
 	}
 }
