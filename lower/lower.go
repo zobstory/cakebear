@@ -60,6 +60,9 @@ type lowerer struct {
 	// discard is set while lowering a function literal that stands in for a
 	// void callback, so its return values are evaluated and dropped.
 	discard bool
+	// race is the handler race rule's summary of the file, built the first
+	// time a request handler is checked (race.go).
+	race *raceChecker
 }
 
 // File lowers one checked source file into a module.

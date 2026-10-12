@@ -143,8 +143,13 @@ type FuncLit struct {
 	// a function shares with its surroundings: a handler run on many goroutines
 	// at once cannot safely write a binding they all share.
 	Captures []Capture
-	Typ      Type
-	Span     Span
+	// Concurrent marks a literal the runtime calls on many goroutines at once,
+	// such as createServer's request listener. lower/ has checked that such a
+	// literal neither touches a mutable binding it shares with other calls nor
+	// calls anything that does (lower/race.go).
+	Concurrent bool
+	Typ        Type
+	Span       Span
 }
 
 // Capture is one enclosing binding a FuncLit refers to.

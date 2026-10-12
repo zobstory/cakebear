@@ -183,6 +183,10 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 		}
 		call.Args = append(call.Args, v)
 	}
+	// The listener runs on many goroutines at once; see race.go.
+	if spec.op == ir.HostCreateServer {
+		l.checkHandler(args[0], call.Args[0])
+	}
 	return call, true
 }
 
