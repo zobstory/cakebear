@@ -25,10 +25,10 @@ func TestGoFuncType(t *testing.T) {
 		in   ir.Type
 		want string
 	}{
-		{ir.FuncType([]ir.Type{ir.Number, ir.String}, ir.Boolean), "func(float64, string) bool"},
-		{ir.FuncType([]ir.Type{ir.Number}, ir.Void), "func(float64)"},
-		{ir.FuncType(nil, ir.FuncType(nil, ir.Number)), "func() func() float64"},
-		{ir.FuncType([]ir.Type{ir.FuncType([]ir.Type{ir.Int32}, ir.Void)}, ir.Void), "func(func(int32))"},
+		{ir.FuncType([]ir.Type{ir.Number, ir.String}, ir.Boolean), "func(*cakebearrt.Domain, float64, string) bool"},
+		{ir.FuncType([]ir.Type{ir.Number}, ir.Void), "func(*cakebearrt.Domain, float64)"},
+		{ir.FuncType(nil, ir.FuncType(nil, ir.Number)), "func(*cakebearrt.Domain) func(*cakebearrt.Domain) float64"},
+		{ir.FuncType([]ir.Type{ir.FuncType([]ir.Type{ir.Int32}, ir.Void)}, ir.Void), "func(*cakebearrt.Domain, func(*cakebearrt.Domain, int32))"},
 	} {
 		if got := goType(tt.in); got != tt.want {
 			t.Errorf("goType(%s) = %q, want %q", tt.in, got, tt.want)
@@ -66,9 +66,9 @@ func TestEmitFuncLit(t *testing.T) {
 	got := Emit(m)
 	mustParse(t, got)
 	for _, want := range []string{
-		"\tvar f func(float64, string) float64\n",
-		"\tf = func(x float64, _ string) float64 {\n",
-		"\t\treturn f(x, \"s\")\n",
+		"\tvar f func(*cakebearrt.Domain, float64, string) float64\n",
+		"\tf = func(ts_domain *cakebearrt.Domain, x float64, _ string) float64 {\n",
+		"\t\treturn f(ts_domain, x, \"s\")\n",
 		"\t}\n\t_ = f\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -100,7 +100,7 @@ func TestEmitExprStmtDiscardsNonCalls(t *testing.T) {
 	if !strings.Contains(got, "\t_ = (x * x)\n") {
 		t.Errorf("non-call expression statement not discarded:\n%s", got)
 	}
-	if !strings.Contains(got, "\tg(x)\n") || strings.Contains(got, "_ = g(x)") {
+	if !strings.Contains(got, "\tg(ts_domain, x)\n") || strings.Contains(got, "_ = g(ts_domain, x)") {
 		t.Errorf("call statement should be emitted bare:\n%s", got)
 	}
 }
@@ -127,8 +127,8 @@ func TestEmitNestedFuncLitIndentation(t *testing.T) {
 
 	got := Emit(m)
 	mustParse(t, got)
-	want := "\tmk = func() func() float64 {\n" +
-		"\t\treturn func() float64 {\n" +
+	want := "\tmk = func(ts_domain *cakebearrt.Domain) func(*cakebearrt.Domain) float64 {\n" +
+		"\t\treturn func(ts_domain *cakebearrt.Domain) float64 {\n" +
 		"\t\t\treturn 1.0\n" +
 		"\t\t}\n" +
 		"\t}\n"

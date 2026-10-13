@@ -162,10 +162,10 @@ func TestEmitProducesCompilableShape(t *testing.T) {
 
 	for _, want := range []string{
 		"package main",
-		"func double(n float64) float64",
+		"func double(ts_domain *" + rtPkg + ".Domain, n float64) float64",
 		"return (n * 2.0)",
 		"func main()",
-		"LogNumber(double(21.0))",
+		"LogNumber(double(ts_domain, 21.0))",
 		"defer " + rtPkg + ".Flush()",
 	} {
 		if !strings.Contains(got, want) {

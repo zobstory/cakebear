@@ -19,7 +19,7 @@ func TestGoTypeForHostTypes(t *testing.T) {
 		{ir.HostOf(ir.HostServerResponse), "*" + rtPkg + ".ServerResponse"},
 		{
 			ir.FuncType([]ir.Type{ir.HostOf(ir.HostIncomingMessage), ir.HostOf(ir.HostServerResponse)}, ir.Void),
-			"func(*" + rtPkg + ".IncomingMessage, *" + rtPkg + ".ServerResponse)",
+			"func(*" + rtPkg + ".Domain, *" + rtPkg + ".IncomingMessage, *" + rtPkg + ".ServerResponse)",
 		},
 	} {
 		if got := goType(tt.in); got != tt.want {
@@ -67,11 +67,11 @@ func TestEmitHostServer(t *testing.T) {
 	for _, want := range []string{
 		"import " + rtPkg + " ",
 		"var server *" + rtPkg + ".Server\n",
-		"\tserver = " + rtPkg + ".CreateServer(func(req *" + rtPkg + ".IncomingMessage, res *" + rtPkg + ".ServerResponse) {\n",
+		"\tserver = " + rtPkg + ".CreateServer(func(ts_domain *" + rtPkg + ".Domain, req *" + rtPkg + ".IncomingMessage, res *" + rtPkg + ".ServerResponse) {\n",
 		"\t\tres.SetHeader(\"a\", \"b\").End(\"c\")\n", // a chained call, emitted bare
 		"\t\tif (req.URL() == \"/x\") {\n",
 		"\t\t\tres.WriteHead(404.0)\n",
-		"\tserver.Listen(3000.0, func() {\n",
+		"\tserver.Listen(3000.0, func(ts_domain *" + rtPkg + ".Domain) {\n",
 		"\t" + rtPkg + ".Run()\n}\n", // the last statement of main
 	} {
 		if !strings.Contains(got, want) {
@@ -104,7 +104,7 @@ func TestEmitImportsRuntimeForAHostTypeInASignature(t *testing.T) {
 	}}}
 	got := Emit(m)
 	mustParse(t, got)
-	if !strings.Contains(got, "import "+rtPkg+" ") || !strings.Contains(got, "func handle(res *"+rtPkg+".ServerResponse)") {
+	if !strings.Contains(got, "import "+rtPkg+" ") || !strings.Contains(got, "func handle(ts_domain *"+rtPkg+".Domain, res *"+rtPkg+".ServerResponse)") {
 		t.Errorf("host-typed parameter without the runtime import:\n%s", got)
 	}
 }
@@ -130,7 +130,7 @@ func TestEmitHoistsTopLevelVariables(t *testing.T) {
 	if !strings.Contains(got, "\nvar n float64\n") || strings.Contains(got, "var n float64 =") {
 		t.Errorf("n should be declared at package level without an initialiser:\n%s", got)
 	}
-	if !strings.Contains(got, "\tshow()\n\tn = 7.0\n") {
+	if !strings.Contains(got, "\tshow(ts_domain)\n\tn = 7.0\n") {
 		t.Errorf("n should be assigned in main after the call that precedes it:\n%s", got)
 	}
 }

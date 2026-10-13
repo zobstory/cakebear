@@ -14,7 +14,7 @@ import (
 // serveAsync is serveWith for a listener that runs in its request's domain.
 func serveAsync(t *testing.T, handler func(*Domain, *IncomingMessage, *ServerResponse)) string {
 	t.Helper()
-	s := createServerD(handler)
+	s := CreateServer(handler)
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(s.serve))
 	ts.Config.ErrorLog = log.New(io.Discard, "", 0) // panics are expected in some tests
 	ts.Start()

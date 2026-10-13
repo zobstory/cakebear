@@ -29,26 +29,12 @@ func (e *UnsupportedError) Error() string {
 func describeUnsupported(node any) string {
 	switch n := node.(type) {
 	case *ir.HostCall:
-		if n.Op.IsTimer() {
-			return "the backend cannot emit " + n.Op.String() + " yet"
-		}
 		return "the backend cannot emit node:http's " + n.Op.String() + " yet"
 	case *ir.HostProp:
 		return "the backend cannot emit node:http's " + n.Prop.String() + " yet"
-	case *ir.Await:
-		return "the backend cannot emit await yet"
-	case *ir.NewPromise:
-		return "the backend cannot emit new Promise yet"
 	default:
 		return fmt.Sprintf("the backend cannot emit %T yet", node)
 	}
-}
-
-// refuseAsync records an async function the backend cannot emit yet. Its
-// body would otherwise emit as an ordinary function: one that builds, runs,
-// and returns a value where its callers expect a promise.
-func (e *emitter) refuseAsync(span ir.Span, what string) {
-	e.unsupported = append(e.unsupported, Unsupported{Span: span, What: "the backend cannot emit async " + what + " yet"})
 }
 
 // sortedUnsupported orders findings by source position. Emission visits

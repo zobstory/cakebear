@@ -278,9 +278,21 @@ each by name:
 - a string or extra-argument timer;
 - a timer callback that isn't `() => void`.
 
-The race rule now treats a `const` promise as shared state. Until emission
-lands, `cakec` reports these programs as `cannot compile yet: the backend
-cannot emit …`. Emission and the end-to-end checks follow.
+The race rule now treats a `const` promise as shared state.
+
+The emitter (`backend/emit_async.go`) writes async code as Go:
+- an async body is `cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) T {…})`;
+- `await` is `cakebearrt.Await(ts_co, p)`;
+- promises are `*cakebearrt.Promise[T]`, with `struct{}` for `void`.
+
+Every compiled function and function value takes `ts_domain` first, and every
+call passes it on. `main` declares one only when its own code uses it, so a
+program that touches nothing in the runtime still has no import. `ts_domain`
+and `ts_co` can't collide with user names, because `mangle` produces a `ts_`
+name only from a Go keyword or a name already starting with `ts_`. `sleep.ts`
+and `ordering.ts` match Node byte for byte. An async handler serves 8
+concurrent requests in about 1.3× the time of one, where Node takes 7.2×.
+The end-to-end tests and the docs for the subset come next.
 
 After M2, none urgent:
 
