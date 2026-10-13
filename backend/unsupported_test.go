@@ -31,7 +31,7 @@ func TestBuildRefusesIRItCannotEmit(t *testing.T) {
 		}},
 	}
 
-	src, err := Build(m, Options{Output: t.TempDir() + "/out"})
+	src, err := Build(ir.ProgramOf(m), Options{Output: t.TempDir() + "/out"})
 	var unsupported *UnsupportedError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("Build error = %v, want *UnsupportedError", err)

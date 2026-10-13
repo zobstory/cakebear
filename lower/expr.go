@@ -55,7 +55,7 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			l.failf(n, "%s has a type the backend cannot represent yet", n.Text())
 			return nil
 		}
-		return &ir.Ident{Name: n.Text(), Typ: t, Span: l.span(n)}
+		return &ir.Ident{Name: n.Text(), Module: l.moduleOf(n), Typ: t, Span: l.span(n)}
 
 	case ast.KindParenthesizedExpression:
 		// Parentheses carry no meaning past parsing; the emitter parenthesises
@@ -298,7 +298,7 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return nil
 	}
 
-	call := &ir.Call{Callee: c.Expression.Text(), Typ: l.typeOf(n), Span: l.span(n)}
+	call := &ir.Call{Callee: c.Expression.Text(), Module: l.moduleOf(c.Expression), Typ: l.typeOf(n), Span: l.span(n)}
 	if c.Arguments != nil {
 		for _, a := range c.Arguments.Nodes {
 			lowered := l.expr(a)

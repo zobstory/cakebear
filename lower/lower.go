@@ -424,6 +424,6 @@ func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stm
 		return nil
 	}
 	return []ir.Stmt{&ir.Assign{
-		Name: bin.Left.Text(), Value: value, Span: l.span(stmt),
+		Name: bin.Left.Text(), Module: l.moduleOf(bin.Left), Value: value, Span: l.span(stmt),
 	}}
 }

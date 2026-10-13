@@ -33,8 +33,12 @@ type UndefinedLit struct{ Span Span }
 // Ident is a reference to a parameter or variable.
 type Ident struct {
 	Name string
-	Typ  Type
-	Span Span
+	// Module is the File of the module whose top level declares Name, or
+	// empty when Name is local to a function: a parameter, a binding in its
+	// body, or one it captures from an enclosing function (Program).
+	Module string
+	Typ    Type
+	Span   Span
 }
 
 // BinaryOp is the set of binary operators the Phase-1 subset lowers.
@@ -120,6 +124,8 @@ type Unary struct {
 // callee stays a name. Calling an arbitrary expression is not in the subset.
 type Call struct {
 	Callee string
+	// Module qualifies Callee as Ident.Module does Name.
+	Module string
 	Args   []Expr
 	Typ    Type
 	Span   Span
@@ -184,7 +190,10 @@ type NewPromise struct {
 
 // Capture is one enclosing binding a FuncLit refers to.
 type Capture struct {
-	Name    string
+	Name string
+	// Module qualifies Name as Ident.Module does: a binding declared at a
+	// module's top level, or one of an enclosing function's.
+	Module  string
 	Type    Type
 	Mutable bool // let or a parameter, versus const
 }

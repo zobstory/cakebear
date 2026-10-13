@@ -62,7 +62,7 @@ func helloModule() *ir.Module {
 func TestEmitHostServer(t *testing.T) {
 	t.Parallel()
 
-	got := Emit(helloModule())
+	got := Emit(ir.ProgramOf(helloModule()))
 	mustParse(t, got)
 	for _, want := range []string{
 		"import " + rtPkg + " ",
@@ -87,7 +87,7 @@ func TestEmitRunOnlyWhenNodeHTTPIsUsed(t *testing.T) {
 
 	span := ir.Span{File: "t.ts", Line: 1, Col: 1}
 	m := &ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.ConsoleLog{Arg: &ir.NumberLit{Value: 1, Span: span}, Span: span}}}}
-	if got := Emit(m); strings.Contains(got, "Run()") {
+	if got := Emit(ir.ProgramOf(m)); strings.Contains(got, "Run()") {
 		t.Errorf("a program without a server calls Run:\n%s", got)
 	}
 }
@@ -102,7 +102,7 @@ func TestEmitImportsRuntimeForAHostTypeInASignature(t *testing.T) {
 		Name: "handle", Result: ir.Void, Span: span,
 		Params: []ir.Param{{Name: "res", Type: ir.HostOf(ir.HostServerResponse), Span: span}},
 	}}}
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
 	if !strings.Contains(got, "import "+rtPkg+" ") || !strings.Contains(got, "func handle(ts_domain *"+rtPkg+".Domain, res *"+rtPkg+".ServerResponse)") {
 		t.Errorf("host-typed parameter without the runtime import:\n%s", got)
@@ -125,7 +125,7 @@ func TestEmitHoistsTopLevelVariables(t *testing.T) {
 			&ir.VarDecl{Name: "n", Type: ir.Number, Mutable: true, Init: &ir.NumberLit{Value: 7, Span: span}, Span: span},
 		},
 	}
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
 	if !strings.Contains(got, "\nvar n float64\n") || strings.Contains(got, "var n float64 =") {
 		t.Errorf("n should be declared at package level without an initialiser:\n%s", got)
