@@ -12,6 +12,7 @@ import (
 	"github.com/zobstory/cakebear/backend"
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/compiler"
+	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/lower"
 )
 
@@ -66,7 +67,7 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 		output = module.Name
 	}
 
-	goSource, err := backend.Build(module, backend.Options{
+	goSource, err := backend.Build(ir.ProgramOf(module), backend.Options{
 		Output:       output,
 		KeepGoSource: opts.emitGo,
 		GOOS:         opts.goos,

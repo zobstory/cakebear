@@ -22,9 +22,11 @@ type VarDecl struct {
 
 // Assign is assignment to an existing binding.
 type Assign struct {
-	Name  string
-	Value Expr
-	Span  Span
+	Name string
+	// Module qualifies Name as Ident.Module does.
+	Module string
+	Value  Expr
+	Span   Span
 }
 
 type If struct {

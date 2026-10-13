@@ -248,7 +248,7 @@ func (l *lowerer) capture(fn, id *ast.Node, sym *ast.Symbol) (ir.Capture, bool) 
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
 		mutable = false
 	}
-	return ir.Capture{Name: id.Text(), Type: l.typeOf(id), Mutable: mutable}, true
+	return ir.Capture{Name: id.Text(), Module: topLevelModule(sym), Type: l.typeOf(id), Mutable: mutable}, true
 }
 
 // isMemberName reports whether id is the `name` in `x.name`, which names a

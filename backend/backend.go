@@ -54,13 +54,16 @@ type Options struct {
 // compilation failure, and the CLI phrases it differently.
 var ErrNoToolchain = errors.New("the Go toolchain is required to build cakebear programs but was not found on PATH")
 
-// Build lowers a module to Go, compiles it, and writes the executable.
+// Build lowers a program to Go, compiles it, and writes the executable.
 //
 // It returns the generated Go source alongside any error so callers can show it
 // — when the emitter produces something the Go compiler rejects, the source is
 // the only useful thing to look at.
-func Build(m *ir.Module, opts Options) (goSource string, err error) {
-	goSource, unsupported := emit(m)
+func Build(p *ir.Program, opts Options) (goSource string, err error) {
+	goSource, unsupported, err := emit(p)
+	if err != nil {
+		return goSource, err
+	}
 	// Refused before go build: its error would point at generated code the
 	// user never wrote, for a gap that is cakebear's.
 	if len(unsupported) > 0 {

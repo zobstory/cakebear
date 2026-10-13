@@ -158,7 +158,7 @@ func TestEmitProducesCompilableShape(t *testing.T) {
 		}},
 	}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 
 	for _, want := range []string{
 		"package main",
@@ -189,7 +189,7 @@ func TestEmitOmitsRuntimeImportWhenUnused(t *testing.T) {
 		}},
 	}
 
-	if got := Emit(m); strings.Contains(got, "import") {
+	if got := Emit(ir.ProgramOf(m)); strings.Contains(got, "import") {
 		t.Errorf("emitted an import for a module that uses no runtime:\n%s", got)
 	}
 }
@@ -212,7 +212,7 @@ func TestEmitNegativeZeroUsesRuntimeValue(t *testing.T) {
 		}},
 	}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	if !strings.Contains(got, rtPkg+".NegZero") {
 		t.Errorf("negative zero was emitted as a constant, which Go folds to +0:\n%s", got)
 	}
@@ -271,7 +271,7 @@ func TestEmitConversion(t *testing.T) {
 		},
 	}}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	if !strings.Contains(got, "var n int32\n") || !strings.Contains(got, "\tn = int32(42.0)\n") {
 		t.Errorf("conversion did not emit as a Go conversion:\n%s", got)
 	}
@@ -288,7 +288,7 @@ func TestExtensionIntegersRoundTrip(t *testing.T) {
 	}}
 
 	out := filepath.Join(t.TempDir(), "prog")
-	src, err := Build(m, Options{Output: out})
+	src, err := Build(ir.ProgramOf(m), Options{Output: out})
 	if err != nil {
 		t.Fatalf("Build: %v\n%s", err, src)
 	}

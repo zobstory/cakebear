@@ -264,10 +264,13 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
 `await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
 builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's steps 1 to 3 are
+M4, since a real project is several files of them. M3's steps 1 to 4 are
 done: the `tsc` passthrough; native builds from `tsconfig.json`, which still
-compile one module; and cakebear's declarations in `tsc` mode and the
-language server.
+compile one module; cakebear's declarations in `tsc` mode and the language
+server; and the IR for programs. In that IR (`ir/program.go`), an
+`ir.Program` holds the modules sorted by file, and a reference to a top-level
+name says which module declares it. `Program.Validate`, which the backend
+runs before emitting, holds lowering to that.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,

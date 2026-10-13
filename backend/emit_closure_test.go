@@ -63,7 +63,7 @@ func TestEmitFuncLit(t *testing.T) {
 		}}}},
 	}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
 	for _, want := range []string{
 		"\tvar f func(*cakebearrt.Domain, float64, string) float64\n",
@@ -95,7 +95,7 @@ func TestEmitExprStmtDiscardsNonCalls(t *testing.T) {
 		}},
 	}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
 	if !strings.Contains(got, "\t_ = (x * x)\n") {
 		t.Errorf("non-call expression statement not discarded:\n%s", got)
@@ -125,7 +125,7 @@ func TestEmitNestedFuncLitIndentation(t *testing.T) {
 		}},
 	}
 
-	got := Emit(m)
+	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
 	want := "\tmk = func(ts_domain *cakebearrt.Domain) func(*cakebearrt.Domain) float64 {\n" +
 		"\t\treturn func(ts_domain *cakebearrt.Domain) float64 {\n" +

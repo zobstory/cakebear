@@ -28,7 +28,7 @@ func TestBuildProducesRunnableBinary(t *testing.T) {
 	}}
 
 	out := filepath.Join(t.TempDir(), "prog")
-	src, err := Build(m, Options{Output: out})
+	src, err := Build(ir.ProgramOf(m), Options{Output: out})
 	if err != nil {
 		t.Fatalf("Build: %v\n%s", err, src)
 	}
@@ -151,7 +151,7 @@ func TestEmitAllStatementFormsCompile(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "prog")
-	src, err := Build(m, Options{Output: out})
+	src, err := Build(ir.ProgramOf(m), Options{Output: out})
 	if err != nil {
 		t.Fatalf("emitted source did not compile: %v\n%s", err, src)
 	}
@@ -174,7 +174,7 @@ func TestBuildKeepGoSourceReturnsSource(t *testing.T) {
 	m := &ir.Module{Name: "t", Main: []ir.Stmt{logNum(num(1))}}
 	out := filepath.Join(t.TempDir(), "prog")
 
-	src, err := Build(m, Options{Output: out, KeepGoSource: true})
+	src, err := Build(ir.ProgramOf(m), Options{Output: out, KeepGoSource: true})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestBuildCrossCompiles(t *testing.T) {
 	m := &ir.Module{Name: "t", Main: []ir.Stmt{logNum(num(1))}}
 	out := filepath.Join(t.TempDir(), "prog-linux")
 
-	if _, err := Build(m, Options{Output: out, GOOS: "linux", GOARCH: "amd64"}); err != nil {
+	if _, err := Build(ir.ProgramOf(m), Options{Output: out, GOOS: "linux", GOARCH: "amd64"}); err != nil {
 		t.Fatalf("cross-compiling for linux/amd64: %v", err)
 	}
 	if _, err := os.Stat(out); err != nil {

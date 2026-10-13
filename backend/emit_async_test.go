@@ -63,7 +63,7 @@ func sleepModule() *ir.Module {
 func TestEmitAsyncSleepShape(t *testing.T) {
 	t.Parallel()
 
-	got := Emit(sleepModule())
+	got := Emit(ir.ProgramOf(sleepModule()))
 	mustParse(t, got)
 	for _, want := range []string{
 		"func sleep(ts_domain *cakebearrt.Domain, ms float64) *cakebearrt.Promise[struct{}] {\n",
@@ -88,7 +88,7 @@ func TestBuildAsyncSleepMatchesNode(t *testing.T) {
 	t.Parallel()
 
 	out := filepath.Join(t.TempDir(), "sleep")
-	if src, err := Build(sleepModule(), Options{Output: out}); err != nil {
+	if src, err := Build(ir.ProgramOf(sleepModule()), Options{Output: out}); err != nil {
 		t.Fatalf("Build: %v\n%s", err, src)
 	}
 	start := time.Now()
@@ -120,7 +120,7 @@ func TestBuildAwaitWithoutATimerRuns(t *testing.T) {
 		logStr("sync done"),
 	}}
 	out := filepath.Join(t.TempDir(), "await")
-	if src, err := Build(m, Options{Output: out}); err != nil {
+	if src, err := Build(ir.ProgramOf(m), Options{Output: out}); err != nil {
 		t.Fatalf("Build: %v\n%s", err, src)
 	}
 	got, err := exec.Command(out).Output()
@@ -155,7 +155,7 @@ func TestEmitAsyncValues(t *testing.T) {
 			}}},
 		}}},
 	}}
-	got := Emit(&ir.Module{Name: "t", Funcs: []*ir.Func{g, h}})
+	got := Emit(ir.ProgramOf(&ir.Module{Name: "t", Funcs: []*ir.Func{g, h}}))
 	mustParse(t, got)
 	for _, want := range []string{
 		"\treturn cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) float64 {\n",
@@ -182,9 +182,9 @@ func TestEmitAsyncLiteralInAVoidSlot(t *testing.T) {
 			Then: []ir.Stmt{&ir.Return{Span: span}},
 		}},
 	}
-	got := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.VarDecl{
+	got := Emit(ir.ProgramOf(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.VarDecl{
 		Name: "f", Type: handler.Typ, Init: handler, Span: span,
-	}}})
+	}}}))
 	mustParse(t, got)
 	for _, want := range []string{
 		"\tf = func(ts_domain *cakebearrt.Domain) {\n\t\tcakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) struct{} {\n",
@@ -208,7 +208,7 @@ func TestEmitPlainLiteralInsideAsyncBody(t *testing.T) {
 	f := &ir.Func{Name: "f", Result: voidPromise, Async: true, Span: span, Body: []ir.Stmt{
 		&ir.VarDecl{Name: "inner", Type: inner.Typ, Init: inner, Span: span},
 	}}
-	got := Emit(&ir.Module{Name: "t", Funcs: []*ir.Func{f}})
+	got := Emit(ir.ProgramOf(&ir.Module{Name: "t", Funcs: []*ir.Func{f}}))
 	mustParse(t, got)
 	if !strings.Contains(got, "\t\tinner = func(ts_domain *cakebearrt.Domain) {\n\t\t\treturn\n\t\t}\n") {
 		t.Errorf("the nested literal's return should be bare:\n%s", got)
@@ -218,9 +218,9 @@ func TestEmitPlainLiteralInsideAsyncBody(t *testing.T) {
 func TestEmitClearTimeout(t *testing.T) {
 	t.Parallel()
 
-	got := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.HostCall{
+	got := Emit(ir.ProgramOf(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.HostCall{
 		Op: ir.HostClearTimeout, Typ: ir.Void, Span: span, Args: []ir.Expr{num(3)},
-	}}}})
+	}}}}))
 	mustParse(t, got)
 	for _, want := range []string{"\tcakebearrt.ClearTimeout(ts_domain, 3.0)\n", "\t" + rtPkg + ".Run()\n"} {
 		if !strings.Contains(got, want) {
@@ -250,7 +250,7 @@ func tlaModule() *ir.Module {
 func TestEmitTopLevelAwaitShape(t *testing.T) {
 	t.Parallel()
 
-	got := Emit(tlaModule())
+	got := Emit(ir.ProgramOf(tlaModule()))
 	mustParse(t, got)
 	for _, want := range []string{
 		"\tts_domain := cakebearrt.Main()\n",
@@ -272,7 +272,7 @@ func TestBuildTopLevelAwaitRuns(t *testing.T) {
 	t.Parallel()
 
 	out := filepath.Join(t.TempDir(), "tla")
-	if src, err := Build(tlaModule(), Options{Output: out}); err != nil {
+	if src, err := Build(ir.ProgramOf(tlaModule()), Options{Output: out}); err != nil {
 		t.Fatalf("Build: %v\n%s", err, src)
 	}
 	got, err := exec.Command(out).Output()
@@ -297,11 +297,11 @@ func TestEmitSpawnForms(t *testing.T) {
 		fn := &ir.FuncLit{Async: async, Result: result, Typ: ir.FuncType(nil, result), Concurrent: true, Span: span, Body: body}
 		return &ir.ExprStmt{Span: span, Expr: &ir.HostCall{Op: ir.HostSpawn, Args: []ir.Expr{fn}, Typ: ir.PromiseOf(elem), Span: span}}
 	}
-	got := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{
+	got := Emit(ir.ProgramOf(&ir.Module{Name: "t", Main: []ir.Stmt{
 		spawnOf("value", ir.Number, false, ir.Number),
 		spawnOf("nothing", ir.Void, false, ir.Void),
 		spawnOf("async", voidPromise, true, ir.Void),
-	}})
+	}}))
 	mustParse(t, got)
 	for _, want := range []string{
 		"\tcakebearrt.Spawn(ts_domain, func(ts_domain *cakebearrt.Domain) float64 {\n",
@@ -325,11 +325,11 @@ func TestMainDeclaresADomainOnlyForItsOwnUse(t *testing.T) {
 	handler := &ir.FuncLit{Result: ir.Void, Typ: ir.FuncType(nil, ir.Void), Span: span, Body: []ir.Stmt{
 		&ir.ExprStmt{Span: span, Expr: &ir.Call{Callee: "g", Typ: ir.Void, Span: span}},
 	}}
-	only := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.VarDecl{Name: "f", Type: handler.Typ, Init: handler, Span: span}}})
+	only := Emit(ir.ProgramOf(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.VarDecl{Name: "f", Type: handler.Typ, Init: handler, Span: span}}}))
 	if strings.Contains(only, domainVar+" := ") {
 		t.Errorf("main declared a domain only its literal uses:\n%s", only)
 	}
-	direct := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.Call{Callee: "g", Typ: ir.Void, Span: span}}}})
+	direct := Emit(ir.ProgramOf(&ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.Call{Callee: "g", Typ: ir.Void, Span: span}}}}))
 	if !strings.Contains(direct, "\t"+domainVar+" := "+rtPkg+".Main()\n") {
 		t.Errorf("main calls g but declares no domain:\n%s", direct)
 	}

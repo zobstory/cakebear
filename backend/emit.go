@@ -47,14 +47,27 @@ type emitter struct {
 	hoisted map[*ir.VarDecl]bool
 }
 
-// Emit renders a module as the contents of a Go main package. IR the backend
+// Emit renders a program as the contents of a Go main package. IR the backend
 // cannot emit yet appears as an #error line; Build reports it properly.
-func Emit(m *ir.Module) string {
-	src, _ := emit(m)
+func Emit(p *ir.Program) string {
+	src, _, err := emit(p)
+	if err != nil {
+		return "#error " + err.Error() + "\n"
+	}
 	return src
 }
 
-func emit(m *ir.Module) (string, []Unsupported) {
+// emit renders p. An error is a program the backend refuses outright: one
+// that breaks the IR's invariants, which is a bug in lowering, or one of
+// several modules, which is M3's step 6.
+func emit(p *ir.Program) (string, []Unsupported, error) {
+	if err := p.Validate(); err != nil {
+		return "", nil, fmt.Errorf("invalid IR, a bug in lowering: %w", err)
+	}
+	if len(p.Modules) > 1 {
+		return "", nil, fmt.Errorf("the backend compiles one module so far, and this program has %d", len(p.Modules))
+	}
+	m := p.EntryModule()
 	var e emitter
 
 	// The body is emitted first so usesRuntime is known before the header,
@@ -70,7 +83,7 @@ func emit(m *ir.Module) (string, []Unsupported) {
 		fmt.Fprintf(&out, "import %s %q\n\n", rtPkg, genModule+"/"+rtDir)
 	}
 	out.WriteString(body)
-	return out.String(), sortedUnsupported(e.unsupported)
+	return out.String(), sortedUnsupported(e.unsupported), nil
 }
 
 func (e *emitter) module(m *ir.Module) string {
