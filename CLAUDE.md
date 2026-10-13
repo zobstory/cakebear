@@ -32,7 +32,10 @@ the pipeline requires no edit inside their tree. Everything else `cakec` does
 is `tsc`, unchanged: it calls `execute.CommandLine` exactly as `cmd/tsc` does,
 using copies of `cmd/tsc`'s own files (`cmd/cakec/tsc_*.go`), since a
 `package main` can't be imported. `scripts/copy-tsc-cmd.sh` writes the copies,
-every sync runs it, and `TestTscCopies` fails when one has drifted.
+every sync runs it, and `TestTscCopies` fails when one has drifted. The copies
+are verbatim but for one line of `lsp.go`, which routes the language server's
+filesystem through `lspFS`. The script stops if upstream no longer has that
+line, rather than drop the change.
 
 Hold this line and a sync is mechanical: `scripts/sync-upstream.sh` replaces
 every upstream file with the new snapshot and rewrites the module path, and
@@ -261,9 +264,10 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
 `await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
 builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's steps 1 and 2 are
-done: the `tsc` passthrough, and native builds from `tsconfig.json`, which
-still compile one module.
+M4, since a real project is several files of them. M3's steps 1 to 3 are
+done: the `tsc` passthrough; native builds from `tsconfig.json`, which still
+compile one module; and cakebear's declarations in `tsc` mode and the
+language server.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -294,9 +298,10 @@ still compile one module.
   `execute` has no plugin
   or emit hook, and its `OnProgram` callback switches upstream into test mode,
   so native builds keep constructing their own Program. This replaces the
-  earlier "`tsconfig.json` support" item. Its `--lsp` passthrough should also
-  inject cakebear's declarations, so editors stop reporting `spawn` and `i32`
-  as unknown names.
+  earlier "`tsconfig.json` support" item. The `tsc` passthrough differs from
+  `tsc` in one way: a project with a `"cakebear"` block, and every project in
+  the language server, sees cakebear's declarations (see the type
+  extensions).
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
   for most real programs, and aggregates must extend the race rule first.
@@ -336,8 +341,20 @@ guarantee in one repo.
 
 ## cakebear's type extensions
 
-Declared in `types/cakebear.d.ts` and injected into every program from a
-virtual path, so they resolve with no import or reference directive.
+Declared in `types/cakebear.d.ts` and injected into every program, so they
+resolve with no import or reference directive (`cmd/cakec/declarations.go`):
+
+- **Native builds** add the declarations files as root files at virtual paths.
+  Lowering recognises `spawn`, the conversions and `node:http`'s members by
+  the virtual file declaring them, so they stay files of their own.
+- **The language server** (`cakec --lsp`) always has them. **`tsc` mode** has
+  them only for a project with a `"cakebear"` block, so `cakec` on any other
+  project is byte for byte `tsc`. Neither can be given extra root files, so
+  the declarations are appended to the bundled `lib.es5.d.ts`, which every lib
+  chain with an `Array` reaches. Go-to-definition on `spawn` lands there.
+- A *script*, a file with no import or export, that declares its own global
+  `spawn` or `i32` merges with cakebear's and gets TS2394 inside the lib. A
+  module's own declaration shadows cakebear's instead.
 
 | Type | Lowers to | Notes |
 |---|---|---|

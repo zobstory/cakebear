@@ -95,8 +95,10 @@ func main() {
 
 // runMain is cmd/tsc's runMain plus one command, build. Only the bare word is
 // cakebear's: tsc would read it as a file named "build", and --build and -b
-// are still tsc's project-reference builds. TestTscMainUnchanged fails when
-// upstream's dispatch changes, so that it gets mirrored here.
+// are still tsc's project-reference builds. The other difference is that a
+// project with a "cakebear" block sees cakebear's declarations.
+// TestTscMainUnchanged fails when upstream's dispatch changes, so that it gets
+// mirrored here.
 func runMain() int {
 	core.ApplyDebugStackLimit()
 	args := osutil.Args()[1:]
@@ -112,7 +114,11 @@ func runMain() int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	result := execute.CommandLine(ctx, newSystem(), args, nil)
+	sys := newSystem()
+	if declaresCakebear(args, sys.fs, sys.cwd) {
+		sys.fs = withDeclarations(sys.fs)
+	}
+	result := execute.CommandLine(ctx, sys, args, nil)
 	return int(result.Status)
 }
 

@@ -91,6 +91,12 @@ basename:
 }
 ```
 
+With that block, `cakec` in `tsc` mode (`cakec -p .`, `--watch`, `--build`)
+also knows cakebear's own names, so `spawn`, `i32` and `node:http` type-check.
+On a project without one, it is exactly `tsc`. `cakec --lsp --stdio` is
+TypeScript's language server with cakebear's names in every project, so an
+editor that runs it stops reporting them as unknown.
+
 Building requires the Go toolchain on `PATH`; cakebear shells out to it.
 
 ## Types cakebear adds
