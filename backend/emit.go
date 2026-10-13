@@ -32,9 +32,16 @@ type emitter struct {
 	// unsupported collects IR this backend cannot emit yet. Build refuses the
 	// module before go build ever sees the placeholder written for each.
 	unsupported []Unsupported
-	// usesHost records a call into node:http. Such a program ends main with the
-	// runtime's Run, which keeps the process alive while a server listens.
-	usesHost bool
+	// needsRun records a call into node:http, a timer, or async code. Such a
+	// program ends main with the runtime's Run, which drives the main domain:
+	// its promise reactions, its timers, and a listening server.
+	needsRun bool
+	// usesDomain records a reference to the current domain (dom), so main
+	// declares its own only when its body uses it.
+	usesDomain bool
+	// asyncVoid is set while emitting the body of an async function whose
+	// promise holds nothing, where a bare return returns struct{}{}.
+	asyncVoid bool
 	// hoisted holds the top-level variables declared at package level. Their
 	// declarations in main become assignments.
 	hoisted map[*ir.VarDecl]bool
@@ -93,9 +100,14 @@ func (e *emitter) module(m *ir.Module) string {
 			e.buf.WriteString("\n")
 		}
 	})
+	e.usesDomain = false
 	mainBody := e.capture(func() {
 		e.stmts(m.Main, 1)
 	})
+	mainDomain := e.usesDomain
+	if mainDomain {
+		e.usesRuntime = true
+	}
 
 	var out strings.Builder
 	if globals != "" {
@@ -106,8 +118,12 @@ func (e *emitter) module(m *ir.Module) string {
 	if e.usesRuntime {
 		out.WriteString("\tdefer " + rtPkg + ".Flush()\n")
 	}
+	if mainDomain {
+		// Top-level code runs in the main program's domain (domain.go).
+		out.WriteString("\t" + domainVar + " := " + rtPkg + ".Main()\n")
+	}
 	out.WriteString(mainBody)
-	if e.usesHost {
+	if e.needsRun {
 		// Last, so listen callbacks run after the top-level code, as in Node.
 		out.WriteString("\t" + rtPkg + ".Run()\n")
 	}
@@ -127,22 +143,22 @@ func (e *emitter) capture(emit func()) string {
 }
 
 func (e *emitter) function(fn *ir.Func) {
-	if fn.Async {
-		e.refuseAsync(fn.Span, "function "+fn.Name)
-	}
-	fmt.Fprintf(&e.buf, "func %s(", mangle(fn.Name))
-	for i, p := range fn.Params {
-		if i > 0 {
-			e.buf.WriteString(", ")
-		}
-		fmt.Fprintf(&e.buf, "%s %s", mangle(p.Name), e.typ(p.Type))
+	// Every function takes the domain it runs in first (emit_async.go).
+	e.usesRuntime = true
+	fmt.Fprintf(&e.buf, "func %s(%s", mangle(fn.Name), domainParam)
+	for _, p := range fn.Params {
+		fmt.Fprintf(&e.buf, ", %s %s", mangle(p.Name), e.typ(p.Type))
 	}
 	e.buf.WriteString(")")
 	if fn.Result != ir.Void {
 		fmt.Fprintf(&e.buf, " %s", e.typ(fn.Result))
 	}
 	e.buf.WriteString(" {\n")
-	e.stmts(fn.Body, 1)
+	if fn.Async {
+		e.asyncBody(fn.Result, fn.Body, 1)
+	} else {
+		e.stmts(fn.Body, 1)
+	}
 	e.buf.WriteString("}\n")
 }
 
@@ -196,15 +212,18 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		fmt.Fprintf(&e.buf, "%s}\n", pad)
 
 	case *ir.Return:
-		if s.Value == nil {
+		switch {
+		case s.Value == nil && e.asyncVoid:
+			fmt.Fprintf(&e.buf, "%sreturn struct{}{}\n", pad)
+		case s.Value == nil:
 			fmt.Fprintf(&e.buf, "%sreturn\n", pad)
-		} else {
+		default:
 			fmt.Fprintf(&e.buf, "%sreturn %s\n", pad, e.expr(s.Value))
 		}
 
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
-		case *ir.Call, *ir.ConsoleLog, *ir.HostCall:
+		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise:
 			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.expr(s.Expr))
 		default:
 			// Go accepts only calls as expression statements, TypeScript any
@@ -258,14 +277,21 @@ func (e *emitter) expr(x ir.Expr) string {
 		return fmt.Sprintf("%s(%s)", e.typ(x.Typ), e.expr(x.Value))
 
 	case *ir.Call:
-		args := make([]string, len(x.Args))
-		for i, a := range x.Args {
-			args[i] = e.expr(a)
+		// The callee runs in the caller's domain, which goes first.
+		args := []string{e.dom()}
+		for _, a := range x.Args {
+			args = append(args, e.expr(a))
 		}
 		return fmt.Sprintf("%s(%s)", mangle(x.Callee), strings.Join(args, ", "))
 
 	case *ir.FuncLit:
 		return e.funcLit(x)
+
+	case *ir.Await:
+		return e.await(x)
+
+	case *ir.NewPromise:
+		return e.newPromise(x)
 
 	case *ir.HostCall:
 		return e.hostCall(x)
@@ -286,16 +312,25 @@ func (e *emitter) expr(x ir.Expr) string {
 // funcLit renders a Go function literal. Go closures capture by reference, as
 // JavaScript's do, so captured bindings need nothing beyond their names.
 func (e *emitter) funcLit(x *ir.FuncLit) string {
-	if x.Async {
-		e.refuseAsync(x.Span, "function value")
-	}
 	depth := e.depth
-	params := make([]string, len(x.Params))
-	for i, p := range x.Params {
+	e.usesRuntime = true
+	params := []string{domainParam} // its own: the domain of whoever calls it
+	for _, p := range x.Params {
 		// An empty name is a parameter the literal ignores; mangle gives `_`.
-		params[i] = mangle(p.Name) + " " + e.typ(p.Type)
+		params = append(params, mangle(p.Name)+" "+e.typ(p.Type))
 	}
-	body := e.capture(func() { e.stmts(x.Body, depth+1) })
+	// The literal's body refers to its own ts_domain parameter, so its uses do
+	// not count as the enclosing scope's (main declares one only if it uses it).
+	savedVoid, savedDomain := e.asyncVoid, e.usesDomain
+	e.asyncVoid = false
+	body := e.capture(func() {
+		if x.Async {
+			e.asyncBody(x.Result, x.Body, depth+1)
+		} else {
+			e.stmts(x.Body, depth+1)
+		}
+	})
+	e.asyncVoid, e.usesDomain = savedVoid, savedDomain
 	e.depth = depth
 
 	result := ""
@@ -329,6 +364,8 @@ func goType(t ir.Type) string {
 		return goFuncType(t.Sig)
 	case ir.KindHost:
 		return goHostType(t.Host)
+	case ir.KindPromise:
+		return goPromiseType(t)
 	}
 	switch t {
 	case ir.Number:
@@ -356,11 +393,12 @@ func goType(t ir.Type) string {
 	}
 }
 
-// goFuncType spells a function type: `func(float64, string) bool`.
+// goFuncType spells a function type, which takes the domain first:
+// `func(*cakebearrt.Domain, float64, string) bool`.
 func goFuncType(sig *ir.Signature) string {
-	params := make([]string, len(sig.Params))
-	for i, p := range sig.Params {
-		params[i] = goType(p)
+	params := []string{"*" + rtPkg + ".Domain"}
+	for _, p := range sig.Params {
+		params = append(params, goType(p))
 	}
 	s := "func(" + strings.Join(params, ", ") + ")"
 	if sig.Result != ir.Void {

@@ -42,11 +42,11 @@ func fetch(client *http.Client, method, url string) response {
 func TestListenServesAfterTopLevelCode(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	stdout, _, _ := isolate(t)
 
-	s := CreateServer(func(req *IncomingMessage, res *ServerResponse) {
+	s := CreateServer(func(_ *Domain, req *IncomingMessage, res *ServerResponse) {
 		LogString("handled " + req.URL())
 		res.SetHeader("Content-Type", "text/plain").End(req.Method() + " " + req.URL())
 	})
-	s.Listen(0, func() { LogString("listening") })
+	s.Listen(0, func(*Domain) { LogString("listening") })
 	base := "http://" + s.ln.Addr().String()
 
 	results := make(chan response, 1)
@@ -82,7 +82,7 @@ func TestListenServesAfterTopLevelCode(t *testing.T) { //nolint:paralleltest // 
 
 func serveWith(t *testing.T, handler func(*IncomingMessage, *ServerResponse)) string {
 	t.Helper()
-	s := CreateServer(handler)
+	s := CreateServer(func(_ *Domain, req *IncomingMessage, res *ServerResponse) { handler(req, res) })
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(s.serve))
 	ts.Config.ErrorLog = log.New(io.Discard, "", 0) // panics are expected in some tests
 	ts.Start()
@@ -204,7 +204,7 @@ func TestListenPortInUse(t *testing.T) { //nolint:paralleltest // isolate swaps 
 	defer func() { _ = hold.Close() }()
 	port := hold.Addr().(*net.TCPAddr).Port
 
-	CreateServer(func(*IncomingMessage, *ServerResponse) {}).Listen(float64(port))
+	CreateServer(func(*Domain, *IncomingMessage, *ServerResponse) {}).Listen(float64(port))
 	if got := exitCode(t, exits); got != 1 {
 		t.Errorf("exit code = %d, want 1", got)
 	}
@@ -221,7 +221,7 @@ func TestListenRejectsBadPorts(t *testing.T) { //nolint:paralleltest // isolate 
 	for _, port := range []float64{70000, 3000.5, -1, math.NaN()} { //nolint:paralleltest // isolate swaps process-wide runtime state
 		t.Run(NumberToString(port), func(t *testing.T) {
 			_, stderr, exits := isolate(t)
-			s := CreateServer(func(*IncomingMessage, *ServerResponse) {}).Listen(port)
+			s := CreateServer(func(*Domain, *IncomingMessage, *ServerResponse) {}).Listen(port)
 			if s.srv != nil {
 				t.Cleanup(func() { _ = s.close() }) // only if a mutation let it bind
 			}

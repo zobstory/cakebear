@@ -13,8 +13,8 @@ import (
 // node:http, as much of it as types/node-http.d.ts declares. Each exported
 // name is what generated code calls for one ir.HostOp:
 //
-//	createServer(listener)       CreateServer(func(*IncomingMessage, *ServerResponse))
-//	server.listen(port, cb?)     (*Server).Listen(float64, ...func())
+//	createServer(listener)       CreateServer(func(*Domain, *IncomingMessage, *ServerResponse))
+//	server.listen(port, cb?)     (*Server).Listen(float64, ...func(*Domain))
 //	res.setHeader(name, value)   (*ServerResponse).SetHeader(string, string)
 //	res.writeHead(status)        (*ServerResponse).WriteHead(float64)
 //	res.end(chunk?)              (*ServerResponse).End(...string)
@@ -42,18 +42,9 @@ type Server struct {
 	srv      *http.Server
 }
 
-// CreateServer is node:http's createServer.
-//
-// Its listener does not take the request's domain yet: generated code starts
-// passing domains when the emitter learns async (M2 step 5), and this
-// signature changes to createServerD's then.
-func CreateServer(listener func(*IncomingMessage, *ServerResponse)) *Server {
-	return createServerD(func(_ *Domain, req *IncomingMessage, res *ServerResponse) { listener(req, res) })
-}
-
-// createServerD is CreateServer for a listener that runs in its request's
-// domain, so it can set timers and await.
-func createServerD(listener func(*Domain, *IncomingMessage, *ServerResponse)) *Server {
+// CreateServer is node:http's createServer. The listener runs in its request's
+// domain, which it takes first, as every compiled function does.
+func CreateServer(listener func(*Domain, *IncomingMessage, *ServerResponse)) *Server {
 	return &Server{listener: listener}
 }
 
@@ -63,8 +54,10 @@ func createServerD(listener func(*Domain, *IncomingMessage, *ServerResponse)) *S
 // reported straight away, with the exit code 1 Node's EADDRINUSE crash gives.
 // Serving and the callback wait until the program's top-level code is done:
 // both are queued for Run, the callback first, so "listening on …" is printed
-// before any handler runs, as under Node.
-func (s *Server) Listen(port float64, callbacks ...func()) *Server {
+// before any handler runs, as under Node. The callback runs in the main
+// program's domain, wherever listen was called from, because Node runs it on
+// the main thread.
+func (s *Server) Listen(port float64, callbacks ...func(*Domain)) *Server {
 	p, ok := portNumber(port)
 	if !ok {
 		fatalf("RangeError [ERR_SOCKET_BAD_PORT]: port should be >= 0 and < 65536. Received %s.", NumberToString(port))
@@ -89,7 +82,7 @@ func (s *Server) Listen(port float64, callbacks ...func()) *Server {
 	ref()
 	for _, cb := range callbacks {
 		if cb != nil {
-			enqueue(cb)
+			enqueue(func() { cb(mainDomain) })
 		}
 	}
 	enqueue(func() { go s.run() })

@@ -39,32 +39,28 @@ func goHostType(h ir.HostType) string {
 }
 
 // typ spells a type for a declaration, noting when that needs the runtime: a
-// host type in a signature is a reference to the runtime package even in a
-// function that never calls it, and Go rejects the import's absence as surely
-// as an unused one.
+// host type, a promise, or any function type (which takes a *Domain) is a
+// reference to the runtime package even in code that never calls it, and Go
+// rejects the import's absence as surely as an unused one.
 func (e *emitter) typ(t ir.Type) string {
-	if mentionsHost(t) {
+	if mentionsRuntime(t) {
 		e.usesRuntime = true
 	}
 	return goType(t)
 }
 
-func mentionsHost(t ir.Type) bool {
+func mentionsRuntime(t ir.Type) bool {
 	switch t.Kind {
-	case ir.KindHost:
+	case ir.KindHost, ir.KindFunc, ir.KindPromise:
 		return true
-	case ir.KindFunc:
-		for _, p := range t.Sig.Params {
-			if mentionsHost(p) {
-				return true
-			}
-		}
-		return mentionsHost(t.Sig.Result)
 	}
 	return false
 }
 
 func (e *emitter) hostCall(x *ir.HostCall) string {
+	if x.Op.IsTimer() {
+		return e.timerCall(x)
+	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)
@@ -72,7 +68,7 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	list := strings.Join(args, ", ")
 
 	if x.Op == ir.HostCreateServer {
-		e.usesRuntime, e.usesHost = true, true
+		e.usesRuntime, e.needsRun = true, true
 		return rtPkg + ".CreateServer(" + list + ")"
 	}
 	method, ok := hostMethods[x.Op]
@@ -80,7 +76,7 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.Span, What: describeUnsupported(x)})
 		return "#error unhandled host operation"
 	}
-	e.usesRuntime, e.usesHost = true, true
+	e.usesRuntime, e.needsRun = true, true
 	return e.expr(x.Recv) + "." + method + "(" + list + ")"
 }
 
