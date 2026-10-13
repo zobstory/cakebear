@@ -229,6 +229,61 @@ func TestEmitClearTimeout(t *testing.T) {
 	}
 }
 
+// tlaModule is a module with a top-level await (M2 step 7):
+//
+//	export {};
+//	console.log("before");
+//	await sleep(20);
+//	console.log("after");
+func tlaModule() *ir.Module {
+	return &ir.Module{Name: "tla", File: "/src/tla.ts", Async: true, Funcs: []*ir.Func{sleepFunc()}, Main: []ir.Stmt{
+		logStr("before"),
+		&ir.ExprStmt{Span: span, Expr: &ir.Await{Typ: ir.Void, Span: span, Value: &ir.Call{
+			Callee: "sleep", Typ: voidPromise, Span: span, Args: []ir.Expr{num(20)},
+		}}},
+		logStr("after"),
+	}}
+}
+
+// A top-level await runs main's code as an async body in the main domain and
+// keeps its promise, so RunModule can tell whether it ever settled.
+func TestEmitTopLevelAwaitShape(t *testing.T) {
+	t.Parallel()
+
+	got := Emit(tlaModule())
+	mustParse(t, got)
+	for _, want := range []string{
+		"\tts_domain := cakebearrt.Main()\n",
+		"\tts_module := cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) struct{} {\n",
+		"\t\tcakebearrt.Await(ts_co, sleep(ts_domain, 20.0))\n",
+		"\t\treturn struct{}{}\n\t})\n",
+		"\tcakebearrt.RunModule(ts_module, \"/src/tla.ts\")\n}\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("emitted source missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, rtPkg+".Run()") {
+		t.Errorf("an async module should end with RunModule, not Run:\n%s", got)
+	}
+}
+
+func TestBuildTopLevelAwaitRuns(t *testing.T) {
+	t.Parallel()
+
+	out := filepath.Join(t.TempDir(), "tla")
+	if src, err := Build(tlaModule(), Options{Output: out}); err != nil {
+		t.Fatalf("Build: %v\n%s", err, src)
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("running the binary: %v", err)
+	}
+	if string(got) != "before\nafter\n" {
+		t.Errorf("printed %q, want %q", got, "before\nafter\n")
+	}
+}
+
 // main declares a domain only when its own code uses one: a function literal
 // has its own ts_domain parameter, so the calls inside it don't count. Go
 // rejects an unused local, and parsing alone would not notice; a server whose
@@ -254,8 +309,8 @@ func TestMainDeclaresADomainOnlyForItsOwnUse(t *testing.T) {
 func TestMangleLeavesTheEmittersNamesFree(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"domain", "co", "ts_domain", "ts_co", "Domain", "cakebearrt"} {
-		if got := mangle(name); got == domainVar || got == coVar {
+	for _, name := range []string{"domain", "co", "module", "ts_domain", "ts_co", "ts_module", "main", "Domain", "cakebearrt"} {
+		if got := mangle(name); got == domainVar || got == coVar || got == moduleVar {
 			t.Errorf("mangle(%q) = %q, which the emitter uses itself", name, got)
 		}
 	}

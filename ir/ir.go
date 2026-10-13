@@ -39,10 +39,17 @@ func (s Span) String() string {
 type Module struct {
 	// Name is the source basename, used for the output binary.
 	Name string
+	// File is the source file's path, for messages the program prints about
+	// itself at runtime.
+	File string
 	// Funcs are the top-level function declarations.
 	Funcs []*Func
 	// Main is the top-level statement sequence, in source order.
 	Main []Stmt
+	// Async marks a module with a top-level await. Its top-level code runs as
+	// an async body, as an ES module's does: up to the first await at once,
+	// the rest as the awaited promises settle.
+	Async bool
 }
 
 // Func is a top-level function declaration.

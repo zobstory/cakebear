@@ -158,14 +158,14 @@ parameters and return; arithmetic; string concatenation; comparisons; `===` and
 `console.log` of one primitive; calls to a function by name; arrow functions
 and function expressions as values (closures); `import` from `node:http`, and
 the members its bundled declarations list; `async` functions and arrows,
-`await`, `Promise<T>`, `new Promise((resolve) => …)`, and `setTimeout` /
-`clearTimeout`.
+`await`, including at the top level of a module, `Promise<T>`,
+`new Promise((resolve) => …)`, and `setTimeout` / `clearTimeout`.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but
 `node:http`, `for`, multi-file programs, bitwise operators, `reject` and
-errors, `.then` and `Promise.all`, top-level `await`, and the standard
-library's other globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
+errors, `.then` and `Promise.all`, exports, and the standard library's other
+globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers
