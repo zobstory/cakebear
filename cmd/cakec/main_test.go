@@ -66,7 +66,9 @@ func TestParseBuildArgsNoColorFlagWins(t *testing.T) {
 	}
 }
 
-func TestRunTopLevel(t *testing.T) {
+// TestBuildCommand covers what `cakec build` answers itself. The top level
+// (`cakec --help`, `cakec` alone) is tsc's, and TestCakecIsTsc checks it.
+func TestBuildCommand(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -76,23 +78,21 @@ func TestRunTopLevel(t *testing.T) {
 		wantStdout string
 		wantStderr string
 	}{
-		{name: "no args prints usage", args: nil, wantCode: exitOK, wantStdout: "USAGE:"},
 		{name: "--help", args: []string{"--help"}, wantCode: exitOK, wantStdout: "USAGE:"},
 		{name: "-h", args: []string{"-h"}, wantCode: exitOK, wantStdout: "USAGE:"},
-		{name: "help", args: []string{"help"}, wantCode: exitOK, wantStdout: "USAGE:"},
-		{name: "--version", args: []string{"--version"}, wantCode: exitOK, wantStdout: "cakec " + version},
-		{name: "-v", args: []string{"-v"}, wantCode: exitOK, wantStdout: "cakec " + version},
+		{name: "--version", args: []string{"--version"}, wantCode: exitOK, wantStdout: "cakec " + version + " (TypeScript "},
+		{name: "-v", args: []string{"-v"}, wantCode: exitOK, wantStdout: "cakec " + version + " (TypeScript "},
 		{
-			name:       "unknown subcommand",
-			args:       []string{"frost"},
-			wantCode:   exitBadArgs,
-			wantStderr: `unknown subcommand "frost"`,
-		},
-		{
-			name:       "build with no file",
-			args:       []string{"build"},
+			name:       "no file",
+			args:       nil,
 			wantCode:   exitBadArgs,
 			wantStderr: "missing input file",
+		},
+		{
+			name:       "unknown flag points at build's help",
+			args:       []string{"--frost", "main.ts"},
+			wantCode:   exitBadArgs,
+			wantStderr: "run `cakec build --help` for usage",
 		},
 	}
 
@@ -101,7 +101,7 @@ func TestRunTopLevel(t *testing.T) {
 			t.Parallel()
 
 			var stdout, stderr bytes.Buffer
-			code := run(tt.args, &stdout, &stderr)
+			code := runBuildCommand(tt.args, &stdout, &stderr)
 
 			if code != tt.wantCode {
 				t.Errorf("exit code = %d, want %d", code, tt.wantCode)

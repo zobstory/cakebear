@@ -26,9 +26,13 @@ move, so the two share no commits, and syncs are snapshots rather than merges
 A fork's maintenance cost is directly proportional to its diff against
 upstream, and upstream is actively developed. Every cakebear behaviour goes in
 a new file under a path listed in `scripts/owned-paths`. In particular
-`cmd/cakec` constructs its own `Program` from their packages and runs its own
+`cakec build` constructs its own `Program` from their packages and runs its own
 emit — it never routes through `internal/execute`, precisely so that hooking
-the pipeline requires no edit inside their tree.
+the pipeline requires no edit inside their tree. Everything else `cakec` does
+is `tsc`, unchanged: it calls `execute.CommandLine` exactly as `cmd/tsc` does,
+using copies of `cmd/tsc`'s own files (`cmd/cakec/tsc_*.go`), since a
+`package main` can't be imported. `scripts/copy-tsc-cmd.sh` writes the copies,
+every sync runs it, and `TestTscCopies` fails when one has drifted.
 
 Hold this line and a sync is mechanical: `scripts/sync-upstream.sh` replaces
 every upstream file with the new snapshot and rewrites the module path, and
@@ -76,7 +80,7 @@ cakebear/
 ├── cmd/tsc/        UPSTREAM  their CLI — keep it working, it is a free
 │                             regression check that a sync didn't break the frontend
 ├── testdata/       UPSTREAM  baselines and the conformance corpus (tests/cases/)
-├── cmd/cakec/      OURS      the cakebear CLI
+├── cmd/cakec/      OURS      the cakebear CLI: `tsc`, plus `cakec build`
 ├── ir/             OURS      lowered IR: pure data, stdlib imports only
 ├── lower/          OURS      checked AST → ir; the only package seeing both worlds
 ├── backend/        OURS      IR → Go source → `go build` → executable
@@ -122,6 +126,9 @@ counts.
 go build ./...                        # whole fork; ~1.5 min cold
 go build -o bin/cakec ./cmd/cakec     # ours — always -o bin/, see below
 go run ./cmd/tsc --version            # upstream CLI still works
+bin/cakec -p .                        # anything but `cakec build` is tsc, unchanged
+bin/cakec build --version             # cakebear's; `cakec --version` is tsc's
+scripts/copy-tsc-cmd.sh               # re-copy cmd/tsc into cmd/cakec (syncs run it)
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
@@ -248,21 +255,24 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **open**
+## Current phase: **M3**, real projects
 
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
-`await` and `spawn`. Nothing is blocked. The order chosen for what follows is
-the `tsc` superset, ideally planned alongside multi-file programs and
-aggregates: a real `tsconfig.json` project is several files of objects and
-arrays, which native builds can't compile until those exist. None is urgent.
+`await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
+builds from `tsconfig.json`, and multi-file programs; objects and arrays are
+M4, since a real project is several files of them. M3's step 1, the `tsc`
+passthrough, is done.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
   `--watch`, `--build`) and adds native builds. It cannot be done by adding
   commands to `cmd/tsc`, which is upstream's: a sync replaces it wholesale.
   But upstream's `cmd/tsc/main.go` is a thin wrapper around
-  `execute.CommandLine`, so `cakec` can make the same call for anything that
-  is not a cakebear command. Native settings go in a top-level `"cakebear"`
+  `execute.CommandLine`, so `cakec` makes the same call for anything that is
+  not `cakec build`. `TestCakecIsTsc` compares the two, built from this tree,
+  over sample projects and flags: stdout, stderr, the exit code and every file
+  written, plus `--watch` through an edit and the language server's
+  `initialize`. Native settings go in a top-level `"cakebear"`
   block of `tsconfig.json`, which `tsc` ignores. Inside `compilerOptions`, an
   unknown key is TS5023. Both were measured 2026-10-12. `execute` has no plugin
   or emit hook, and its `OnProgram` callback switches upstream into test mode,

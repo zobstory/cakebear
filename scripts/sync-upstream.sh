@@ -51,6 +51,8 @@ git ls-files | grep -vE "$owned" | tr '\n' '\0' | xargs -0 git rm -q --
 find . -mindepth 1 -type d -empty -not -path './.git' -not -path './.git/*' -delete
 (cd "$tmp/tree" && tar cf - .) | tar xf -
 scripts/rename-module.sh
+# cmd/cakec runs copies of cmd/tsc's files; refresh them from the new snapshot.
+scripts/copy-tsc-cmd.sh
 
 git add -A
 if git diff --cached --quiet; then

@@ -72,6 +72,8 @@ cakec build --check main.ts          # type-check only
 cakec build --emit-go main.ts        # also write the generated Go
 cakec build --target linux/amd64 main.ts
 cakec build --checkers 8 --files-from list.txt
+cakec build --help                   # cakebear's flags
+cakec -p .                           # anything but `cakec build` is tsc, unchanged
 ```
 
 Building requires the Go toolchain on `PATH`; cakebear shells out to it.
