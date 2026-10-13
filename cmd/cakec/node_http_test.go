@@ -278,7 +278,13 @@ func (s *runningServer) waitForLine(t *testing.T, want string, timeout time.Dura
 				return
 			}
 		case <-deadline:
-			t.Fatalf("no %q within %v", want, timeout)
+			// Stop the server so its stderr can be read: a crash, a port
+			// clash and a hang all look alike from stdout alone.
+			_ = s.cmd.Process.Kill()
+			_ = s.cmd.Wait()
+			_ = s.out.Close()
+			s.done = true
+			t.Fatalf("no %q within %v (exit %d); stderr:\n%s", want, timeout, s.cmd.ProcessState.ExitCode(), s.stderr.String())
 		}
 	}
 }

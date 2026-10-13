@@ -248,53 +248,23 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M2, async/await**
+## Current phase: **open**
 
-P0–P5 and M1 are done, and **M2 is in progress**: `async`/`await`, `Promise`
-and `setTimeout`, built on M1's run loop. Its execution model is decided
-(semantics decision 3, as amended), and so far it has refused library globals
-at lowering and added the IR for promises: `ir.KindPromise`, `Async` on `Func`
-and `FuncLit`, `ir.Await` and `ir.NewPromise`. The backend refuses all of them
-by name until its emitter lands. The runtime has its domains
-(`backend/runtime/domain.go`, `promise.go`): a token-handoff scheduler, a
-microtask queue and a timer heap per domain, `Promise[T]`, `Async`, `Await`,
-`SetTimeout`, and a domain per request that carries on after `res.end()`.
-Generated code will pass the current domain as every function's first
-argument, because Go has no goroutine-local storage.
+P0–P5, M1 and M2 are done and nothing is blocked. M2's two stretch goals are
+the natural next steps:
 
-Lowering accepts M2's code (`lower/async.go`):
-- async functions and arrows, `await`, and `new Promise` with an inline
-  executor;
-- `setTimeout(callback, delay)` and `clearTimeout(id)`, recognised by being
-  declared only in `lib.dom.d.ts`.
+- **Top-level `await`.** Main is already a domain, so this is lowering plus
+  running top-level code as an async body.
+- **`spawn`: Go's `go` as a cakebear global.** `spawn(fn)` would run `fn` in a
+  new domain, truly in parallel with its caller, and return a promise of its
+  result. It would be declared in `types/cakebear.d.ts`, so it needs no
+  import, unlike Perry's `perry/thread`. Its argument would be held to the
+  race rule like a request handler. A program waits for a spawned domain as
+  Node waits for a timer. Plain `tsc` reports it as an unknown name, so
+  editors need the declarations, which a `cakec --lsp` passthrough would
+  inject.
 
-The executor's `resolve` lowers as a plain function, because the checker's
-union type for it exists only for adopting another promise. Lowering refuses,
-each by name:
-- `reject`;
-- adopting one promise into another, through `resolve` or an async `return`;
-- `.then` and `Promise`'s statics;
-- top-level `await`;
-- a string or extra-argument timer;
-- a timer callback that isn't `() => void`.
-
-The race rule now treats a `const` promise as shared state.
-
-The emitter (`backend/emit_async.go`) writes async code as Go:
-- an async body is `cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) T {…})`;
-- `await` is `cakebearrt.Await(ts_co, p)`;
-- promises are `*cakebearrt.Promise[T]`, with `struct{}` for `void`.
-
-Every compiled function and function value takes `ts_domain` first, and every
-call passes it on. `main` declares one only when its own code uses it, so a
-program that touches nothing in the runtime still has no import. `ts_domain`
-and `ts_co` can't collide with user names, because `mangle` produces a `ts_`
-name only from a Go keyword or a name already starting with `ts_`. `sleep.ts`
-and `ordering.ts` match Node byte for byte. An async handler serves 8
-concurrent requests in about 1.3× the time of one, where Node takes 7.2×.
-The end-to-end tests and the docs for the subset come next.
-
-After M2, none urgent:
+Then, none urgent:
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -317,7 +287,9 @@ Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
 **P4** IR, Go emission and native binaries, **P5** cakebear's type extensions,
 **M1** a `node:http` server on goroutines: closures, `node:http` lowering, the
-runtime and its run loop, and the handler race rule. Upstream then moved, and
+runtime and its run loop, and the handler race rule; **M2** `async`/`await`:
+promises, `await`, `new Promise`, `setTimeout`/`clearTimeout`, a domain per
+request, matching Node's ordering byte for byte within a domain. Upstream then moved, and
 cakebear was rebased onto `microsoft/TypeScript`'s `tsc/` with snapshot syncs.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
@@ -397,15 +369,38 @@ declarations list (`createServer`, `listen`, `setHeader`, `writeHead`, `end`,
 runtime's `node:http` (`backend/runtime/http.go`), where each request is handled
 on its own goroutine.
 
+Since M2 (`lower/async.go`):
+- `async` functions and arrows, including an async request handler;
+- `await` of a promise;
+- `Promise<T>` as a type, recognised only when every declaration of it is in a
+  bundled lib;
+- `new Promise((resolve) => …)` with the executor written inline. `resolve`
+  is a plain function: `(value: T) => void`, or `() => void` for
+  `Promise<void>`;
+- `setTimeout(callback, delay)` and `clearTimeout(id)`, the DOM's, recognised
+  by being declared only in `lib.dom.d.ts`. The callback must be `() => void`,
+  and the id is a `number`.
+
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from
-anything but `node:http`, `for`, multi-file programs, bitwise operators,
-`async`; calling anything but a name or a `node:http` member (`f()()`); named
-function expressions; optional, default, rest or destructured parameters;
-overloaded or generic function types; `===` or `console.log` on a function or
-a host value; the standard library's globals (`parseInt`, `NaN`, `isNaN`,
-`setTimeout`, …), which lowering refuses by name because only TypeScript's libs
-declare them. A program's own function of the same name is unaffected.
+anything but `node:http`, `for`, multi-file programs, bitwise operators;
+calling anything but a name or a `node:http` member (`f()()`); named function
+expressions; optional, default, rest or destructured parameters; overloaded or
+generic function types; `===` or `console.log` on a function, a host value or
+a promise; the standard library's other globals (`parseInt`, `NaN`, `isNaN`,
+`setInterval`, …), which lowering refuses by name because only TypeScript's
+libs declare them. A program's own function of the same name is unaffected.
+
+Not yet, from M2, each refused by name:
+- `reject`, `throw` and errors (M3);
+- adopting one promise into another, through `resolve(p)` or an async `return p`
+  (await it instead);
+- `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
+- top-level `await`;
+- an async executor;
+- a string timer handler, extra timer arguments, or a missing delay;
+- a request handler that reaches a promise declared outside it (the race
+  rule, below).
 
 **Host members** are recognised by where their symbol is declared, never by
 name and never by the receiver's type. A user's own `createServer` or `end` is
@@ -487,6 +482,27 @@ observably differs from Node: each request runs on its own goroutine, so a
 CPU-heavy handler no longer holds up the others. The IR must not assume
 single-threaded execution anywhere.
 
+*Live since M2:* the domains. The runtime (`backend/runtime/domain.go`,
+`promise.go`) gives each domain a microtask queue, a timer heap and a token.
+Only the goroutine holding a domain's token touches that domain, so it needs
+no lock.
+- An async call (`cakebearrt.Async`) runs on its own goroutine, and its caller
+  waits for the token to come back.
+- `await` (`cakebearrt.Await`) hands the token back and resumes in the
+  microtask the promise's settling queues.
+- Main's loop (`Run`) runs in the order an ES module sees under Node: the
+  microtasks, then queued callbacks such as `listen`'s, then timers. This was
+  measured on Node 24.18; CommonJS puts the `listen` callback first.
+- A request's domain is driven by its `net/http` goroutine until `res.end()`.
+  Anything still pending then carries on on its own goroutine, and keeps the
+  process alive, because Go finishes a response when its handler returns.
+
+Go has no goroutine-local storage, so every compiled function and function
+value takes the domain it runs in as its first parameter (`ts_domain`), and
+every call passes its own. `main` declares one only when its own code uses it.
+`ts_domain` and `ts_co` can't collide with user identifiers: `mangle` produces
+a `ts_` name only from a Go keyword or a name already starting with `ts_`.
+
 **The handler race rule** (`lower/race.go`) is what keeps that safe. Correct
 TypeScript relies on handlers never overlapping, so `hits = hits + 1` in a
 handler is fine under Node and a data race here. Rather than add locks,
@@ -509,14 +525,15 @@ grow when aggregates arrive, before they do, not after. Explicit shared-state
 tools (an atomic counter type in `types/`, say) are how a later milestone
 widens it.
 
-M2 hits this invariant first, with promises. A `Promise` settles, so it is
-mutable state like any object. M2's lowering must refuse a handler that
+M2 hit this invariant first, with promises. A `Promise` settles, so it is
+mutable state like any object. Lowering therefore refuses a handler that
 reaches a promise declared outside it, such as a top-level
 `const ready: Promise<void> = …` awaited in a handler, directly or through what
 it calls. The runtime assumes a promise never leaves the domain that created
-it, and panics if one does rather than race.
+it, and panics if one does rather than race. A promise a handler creates
+itself is its own.
 
-**Accepted differences from Node** (M1 plan, D5). Each is deliberate. Anything
+**Accepted differences from Node** (M1 plan D5, M2 plan D6). Each is deliberate. Anything
 not listed here that behaves differently is a bug.
 
 | Behaviour | Node | cakebear |
@@ -531,6 +548,12 @@ not listed here that behaves differently is a bug.
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
 | Ctrl-C / SIGTERM | exit 130 / 143 | exit 130 / 143, after flushing output |
 | The listen callback and the first request | the callback runs first | the same: serving starts after the callback |
+| Async ordering within one request, or within main | synchronous code, microtasks, then timers | identical, byte for byte (`ordering.ts`, 20 of 20 runs) |
+| Async code in *different* requests after an `await` | interleaved on one thread | in parallel (8 requests that await then compute `fib(38)`: ~1.2× one, vs Node's ~7.2×) |
+| `setTimeout`'s return value | a `Timeout` object | a `number`, as the DOM's declaration types it |
+| The cost of one `await` | ~32 ns | ~224 ns: a goroutine handoff |
+| A panic in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr (`cakebear: after a response was sent: …`); the process stays up |
+| A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

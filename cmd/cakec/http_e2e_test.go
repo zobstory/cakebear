@@ -79,14 +79,21 @@ createServer((req, res) => {
 // take at most 3x as long as one. Node takes about 7.7x for the same program,
 // because its handlers share one thread; hand-written Go measured 1.8-2.2x on
 // the 12-core Mac the plan was written on.
+func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the timing must not share the CPU with parallel tests
+	checkParallel(t, fibServer, "fib(38), Node: ~7.7x")
+}
+
+// checkParallel builds a server whose handler is CPU-heavy and asserts that
+// eight concurrent requests take at most 3x as long as one.
 //
 // Timed in-process with Go's client, not curl, and best of three rounds, so
 // start-up cost and a noisy core cannot decide the result.
-func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the timing must not share the CPU with parallel tests
+func checkParallel(t *testing.T, src, node string) {
+	t.Helper()
 	if runtime.NumCPU() < 4 {
 		t.Skipf("needs at least 4 CPUs to show parallelism, have %d", runtime.NumCPU())
 	}
-	bin, port := buildServer(t, fibServer, false)
+	bin, port := buildServer(t, src, false)
 	server := startServer(t, bin)
 	server.waitForLine(t, "listening", 10*time.Second)
 
@@ -117,7 +124,7 @@ func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the 
 		eight = min(eight, timed(8))
 	}
 	ratio := float64(eight) / float64(one)
-	t.Logf("fib(38): 1 request %v, 8 concurrent %v, ratio %.2fx (Node: ~7.7x)", one, eight, ratio)
+	t.Logf("1 request %v, 8 concurrent %v, ratio %.2fx (%s)", one, eight, ratio, node)
 	if ratio > 3 {
 		t.Errorf("8 concurrent requests took %.2fx one request, want at most 3x: handlers are not running in parallel", ratio)
 	}
@@ -132,11 +139,7 @@ func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the 
 // which needs cgo.
 func TestHTTPRaceFree(t *testing.T) {
 	t.Parallel()
-	if out, err := exec.Command("go", "env", "CGO_ENABLED").Output(); err != nil || strings.TrimSpace(string(out)) != "1" {
-		t.Skip("the race detector needs cgo, which this toolchain has disabled")
-	}
-
-	bin, port := buildServer(t, `import { createServer } from "node:http";
+	checkRaceFree(t, `import { createServer } from "node:http";
 
 const greeting: string = "hello ";
 
@@ -151,7 +154,18 @@ createServer((req, res) => {
 }).listen(3000, () => {
   console.log("listening");
 });
-`, true)
+`)
+}
+
+// checkRaceFree builds src with Go's race detector, which needs cgo, sends
+// it 200 requests, 50 at a time, and asserts every one succeeded and the
+// detector reported nothing.
+func checkRaceFree(t *testing.T, src string) {
+	t.Helper()
+	if out, err := exec.Command("go", "env", "CGO_ENABLED").Output(); err != nil || strings.TrimSpace(string(out)) != "1" {
+		t.Skip("the race detector needs cgo, which this toolchain has disabled")
+	}
+	bin, port := buildServer(t, src, true)
 	// A binary built without the detector would report no races whatever it
 	// did, so first prove this one has it: Go records the build flag.
 	if info, err := exec.Command("go", "version", "-m", bin).Output(); err != nil || !strings.Contains(string(info), "-race=true") {
