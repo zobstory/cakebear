@@ -24,11 +24,12 @@ import (
 // call emits as written. The optional arguments are variadic so a call emits
 // with the arguments the source gave; lower/ has already checked the arity.
 //
-// Each request is handled on the goroutine net/http gives it, so handlers run
-// genuinely in parallel. Where Node would throw (headers set after they were
-// sent, a status code out of range) the runtime panics with Node's message.
-// net/http recovers a handler's panic and drops only that connection, so one
-// bad request cannot take the server down.
+// Each request is its own domain (domain.go), driven by the goroutine net/http
+// gives it, so requests run in parallel while the async code within one runs
+// in Node's order. Where Node would throw (headers set after they were sent, a
+// status code out of range) the runtime panics with Node's message. net/http
+// recovers a handler's panic and drops only that connection, so one bad
+// request cannot take the server down.
 
 // listenHost is the address servers bind: every interface, as Node's default
 // is. Tests narrow it to loopback.
@@ -36,13 +37,23 @@ var listenHost = ""
 
 // Server is node:http's Server.
 type Server struct {
-	listener func(*IncomingMessage, *ServerResponse)
+	listener func(*Domain, *IncomingMessage, *ServerResponse)
 	ln       net.Listener
 	srv      *http.Server
 }
 
 // CreateServer is node:http's createServer.
+//
+// Its listener does not take the request's domain yet: generated code starts
+// passing domains when the emitter learns async (M2 step 5), and this
+// signature changes to createServerD's then.
 func CreateServer(listener func(*IncomingMessage, *ServerResponse)) *Server {
+	return createServerD(func(_ *Domain, req *IncomingMessage, res *ServerResponse) { listener(req, res) })
+}
+
+// createServerD is CreateServer for a listener that runs in its request's
+// domain, so it can set timers and await.
+func createServerD(listener func(*Domain, *IncomingMessage, *ServerResponse)) *Server {
 	return &Server{listener: listener}
 }
 
@@ -106,14 +117,44 @@ func portNumber(f float64) (int, bool) {
 	return int(f), true
 }
 
+// serve runs one request in a domain of its own.
+//
+// Until the response ends, this goroutine drives the domain: the listener,
+// its microtasks, then its timers as they come due. Go finishes a response
+// when its handler returns, while Node finishes one at res.end(), and a Node
+// handler may go on working after that. So once the response has ended, serve
+// returns, and whatever the domain still has to do carries on on a goroutine
+// of its own, which keeps the process alive until it is done.
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	res := &ServerResponse{w: w, status: http.StatusOK}
-	s.listener(&IncomingMessage{r: r}, res)
+	d := newDomain()
+	d.runTask(func() { s.listener(d, &IncomingMessage{r: r}, res) })
+	for !res.ended && d.pending() {
+		d.waitNext()
+	}
 	if !res.ended {
 		// Node would leave the request open until it timed out. net/http
 		// finishes it instead; say so rather than hide the bug.
 		warnf("cakebear: the handler for %s %s returned without calling res.end(); sent an empty response", r.Method, r.RequestURI)
+		return
 	}
+	if d.pending() {
+		ref()
+		go finishDetached(d)
+	}
+}
+
+// finishDetached runs what is left of a request's domain after its response.
+// Nothing recovers a panic on this goroutine, and the connection it could
+// have dropped is already finished, so a panic is reported, not fatal.
+func finishDetached(d *Domain) {
+	defer unref()
+	defer func() {
+		if r := recover(); r != nil {
+			warnf("cakebear: after a response was sent: %v", r)
+		}
+	}()
+	d.finish()
 }
 
 // IncomingMessage is node:http's IncomingMessage, as a server sees it.

@@ -8,25 +8,33 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
-// What is left of Node's event loop.
+// What is left of Node's event loop, for the main program's domain.
 //
-// cakebear runs request handlers on goroutines, genuinely in parallel, rather
-// than on an event loop (CLAUDE.md, semantics decision 3). What remains is the
-// part a program can observe from main:
+// cakebear runs each request in its own domain, in parallel with main and
+// with each other (domain.go). Run drives the main domain once the program's
+// top-level code has finished, in the order an ES module sees under Node
+// (measured on Node 24.18; server programs are ES modules because they
+// import node:http):
 //
-//   - the process stays alive while a server is listening, and exits when none
-//     is (liveHandles);
-//   - callbacks such as listen's run after the program's top-level code has
-//     finished, on the main goroutine, in the order they were queued;
-//   - Ctrl-C and SIGTERM end it with the exit codes a shell reports for Node,
-//     after flushing output.
+//   - the microtasks the top-level code queued;
+//   - callbacks such as listen's, in the order they were queued, each
+//     followed by the microtasks it queued. Node runs these through
+//     process.nextTick, which an ES module drains after its microtasks;
+//   - timers, as they come due, each followed by its microtasks.
+//
+// The process stays alive while a server is listening, a request's work is
+// still running after its response (liveHandles), or main has a timer
+// pending, and it exits when none of those holds. Ctrl-C and SIGTERM end it
+// with the exit codes a shell reports for Node, after flushing output.
 //
 // The generated main calls Run last whenever the program uses a host API.
 
-// liveHandles counts listening servers. While it is above zero, Run blocks
-// and console output is written through rather than buffered.
+// liveHandles counts listening servers and requests still running after their
+// response. While it is above zero, Run blocks and console output is written
+// through rather than buffered.
 var liveHandles atomic.Int64
 
 var (
@@ -75,7 +83,8 @@ func queueEmpty() bool {
 	return len(queue) == 0
 }
 
-// ref records a server that started listening, and unref one that stopped.
+// ref records a server that started listening, or a request whose work runs
+// on after its response, and unref one that stopped.
 func ref() {
 	liveHandles.Add(1)
 	// Anything logged before the server came up is due now, not at exit.
@@ -88,9 +97,10 @@ func unref() {
 	notify()
 }
 
-// Run executes queued callbacks on the main goroutine, then blocks while any
-// server is listening. With nothing queued and nothing listening it returns at
-// once, so a program without a server behaves exactly as it would without it.
+// Run drives the main domain on the main goroutine until nothing is left: no
+// queued callback, no pending timer, nothing listening. With none of those it
+// returns at once, so a program that uses none behaves exactly as it would
+// without it.
 func Run() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
@@ -99,19 +109,35 @@ func Run() {
 }
 
 func run(sigs <-chan os.Signal) {
+	d := mainDomain
+	d.drain()
 	for {
 		for _, f := range takeQueue() {
-			f()
+			d.runTask(f)
 		}
-		if liveHandles.Load() == 0 && queueEmpty() {
+		d.fireDue()
+		if liveHandles.Load() == 0 && queueEmpty() && !d.pending() {
 			return
+		}
+		// About to wait, so whatever was logged is due now: a program
+		// sleeping on a timer shows its output before the wait, not at exit.
+		Flush()
+		var due <-chan time.Time
+		var clock *time.Timer
+		if when, ok := d.nextDue(); ok {
+			clock = time.NewTimer(time.Until(when))
+			due = clock.C
 		}
 		select {
 		case <-wake:
+		case <-due:
 		case s := <-sigs:
 			Flush()
 			exit(signalExitCode(s))
 			return
+		}
+		if clock != nil {
+			clock.Stop()
 		}
 	}
 }

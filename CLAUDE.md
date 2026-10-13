@@ -255,8 +255,13 @@ and `setTimeout`, built on M1's run loop. Its execution model is decided
 (semantics decision 3, as amended), and so far it has refused library globals
 at lowering and added the IR for promises: `ir.KindPromise`, `Async` on `Func`
 and `FuncLit`, `ir.Await` and `ir.NewPromise`. The backend refuses all of them
-by name until its emitter lands. Lowering, the runtime's scheduler, emission
-and end-to-end checks follow.
+by name until its emitter lands. The runtime has its domains
+(`backend/runtime/domain.go`, `promise.go`): a token-handoff scheduler, a
+microtask queue and a timer heap per domain, `Promise[T]`, `Async`, `Await`,
+`SetTimeout`, and a domain per request that carries on after `res.end()`.
+Generated code will pass the current domain as every function's first
+argument, because Go has no goroutine-local storage. Lowering, emission and
+the end-to-end checks follow.
 
 After M2, none urgent:
 
@@ -472,6 +477,13 @@ because every M1 `const` holds a primitive, a function or a host value. A
 grow when aggregates arrive, before they do, not after. Explicit shared-state
 tools (an atomic counter type in `types/`, say) are how a later milestone
 widens it.
+
+M2 hits this invariant first, with promises. A `Promise` settles, so it is
+mutable state like any object. M2's lowering must refuse a handler that
+reaches a promise declared outside it, such as a top-level
+`const ready: Promise<void> = …` awaited in a handler, directly or through what
+it calls. The runtime assumes a promise never leaves the domain that created
+it, and panics if one does rather than race.
 
 **Accepted differences from Node** (M1 plan, D5). Each is deliberate. Anything
 not listed here that behaves differently is a bug.
