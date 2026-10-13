@@ -77,6 +77,12 @@ func TestBuildRefusesAsyncIRItCannotEmitYet(t *testing.T) {
 			&ir.VarDecl{Name: "h", Type: ir.FuncType(nil, void), Span: at(4), Init: &ir.FuncLit{
 				Async: true, Result: void, Typ: ir.FuncType(nil, void), Span: at(4),
 			}},
+			// A timer is a global, so its refusal names no module.
+			&ir.ExprStmt{Span: at(5), Expr: &ir.HostCall{
+				Op:   ir.HostSetTimeout,
+				Args: []ir.Expr{&ir.Ident{Name: "f", Typ: ir.FuncType(nil, ir.Void)}, &ir.NumberLit{Value: 1}},
+				Typ:  ir.Number, Span: at(5),
+			}},
 		},
 	}
 
@@ -93,6 +99,7 @@ func TestBuildRefusesAsyncIRItCannotEmitYet(t *testing.T) {
 		{2, "await"},
 		{3, "new Promise"},
 		{4, "async function value"},
+		{5, "setTimeout"},
 	}
 	if len(unsupported.Nodes) != len(want) {
 		t.Fatalf("got %d unsupported nodes, want %d: %+v", len(unsupported.Nodes), len(want), unsupported.Nodes)

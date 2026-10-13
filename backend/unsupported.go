@@ -29,6 +29,9 @@ func (e *UnsupportedError) Error() string {
 func describeUnsupported(node any) string {
 	switch n := node.(type) {
 	case *ir.HostCall:
+		if n.Op.IsTimer() {
+			return "the backend cannot emit " + n.Op.String() + " yet"
+		}
 		return "the backend cannot emit node:http's " + n.Op.String() + " yet"
 	case *ir.HostProp:
 		return "the backend cannot emit node:http's " + n.Prop.String() + " yet"

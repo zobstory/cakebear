@@ -21,18 +21,21 @@ import (
 //   - nor may it call, or pass on, a function that touches one, directly or
 //     through the functions it calls in turn.
 //
-// Reading a const is fine: in M1 a const holds a primitive, a function or a
-// host value, and none of those can change. ⚠ That stops being true once
-// objects and arrays exist (a const array is still mutable through
-// `xs.push(…)`), and this rule must grow with them.
+// Reading a const is fine when it holds a primitive, a function or a host
+// value, because none of those can change. A promise can: it settles. So a
+// const promise counts as shared state too (M2 plan, D9), and the runtime,
+// which keeps each promise to the domain that made it, never sees one cross.
+// ⚠ Objects and arrays will be the same (a const array is still mutable
+// through `xs.push(…)`), and this rule must grow with them.
 
 // sharedUse is one mutable binding, declared outside some function, that the
 // function touches.
 type sharedUse struct {
-	sym   *ast.Symbol
-	name  string
-	write bool
-	at    *ast.Node
+	sym     *ast.Symbol
+	name    string
+	write   bool
+	promise bool // the binding holds a promise
+	at      *ast.Node
 }
 
 // reference is a use of a callable inside another function.
@@ -110,7 +113,8 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 		if n.Kind == ast.KindIdentifier && !isMemberName(n) {
 			if sym := rc.l.checker.GetSymbolAtLocation(n); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
-					uses = append(uses, sharedUse{sym: sym, name: n.Text(), write: isWrite(n), at: n})
+					promise := rc.l.typeOf(n).Kind == ir.KindPromise
+					uses = append(uses, sharedUse{sym: sym, name: n.Text(), write: isWrite(n), promise: promise, at: n})
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
 					refs = append(refs, reference{sym: sym, at: n})
 				}
@@ -168,7 +172,10 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 		return nil, false
 	}
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
-		return nil, false
+		// A const is shared state only when it holds something that changes.
+		if name := decl.Name(); name == nil || rc.l.typeOf(name).Kind != ir.KindPromise {
+			return nil, false
+		}
 	}
 	return decl, true
 }
@@ -281,15 +288,21 @@ func strongest(uses []sharedUse) (sharedUse, bool) {
 }
 
 func touchPhrase(u sharedUse) string {
-	if u.write {
+	switch {
+	case u.write:
 		return "change `" + u.name + "`, which they all share"
+	case u.promise:
+		return "use `" + u.name + "`, a promise created outside it; a promise can't be shared between requests yet"
 	}
 	return "read `" + u.name + "`, which can change while it runs; copy it into a `const` outside the handler if it doesn't change"
 }
 
 func calleePhrase(u sharedUse) string {
-	if u.write {
+	switch {
+	case u.write:
 		return "changes `" + u.name + "`, shared by them all"
+	case u.promise:
+		return "uses `" + u.name + "`, a promise created outside the handler"
 	}
 	return "reads `" + u.name + "`, which can change while it runs"
 }

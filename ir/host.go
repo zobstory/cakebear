@@ -1,8 +1,8 @@
 package ir
 
-// HostOp is an operation the host runtime implements. So far that is the part
-// of node:http cakebear bundles (types/node-http.d.ts): lower/ maps each member
-// declared there onto one of these, and refuses anything it does not list.
+// HostOp is an operation the host runtime implements: the part of node:http
+// cakebear bundles (types/node-http.d.ts), whose members lower/ maps onto these
+// and refuses the rest of, and the DOM timers TypeScript's own libs declare.
 //
 // The names are the API's, not Go's, so ir/ stays backend-agnostic. backend/
 // decides what each one calls.
@@ -15,6 +15,8 @@ const (
 	HostSetHeader                  // res.setHeader(name, value)
 	HostWriteHead                  // res.writeHead(statusCode)
 	HostEnd                        // res.end(chunk?)
+	HostSetTimeout                 // setTimeout(callback, delay): the callback is () => void
+	HostClearTimeout               // clearTimeout(id)
 )
 
 func (o HostOp) String() string {
@@ -29,10 +31,18 @@ func (o HostOp) String() string {
 		return "ServerResponse.writeHead"
 	case HostEnd:
 		return "ServerResponse.end"
+	case HostSetTimeout:
+		return "setTimeout"
+	case HostClearTimeout:
+		return "clearTimeout"
 	default:
 		return "invalid host operation"
 	}
 }
+
+// IsTimer reports whether o is one of the timer operations, which are globals
+// rather than part of node:http.
+func (o HostOp) IsTimer() bool { return o == HostSetTimeout || o == HostClearTimeout }
 
 // HostProperty is a property of a host value.
 type HostProperty int
