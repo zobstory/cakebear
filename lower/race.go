@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -34,12 +35,19 @@ import (
 //
 // The same rule holds a spawned function to what it may share with its caller
 // (spawn.go); concurrency says which of the two a diagnostic is about.
+//
+// It is program-wide (M3 plan step 5): the summary covers every module's
+// functions, a name is followed through an import to the declaration it
+// names, and a binding counts wherever in the program it is declared. A
+// file-by-file rule would pass, silently, a handler calling an imported
+// function that changes its own module's let.
 
 // sharedUse is one mutable binding, declared outside some function, that the
 // function touches.
 type sharedUse struct {
 	sym     *ast.Symbol
 	name    string
+	file    *ast.SourceFile // where the binding is declared
 	write   bool
 	promise bool // the binding holds a promise
 	host    bool // the binding holds a host value, such as a response
@@ -88,6 +96,9 @@ type callable struct {
 }
 
 type raceChecker struct {
+	// l is the lowerer that built the summary, for its checker and type
+	// mapping. Diagnostics go through the lowerer of the module being
+	// checked, whose file their spans are in.
 	l         *lowerer
 	callables map[*ast.Symbol]*callable
 	// order is the callables in source order. Propagation walks it rather
@@ -96,19 +107,21 @@ type raceChecker struct {
 	order []*callable
 }
 
-// raceRule builds the file's call-graph summary the first time a handler
-// needs checking.
+// raceRule builds the program's call-graph summary the first time a
+// concurrent function needs checking.
 func (l *lowerer) raceRule() *raceChecker {
-	if l.race != nil {
-		return l.race
+	if l.p.race != nil {
+		return l.p.race
 	}
 	rc := &raceChecker{l: l, callables: map[*ast.Symbol]*callable{}}
-	rc.collect(l.file.AsNode())
+	for _, f := range l.p.files {
+		rc.collect(f.AsNode())
+	}
 	for _, c := range rc.order {
 		c.uses, c.refs = rc.scan(c.node)
 	}
 	rc.propagate()
-	l.race = rc
+	l.p.race = rc
 	return rc
 }
 
@@ -144,11 +157,11 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 	var visit func(n *ast.Node) bool
 	visit = func(n *ast.Node) bool {
 		if n.Kind == ast.KindIdentifier && !isMemberName(n) {
-			if sym := rc.l.checker.GetSymbolAtLocation(n); sym != nil {
+			if sym := rc.l.p.resolve(rc.l.checker.GetSymbolAtLocation(n)); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
 					kind := rc.l.typeOf(n).Kind
 					uses = append(uses, sharedUse{
-						sym: sym, name: n.Text(), write: isWrite(n),
+						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
 						promise: kind == ir.KindPromise, host: kind == ir.KindHost, at: n,
 					})
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
@@ -204,7 +217,7 @@ func (rc *raceChecker) mergeUse(c *callable, u sharedUse) bool {
 
 func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 	decl := sym.ValueDeclaration()
-	if sym.Flags()&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != rc.l.file {
+	if sym.Flags()&ast.SymbolFlagsVariable == 0 || !rc.l.p.inProgram(decl) {
 		return nil, false
 	}
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
@@ -218,8 +231,12 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 	return decl, true
 }
 
+// within reports whether decl is declared inside fn. Positions are offsets
+// into a file, so a declaration in another module is never within, whatever
+// its offsets.
 func within(decl, fn *ast.Node) bool {
-	return decl.Pos() >= fn.Pos() && decl.End() <= fn.End()
+	return ast.GetSourceFileOfNode(decl) == ast.GetSourceFileOfNode(fn) &&
+		decl.Pos() >= fn.Pos() && decl.End() <= fn.End()
 }
 
 // isWrite reports whether id is assigned to, rather than read.
@@ -256,15 +273,15 @@ func (l *lowerer) checkConcurrent(arg *ast.Node, lowered ir.Expr, who concurrenc
 		if lit, ok := lowered.(*ir.FuncLit); ok {
 			lit.Concurrent = true
 		}
-		rc.checkLiteral(arg, who)
+		rc.checkLiteral(l, arg, who)
 	case ast.KindIdentifier:
-		c, ok := rc.callables[l.checker.GetSymbolAtLocation(arg)]
+		c, ok := rc.callables[l.p.resolve(l.checker.GetSymbolAtLocation(arg))]
 		if !ok {
 			l.failf(arg, "cakebear can only check a %s written inline or declared as a function; %s is neither", who.kind, arg.Text())
 			return
 		}
 		if u, ok := strongest(c.uses); ok {
-			l.failf(arg, "%s, so it can't %s", strings.Replace(who.named, "%s", c.name, 1), touchPhrase(u, who))
+			l.failf(arg, "%s, so it can't %s", strings.Replace(who.named, "%s", arg.Text(), 1), touchPhrase(u, who, l.file))
 		}
 	default:
 		l.failf(arg, "cakebear can only check a %s written inline or declared as a function", who.kind)
@@ -274,7 +291,7 @@ func (l *lowerer) checkConcurrent(arg *ast.Node, lowered ir.Expr, who concurrenc
 // checkLiteral reports, in source order, each shared binding a concurrent
 // literal touches (once, at its first write if there is one) and each
 // callable it references that touches one.
-func (rc *raceChecker) checkLiteral(fn *ast.Node, who concurrency) {
+func (rc *raceChecker) checkLiteral(l *lowerer, fn *ast.Node, who concurrency) {
 	uses, refs := rc.scan(fn)
 	type finding struct {
 		at  *ast.Node
@@ -293,7 +310,7 @@ func (rc *raceChecker) checkLiteral(fn *ast.Node, who concurrency) {
 		}
 	}
 	for _, u := range direct {
-		found = append(found, finding{u.at, who.runs + ", so it can't " + touchPhrase(u, who)})
+		found = append(found, finding{u.at, who.runs + ", so it can't " + touchPhrase(u, who, l.file)})
 	}
 
 	reported := map[*ast.Symbol]bool{}
@@ -304,17 +321,18 @@ func (rc *raceChecker) checkLiteral(fn *ast.Node, who concurrency) {
 			continue
 		}
 		reported[r.sym] = true
-		verb, name := "use", c.name
+		// The name as written: an import may rename what it names.
+		verb, name := "use", r.at.Text()
 		if p := r.at.Parent; p != nil && p.Kind == ast.KindCallExpression && p.Expression() == r.at {
-			verb, name = "call", c.name+"()"
+			verb, name = "call", name+"()"
 		}
 		found = append(found, finding{r.at, who.runs + ", so it can't " +
-			verb + " `" + name + "`, which " + calleePhrase(u, who)})
+			verb + " `" + name + "`, which " + calleePhrase(u, who, l.file)})
 	}
 
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.Pos() < found[j].at.Pos() })
 	for _, f := range found {
-		rc.l.failf(f.at, "%s", f.msg)
+		l.failf(f.at, "%s", f.msg)
 	}
 }
 
@@ -331,26 +349,37 @@ func strongest(uses []sharedUse) (sharedUse, bool) {
 	return sharedUse{}, false
 }
 
-func touchPhrase(u sharedUse, who concurrency) string {
-	switch {
-	case u.write:
-		return "change `" + u.name + "`, " + who.share
-	case u.promise:
-		return "use `" + u.name + "`, a promise created outside it; a promise can't be shared " + who.across + " yet"
-	case u.host:
-		return "use `" + u.name + "`, a node:http value created outside it; one can't be shared " + who.across + " yet"
+// label names u's binding in a diagnostic reported in from, with its
+// module's file when another module declares it.
+func (u sharedUse) label(from *ast.SourceFile) string {
+	if u.file != nil && u.file != from {
+		return "`" + u.name + "` in " + filepath.Base(string(u.file.FileName()))
 	}
-	return "read `" + u.name + "`, which can change while it runs; copy it into a `const` " + who.outside + " if it doesn't change"
+	return "`" + u.name + "`"
 }
 
-func calleePhrase(u sharedUse, who concurrency) string {
-	switch {
+func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
+	switch name := u.label(from); {
 	case u.write:
-		return "changes `" + u.name + "`, " + who.sharedBy
+		return "change " + name + ", " + who.share
 	case u.promise:
-		return "uses `" + u.name + "`, a promise created " + who.outside
+		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
 	case u.host:
-		return "uses `" + u.name + "`, a node:http value created " + who.outside
+		return "use " + name + ", a node:http value created outside it; one can't be shared " + who.across + " yet"
+	default:
+		return "read " + name + ", which can change while it runs; copy it into a `const` " + who.outside + " if it doesn't change"
 	}
-	return "reads `" + u.name + "`, which can change while it runs"
+}
+
+func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
+	switch name := u.label(from); {
+	case u.write:
+		return "changes " + name + ", " + who.sharedBy
+	case u.promise:
+		return "uses " + name + ", a promise created " + who.outside
+	case u.host:
+		return "uses " + name + ", a node:http value created " + who.outside
+	default:
+		return "reads " + name + ", which can change while it runs"
+	}
 }

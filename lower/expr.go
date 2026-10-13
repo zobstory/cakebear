@@ -1,10 +1,10 @@
 package lower
 
 import (
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
-
-	"sort"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/ir"
@@ -47,7 +47,7 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			return nil
 		}
 		if l.libraryName(n) {
-			l.failf(n, "%s is a library global cakebear does not implement yet", n.Text())
+			l.failOutside(n, n, "global")
 			return nil
 		}
 		t := l.typeOf(n)
@@ -55,7 +55,8 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 			l.failf(n, "%s has a type the backend cannot represent yet", n.Text())
 			return nil
 		}
-		return &ir.Ident{Name: n.Text(), Module: l.moduleOf(n), Typ: t, Span: l.span(n)}
+		name, module := l.ref(n)
+		return &ir.Ident{Name: name, Module: module, Typ: t, Span: l.span(n)}
 
 	case ast.KindParenthesizedExpression:
 		// Parentheses carry no meaning past parsing; the emitter parenthesises
@@ -294,11 +295,12 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	}
 
 	if l.libraryName(c.Expression) {
-		l.failf(n, "%s is a library function cakebear does not implement yet", c.Expression.Text())
+		l.failOutside(n, c.Expression, "function")
 		return nil
 	}
 
-	call := &ir.Call{Callee: c.Expression.Text(), Module: l.moduleOf(c.Expression), Typ: l.typeOf(n), Span: l.span(n)}
+	callee, module := l.ref(c.Expression)
+	call := &ir.Call{Callee: callee, Module: module, Typ: l.typeOf(n), Span: l.span(n)}
 	if c.Arguments != nil {
 		for _, a := range c.Arguments.Nodes {
 			lowered := l.expr(a)
@@ -315,30 +317,40 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 }
 
 // libraryName reports whether n names something declared only outside the
-// program: in TypeScript's libs (parseInt, NaN, setTimeout) or one of
-// cakebear's bundled files. Those have Go behind them only where lowering maps
-// them explicitly (console.log, node:http, the extension conversions, all
-// checked before this), so a plain reference would emit an undefined Go name
-// and fail inside go build.
+// program's modules: in TypeScript's libs (parseInt, NaN, setTimeout), one of
+// cakebear's bundled files, or a file the entry module doesn't import. Those
+// have Go behind them only where lowering maps them explicitly (console.log,
+// node:http, the extension conversions, all checked before this), so a plain
+// reference would emit an undefined Go name and fail inside go build. An
+// import resolves to the module that exports it.
 func (l *lowerer) libraryName(n *ast.Node) bool {
-	sym := l.checker.GetSymbolAtLocation(n)
-	if sym == nil {
-		return false
-	}
-	if sym.Flags()&ast.SymbolFlagsAlias != 0 {
-		if target := l.checker.GetAliasedSymbol(sym); target != nil {
-			sym = target
-		}
-	}
-	if len(sym.Declarations()) == 0 {
+	sym := l.p.resolve(l.checker.GetSymbolAtLocation(n))
+	if sym == nil || len(sym.Declarations()) == 0 {
 		return false
 	}
 	for _, d := range sym.Declarations() {
-		if ast.GetSourceFileOfNode(d) == l.file {
+		if l.p.inProgram(d) {
 			return false // the program's own, such as a function named parseInt
 		}
 	}
 	return true
+}
+
+// failOutside refuses at, which uses name, declared outside the program's
+// modules: what is a library global or function, unless name is declared in
+// a TypeScript file of the user's own that the entry module doesn't import,
+// such as a script whose top-level names are global.
+func (l *lowerer) failOutside(at, name *ast.Node, what string) {
+	if sym := l.p.resolve(l.checker.GetSymbolAtLocation(name)); sym != nil {
+		for _, d := range sym.Declarations() {
+			if f := ast.GetSourceFileOfNode(d); f != nil && !f.IsDeclarationFile {
+				l.failf(at, "%s is declared in %s, which the entry module doesn't import; cakebear compiles only the modules it imports",
+					name.Text(), filepath.Base(string(f.FileName())))
+				return
+			}
+		}
+	}
+	l.failf(at, "%s is a library %s cakebear does not implement yet", name.Text(), what)
 }
 
 // conversionBrand reports which extension a callee converts to, or "" when the

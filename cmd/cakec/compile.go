@@ -12,7 +12,6 @@ import (
 	"github.com/zobstory/cakebear/backend"
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/compiler"
-	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/lower"
 )
 
@@ -28,15 +27,16 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 		return exitBadArgs
 	}
 	if len(files) > 1 {
-		// Linking several modules needs an import graph in the IR, which does
-		// not exist yet. Saying that plainly beats compiling only the first.
-		fmt.Fprintf(stderr, "cakec: building more than one file is not supported yet (got %d); multi-file programs land with imports\n", len(files))
+		// A binary runs one module, which brings in what it imports. Which of
+		// several named files that is can't be guessed.
+		fmt.Fprintf(stderr, "cakec: name one file, the module the binary runs, and it brings in what it imports (got %d)\n", len(files))
 		return exitBadArgs
 	}
-	file := files[0]
 
-	checker, done := program.GetTypeCheckerForFile(ctx, file)
-	module, lowerErrs := lower.File(file, checker)
+	// One checker for every module: types from different checkers can't be
+	// mixed, and lowering keys on them.
+	checker, done := program.GetTypeChecker(ctx)
+	lowered, lowerErrs := lower.Program(files[0], checker)
 	done()
 
 	if len(lowerErrs) > 0 {
@@ -64,10 +64,10 @@ func compileToBinary(ctx context.Context, program *compiler.Program, opts buildO
 
 	output := opts.output
 	if output == "" {
-		output = module.Name
+		output = lowered.EntryModule().Name
 	}
 
-	goSource, err := backend.Build(ir.ProgramOf(module), backend.Options{
+	goSource, err := backend.Build(lowered, backend.Options{
 		Output:       output,
 		KeepGoSource: opts.emitGo,
 		GOOS:         opts.goos,
