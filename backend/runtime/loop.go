@@ -129,6 +129,7 @@ func run(sigs <-chan os.Signal) {
 		for _, f := range takeQueue() {
 			d.runTask(f)
 		}
+		d.runInbox()
 		d.fireDue()
 		if liveHandles.Load() == 0 && queueEmpty() && !d.pending() {
 			return
@@ -144,6 +145,7 @@ func run(sigs <-chan os.Signal) {
 		}
 		select {
 		case <-wake:
+		case <-d.wake: // a spawn's result arrived
 		case <-due:
 		case s := <-sigs:
 			Flush()

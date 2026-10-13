@@ -284,6 +284,37 @@ func TestBuildTopLevelAwaitRuns(t *testing.T) {
 	}
 }
 
+// spawn emits one of three runtime calls, chosen by what the spawned function
+// returns: a value, nothing, or a promise.
+func TestEmitSpawnForms(t *testing.T) {
+	t.Parallel()
+
+	spawnOf := func(name string, result ir.Type, async bool, elem ir.Type) ir.Stmt {
+		body := []ir.Stmt{&ir.Return{Span: span, Value: num(1)}}
+		if result == ir.Void || (async && elem == ir.Void) {
+			body = []ir.Stmt{logStr(name)}
+		}
+		fn := &ir.FuncLit{Async: async, Result: result, Typ: ir.FuncType(nil, result), Concurrent: true, Span: span, Body: body}
+		return &ir.ExprStmt{Span: span, Expr: &ir.HostCall{Op: ir.HostSpawn, Args: []ir.Expr{fn}, Typ: ir.PromiseOf(elem), Span: span}}
+	}
+	got := Emit(&ir.Module{Name: "t", Main: []ir.Stmt{
+		spawnOf("value", ir.Number, false, ir.Number),
+		spawnOf("nothing", ir.Void, false, ir.Void),
+		spawnOf("async", voidPromise, true, ir.Void),
+	}})
+	mustParse(t, got)
+	for _, want := range []string{
+		"\tcakebearrt.Spawn(ts_domain, func(ts_domain *cakebearrt.Domain) float64 {\n",
+		"\tcakebearrt.SpawnVoid(ts_domain, func(ts_domain *cakebearrt.Domain) {\n",
+		"\tcakebearrt.SpawnAsync(ts_domain, func(ts_domain *cakebearrt.Domain) *cakebearrt.Promise[struct{}] {\n",
+		"\t" + rtPkg + ".Run()\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("emitted source missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // main declares a domain only when its own code uses one: a function literal
 // has its own ts_domain parameter, so the calls inside it don't count. Go
 // rejects an unused local, and parsing alone would not notice; a server whose

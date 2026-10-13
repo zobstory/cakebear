@@ -51,3 +51,21 @@ declare type base64 = string & { readonly __cakebearBrand: "base64" };
  * `base64("!!!")` is a compile error rather than a runtime surprise.
  */
 declare function base64(value: string): base64;
+
+/**
+ * Runs `fn` in parallel with the code that calls it, on a goroutine of its
+ * own, and returns at once a promise of its result: Go's `go`, with the
+ * promise as the join. Await it for the value.
+ *
+ *     const a: Promise<number> = spawn(() => fib(38));
+ *     const b: Promise<number> = spawn(() => fib(39));
+ *     console.log((await a) + (await b));
+ *
+ * `fn` is held to the same rule as a request handler: it may not touch a
+ * `let`, a parameter, a promise or a node:http value from outside it, so the
+ * two never share anything that can change. An async `fn` runs until its own
+ * promise settles. The program waits for every spawn before it exits.
+ *
+ * This is cakebear's, not TypeScript's: under plain `tsc` the name is unknown.
+ */
+declare function spawn<T>(fn: () => T | Promise<T>): Promise<T>;

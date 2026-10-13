@@ -61,6 +61,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	if x.Op.IsTimer() {
 		return e.timerCall(x)
 	}
+	if x.Op == ir.HostSpawn {
+		return e.spawnCall(x)
+	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)

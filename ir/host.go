@@ -17,6 +17,7 @@ const (
 	HostEnd                        // res.end(chunk?)
 	HostSetTimeout                 // setTimeout(callback, delay): the callback is () => void
 	HostClearTimeout               // clearTimeout(id)
+	HostSpawn                      // spawn(fn), cakebear's: fn is () => T or () => Promise<T>
 )
 
 func (o HostOp) String() string {
@@ -35,6 +36,8 @@ func (o HostOp) String() string {
 		return "setTimeout"
 	case HostClearTimeout:
 		return "clearTimeout"
+	case HostSpawn:
+		return "spawn"
 	default:
 		return "invalid host operation"
 	}

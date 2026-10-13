@@ -114,6 +114,21 @@ func (e *emitter) newPromise(x *ir.NewPromise) string {
 	return fmt.Sprintf("%s.%s(%s, %s)", rtPkg, ctor, e.dom(), e.expr(x.Executor))
 }
 
+// spawnCall emits cakebear's spawn(fn): Spawn for a fn returning a value,
+// SpawnVoid for one returning nothing, SpawnAsync for an async one.
+func (e *emitter) spawnCall(x *ir.HostCall) string {
+	e.usesRuntime, e.needsRun = true, true
+	fn := x.Args[0]
+	ctor := "Spawn"
+	switch sig := fn.ExprType().Sig; {
+	case sig.Result.Kind == ir.KindPromise:
+		ctor = "SpawnAsync"
+	case sig.Result == ir.Void:
+		ctor = "SpawnVoid"
+	}
+	return fmt.Sprintf("%s.%s(%s, %s)", rtPkg, ctor, e.dom(), e.expr(fn))
+}
+
 // timerCall emits setTimeout and clearTimeout, which run in the current
 // domain: a timer a request sets fires in that request.
 func (e *emitter) timerCall(x *ir.HostCall) string {
