@@ -72,8 +72,23 @@ cakec build --check main.ts          # type-check only
 cakec build --emit-go main.ts        # also write the generated Go
 cakec build --target linux/amd64 main.ts
 cakec build --checkers 8 --files-from list.txt
+cakec build                          # the project in the nearest tsconfig.json
+cakec build -p app/                  # the project in app/tsconfig.json
 cakec build --help                   # cakebear's flags
 cakec -p .                           # anything but `cakec build` is tsc, unchanged
+```
+
+A project build uses the `tsconfig.json`'s files and compiler options. The
+module to build goes in a top-level `"cakebear"` block, which `tsc` ignores.
+Paths in it are relative to the config, and `output` defaults to `main`'s
+basename:
+
+```jsonc
+{
+  "compilerOptions": { "strict": true },
+  "include": ["src"],
+  "cakebear": { "main": "src/server.ts", "output": "bin/server" }
+}
 ```
 
 Building requires the Go toolchain on `PATH`; cakebear shells out to it.

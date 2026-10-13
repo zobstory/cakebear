@@ -129,6 +129,7 @@ go run ./cmd/tsc --version            # upstream CLI still works
 bin/cakec -p .                        # anything but `cakec build` is tsc, unchanged
 bin/cakec build --version             # cakebear's; `cakec --version` is tsc's
 scripts/copy-tsc-cmd.sh               # re-copy cmd/tsc into cmd/cakec (syncs run it)
+bin/cakec build                       # the project in the nearest tsconfig.json
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
@@ -260,8 +261,9 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
 `await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
 builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's step 1, the `tsc`
-passthrough, is done.
+M4, since a real project is several files of them. M3's steps 1 and 2 are
+done: the `tsc` passthrough, and native builds from `tsconfig.json`, which
+still compile one module.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -274,7 +276,22 @@ passthrough, is done.
   written, plus `--watch` through an edit and the language server's
   `initialize`. Native settings go in a top-level `"cakebear"`
   block of `tsconfig.json`, which `tsc` ignores. Inside `compilerOptions`, an
-  unknown key is TS5023. Both were measured 2026-10-12. `execute` has no plugin
+  unknown key is TS5023. Both were measured 2026-10-12.
+  - **Project builds** (`cmd/cakec/project.go`) read `"cakebear": { "main",
+    "output" }` from the config named by `-p`, or else the nearest one at or
+    above the working directory, as `tsc` finds it.
+  - They type-check every file the config lists, under its own options, and
+    compile `main` alone. A file `main` doesn't import is checked but never
+    runs, as under Node.
+  - They refuse a config that turns off `strictNullChecks` or `noImplicitAny`,
+    since cakebear's own options always have both on.
+  - Only that config's block is read: `extends` doesn't carry unknown keys, so
+    a block in a base config isn't seen, and the error says so.
+  - cakebear's declarations join the project's root files. They stay files of
+    their own because lowering recognises `spawn`, the conversions and
+    `node:http`'s members by the virtual file declaring them.
+
+  `execute` has no plugin
   or emit hook, and its `OnProgram` callback switches upstream into test mode,
   so native builds keep constructing their own Program. This replaces the
   earlier "`tsconfig.json` support" item. Its `--lsp` passthrough should also

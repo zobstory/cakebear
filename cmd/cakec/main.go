@@ -33,7 +33,9 @@ import (
 const usage = `cakec — the cakebear compiler: tsc, plus native builds
 
 USAGE:
-    cakec build <file.ts>... [flags]
+    cakec build [flags]                   the project in the nearest tsconfig.json
+    cakec build -p <tsconfig.json|dir> [flags]
+    cakec build <file.ts>... [flags]      files alone, with no tsconfig.json
     cakec build --files-from <list.txt> [flags]
     cakec build --help
     cakec build --version
@@ -43,8 +45,15 @@ Anything that isn't cakec build is tsc, unchanged: cakec --help prints tsc's
 help, cakec -p . compiles a project to JavaScript, and cakec --lsp --stdio is
 TypeScript's language server.
 
+A project names the module to build in a "cakebear" block of its
+tsconfig.json, which tsc ignores; paths are relative to the config:
+
+    "cakebear": { "main": "src/server.ts", "output": "bin/server" }
+
 FLAGS (cakec build):
-    -o PATH             write the executable to PATH (default: source basename)
+    -p, --project PATH  build the project in PATH, a tsconfig.json or its directory
+    -o PATH             write the executable to PATH (default: the block's output,
+                        or else the source's basename)
     --check             type-check only; do not build
     --emit-go           also write the generated Go beside the output
     --target GOOS/ARCH  cross-compile, e.g. linux/amd64
@@ -135,6 +144,12 @@ type buildOptions struct {
 	files []string
 	color bool
 
+	// project is -p's argument: a tsconfig.json, or a directory holding one.
+	// With neither files nor -p, the build looks for a tsconfig.json.
+	project string
+	// configFile is the tsconfig.json a project build loaded, for messages.
+	configFile string
+
 	// checkers is 0 when unset, meaning "let upstream pick" (4). Upstream
 	// additionally clamps to the file count, so a single-file build always
 	// runs one checker no matter what is asked for here.
@@ -177,6 +192,13 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 				return opts, errors.New("-o needs a path")
 			}
 			opts.output = args[i]
+
+		case arg == "-p" || arg == "--project":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("%s needs a tsconfig.json, or a directory holding one", arg)
+			}
+			opts.project = args[i]
 
 		case arg == "--target":
 			i++
@@ -226,8 +248,9 @@ func parseBuildArgs(args []string) (buildOptions, error) {
 		}
 	}
 
-	if len(opts.files) == 0 {
-		return opts, errors.New("missing input file")
+	// tsc's TS5042 says the same: a project brings its own files.
+	if opts.project != "" && len(opts.files) > 0 {
+		return opts, errors.New("-p can't be combined with input files: a project's files come from its tsconfig.json")
 	}
 	if opts.checkers > 0 && opts.singleThreaded {
 		return opts, errors.New("--checkers and --single-threaded contradict each other; pick one")

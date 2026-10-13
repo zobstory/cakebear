@@ -20,9 +20,9 @@ func TestParseBuildArgs(t *testing.T) {
 		{name: "bare file", args: []string{"main.ts"}, wantFile: "main.ts"},
 		{name: "file then flag", args: []string{"main.ts", "--no-color"}, wantFile: "main.ts"},
 		{name: "flag then file", args: []string{"--no-color", "main.ts"}, wantFile: "main.ts"},
-		{name: "no file", args: nil, wantErr: "missing input file"},
-		{name: "only a flag", args: []string{"--no-color"}, wantErr: "missing input file"},
 		{name: "unknown flag", args: []string{"--optimise", "main.ts"}, wantErr: `unknown flag "--optimise"`},
+		{name: "-p and a file", args: []string{"-p", ".", "main.ts"}, wantErr: "-p can't be combined with input files"},
+		{name: "-p with no path", args: []string{"-p"}, wantErr: "-p needs a tsconfig.json"},
 		// A lone "-" is a filename, not a flag: the flag branch requires
 		// len(arg) > 1 precisely so this stays reachable.
 		{name: "lone dash is a file", args: []string{"-"}, wantFile: "-"},
@@ -51,6 +51,33 @@ func TestParseBuildArgs(t *testing.T) {
 				t.Errorf("files = %q, want exactly [%q]", opts.files, tt.wantFile)
 			}
 		})
+	}
+}
+
+// TestParseBuildArgsProject covers the arguments of a project build, which
+// names no files: the files come from a tsconfig.json.
+func TestParseBuildArgsProject(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		args        []string
+		wantProject string
+	}{
+		{nil, ""},
+		{[]string{"--no-color"}, ""},
+		{[]string{"-p", "app"}, "app"},
+		{[]string{"--project", "app/tsconfig.json"}, "app/tsconfig.json"},
+		{[]string{"--check", "-p", "app", "-o", "out"}, "app"},
+	} {
+		opts, err := parseBuildArgs(tt.args)
+		if err != nil {
+			t.Errorf("parseBuildArgs(%q) = %v, want success", tt.args, err)
+			continue
+		}
+		if len(opts.files) != 0 || opts.project != tt.wantProject {
+			t.Errorf("parseBuildArgs(%q): files %q, project %q; want no files, project %q",
+				tt.args, opts.files, opts.project, tt.wantProject)
+		}
 	}
 }
 
@@ -83,10 +110,10 @@ func TestBuildCommand(t *testing.T) {
 		{name: "--version", args: []string{"--version"}, wantCode: exitOK, wantStdout: "cakec " + version + " (TypeScript "},
 		{name: "-v", args: []string{"-v"}, wantCode: exitOK, wantStdout: "cakec " + version + " (TypeScript "},
 		{
-			name:       "no file",
-			args:       nil,
+			name:       "a project that isn't there",
+			args:       []string{"-p", "no/such/project"},
 			wantCode:   exitBadArgs,
-			wantStderr: "missing input file",
+			wantStderr: "-p no/such/project: no tsconfig.json there",
 		},
 		{
 			name:       "unknown flag points at build's help",

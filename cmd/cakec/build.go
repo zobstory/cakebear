@@ -13,40 +13,24 @@ import (
 	"github.com/zobstory/cakebear/internal/core"
 	"github.com/zobstory/cakebear/internal/tsoptions"
 	"github.com/zobstory/cakebear/internal/tspath"
+	"github.com/zobstory/cakebear/internal/vfs"
 	"github.com/zobstory/cakebear/internal/vfs/osvfs"
 	cakebeartypes "github.com/zobstory/cakebear/types"
 )
 
-// runBuild type-checks the input files and reports what it finds.
+// runBuild type-checks the program and, if it is clean, builds it.
 //
 // The pipeline is assembled here rather than borrowed from internal/execute:
-// filesystem, host, config, Program, diagnostics. Phase 4 lowers the checked
-// program to Go and hands it to `go build`; that step slots in after
-// collectDiagnostics reports clean.
+// filesystem, host, config, Program, diagnostics. The program is either the
+// files named on the command line, under cakebear's own options, or a
+// tsconfig.json project (project.go).
 func runBuild(opts buildOptions, stderr io.Writer) int {
-	roots := make([]tspath.RootedFilePath, 0, len(opts.files))
-	for _, name := range opts.files {
-		abs, err := filepath.Abs(name)
-		if err != nil {
-			fmt.Fprintf(stderr, "cakec: resolving %s: %v\n", name, err)
-			return exitBadArgs
-		}
-		// Check the file exists before handing it to the compiler. The Program
-		// would report a missing input as a diagnostic, but "no such file"
-		// deserves a plain error rather than TS6053 formatted like a type error.
-		if _, err := os.Stat(abs); err != nil {
-			fmt.Fprintf(stderr, "cakec: %v\n", err)
-			return exitBadArgs
-		}
-		roots = append(roots, tspath.RootedFilePathFromAbsolute(abs))
-	}
-
-	cwd, err := os.Getwd()
+	osCwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(stderr, "cakec: %v\n", err)
 		return exitBadArgs
 	}
-	cwd = tspath.NormalizePath(cwd)
+	cwd := tspath.NormalizePath(osCwd)
 
 	// bundled.WrapFS overlays the embedded lib.*.d.ts files onto the real
 	// filesystem, so a checkout without a node_modules still resolves the
@@ -56,20 +40,35 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 	// real file or left stale by a partial install.
 	fs := cakebeartypes.WrapFS(bundled.WrapFS(osvfs.FS()))
 
+	var config *tsoptions.ParsedCommandLine
+	if len(opts.files) > 0 {
+		var code int
+		if config, code = filesConfig(opts, fs, cwd, stderr); config == nil {
+			return code
+		}
+	} else {
+		path, err := configFile(opts, osCwd)
+		if err != nil {
+			fmt.Fprintf(stderr, "cakec: %v\n", err)
+			return exitBadArgs
+		}
+		p, diags, err := loadProject(path, opts, fs, cwd)
+		if len(diags) > 0 {
+			report(diags, cwd, opts, stderr)
+			return exitErrors
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "cakec: %v\n", err)
+			return exitBadArgs
+		}
+		config = p.config
+		opts.files, opts.configFile = []string{p.main}, path
+		if opts.output == "" {
+			opts.output = relativeTo(cwd, p.output)
+		}
+	}
+
 	host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/, nil /*contentMapperProject*/)
-
-	// cakebear's declarations are root files of every program, so `i32`,
-	// `base64` and `node:http` resolve without an import, a reference
-	// directive or an install.
-	roots = append(roots, cakebeartypes.RootFiles()...)
-
-	config := tsoptions.NewParsedCommandLine(
-		compilerOptionsFor(opts),
-		roots,
-		nil, // projectReferences
-		tspath.RootedDirectoryPathFromAbsolute(cwd),
-		fs.CaseSensitivity(),
-	)
 
 	program := compiler.NewProgram(compiler.ProgramOptions{
 		Config: config,
@@ -89,6 +88,40 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 		return exitOK
 	}
 	return compileToBinary(ctx, program, opts, stderr)
+}
+
+// filesConfig is the program for input files named on the command line. A nil
+// config means it couldn't be made, and code is the exit code.
+func filesConfig(opts buildOptions, fs vfs.FS, cwd string, stderr io.Writer) (config *tsoptions.ParsedCommandLine, code int) {
+	roots := make([]tspath.RootedFilePath, 0, len(opts.files))
+	for _, name := range opts.files {
+		abs, err := filepath.Abs(name)
+		if err != nil {
+			fmt.Fprintf(stderr, "cakec: resolving %s: %v\n", name, err)
+			return nil, exitBadArgs
+		}
+		// Check the file exists before handing it to the compiler. The Program
+		// would report a missing input as a diagnostic, but "no such file"
+		// deserves a plain error rather than TS6053 formatted like a type error.
+		if _, err := os.Stat(abs); err != nil {
+			fmt.Fprintf(stderr, "cakec: %v\n", err)
+			return nil, exitBadArgs
+		}
+		roots = append(roots, tspath.RootedFilePathFromAbsolute(abs))
+	}
+
+	// cakebear's declarations are root files of every program, so `i32`,
+	// `base64` and `node:http` resolve without an import, a reference
+	// directive or an install.
+	roots = append(roots, cakebeartypes.RootFiles()...)
+
+	return tsoptions.NewParsedCommandLine(
+		compilerOptionsFor(opts),
+		roots,
+		nil, // projectReferences
+		tspath.RootedDirectoryPathFromAbsolute(cwd),
+		fs.CaseSensitivity(),
+	), exitOK
 }
 
 // compilerOptionsFor is cakebear's stance when there is no tsconfig.json.
