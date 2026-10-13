@@ -1,32 +1,49 @@
 // Command cakec is the cakebear compiler: TypeScript in, native binary out.
 //
-// Phase 3 gets as far as type checking, in parallel. The frontend is
-// upstream's -- scanner, parser, binder and checker all come from the fork --
-// but the pipeline that drives them is ours, in build.go, and deliberately does
-// not route through internal/execute. That package is shaped around emitting
-// JavaScript, which is the one stage cakebear replaces; hooking into it would
-// mean editing upstream files, and the golden rule (see CLAUDE.md) exists to
-// prevent that.
+// It is also tsc. `cakec build` is cakebear's command, and anything else goes
+// to upstream's execute.CommandLine, which is the whole of tsc, exactly as
+// cmd/tsc hands it over: every flag, tsconfig.json, --watch, --build, and the
+// --lsp and --api servers. Package main can't be imported, so the tsc_*.go
+// files are copies of cmd/tsc's, which TestTscCopies holds to upstream's byte
+// for byte.
+//
+// Native builds don't route through internal/execute. That package is shaped
+// around emitting JavaScript, the one stage cakebear replaces, and offers no
+// hook to replace it; adding one would mean editing upstream files, which the
+// golden rule (see CLAUDE.md) forbids. So build.go drives upstream's frontend
+// itself -- scanner, parser, binder and checker -- and lowers the result to Go.
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+
+	"github.com/zobstory/cakebear/internal/core"
+	"github.com/zobstory/cakebear/internal/execute"
+	"github.com/zobstory/cakebear/internal/osutil"
 )
 
-const usage = `cakec — the cakebear compiler
+const usage = `cakec — the cakebear compiler: tsc, plus native builds
 
 USAGE:
     cakec build <file.ts>... [flags]
     cakec build --files-from <list.txt> [flags]
-    cakec --help
-    cakec --version
+    cakec build --help
+    cakec build --version
+    cakec <tsc arguments>
 
-FLAGS:
+Anything that isn't cakec build is tsc, unchanged: cakec --help prints tsc's
+help, cakec -p . compiles a project to JavaScript, and cakec --lsp --stdio is
+TypeScript's language server.
+
+FLAGS (cakec build):
     -o PATH             write the executable to PATH (default: source basename)
     --check             type-check only; do not build
     --emit-go           also write the generated Go beside the output
@@ -40,7 +57,7 @@ cakec type-checks the inputs, lowers them to Go, and invokes the Go toolchain
 to produce a native binary. The language subset the backend can lower is
 narrower than what it type-checks; unsupported constructs are named.
 
-EXIT CODES:
+EXIT CODES (cakec build):
     0    no diagnostics
     1    the program has errors
     2    bad usage, or an input could not be read
@@ -64,36 +81,53 @@ const (
 const maxCheckers = 256
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(runMain())
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stdout, usage)
-		return exitOK
+// runMain is cmd/tsc's runMain plus one command, build. Only the bare word is
+// cakebear's: tsc would read it as a file named "build", and --build and -b
+// are still tsc's project-reference builds. TestTscMainUnchanged fails when
+// upstream's dispatch changes, so that it gets mirrored here.
+func runMain() int {
+	core.ApplyDebugStackLimit()
+	args := osutil.Args()[1:]
+	if len(args) > 0 {
+		switch args[0] {
+		case "build":
+			return runBuildCommand(args[1:], os.Stdout, os.Stderr)
+		case "--lsp":
+			return runLSP(args[1:])
+		case "--api":
+			return runAPI(args[1:])
+		}
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	result := execute.CommandLine(ctx, newSystem(), args, nil)
+	return int(result.Status)
+}
+
+// runBuildCommand runs `cakec build`, given the arguments after "build". Its
+// help and version live here because `cakec --help` and `cakec --version` are
+// tsc's.
+func runBuildCommand(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "--help", "-h":
+			fmt.Fprint(stdout, usage)
+			return exitOK
+		case "--version", "-v":
+			fmt.Fprintf(stdout, "cakec %s (TypeScript %s)\n", version, core.Version())
+			return exitOK
+		}
 	}
 
-	switch args[0] {
-	case "--help", "-h", "help":
-		fmt.Fprint(stdout, usage)
-		return exitOK
-
-	case "--version", "-v":
-		fmt.Fprintf(stdout, "cakec %s\n", version)
-		return exitOK
-
-	case "build":
-		opts, err := parseBuildArgs(args[1:])
-		if err != nil {
-			fmt.Fprintf(stderr, "cakec: %v\n\nrun `cakec --help` for usage\n", err)
-			return exitBadArgs
-		}
-		return runBuild(opts, stderr)
-
-	default:
-		fmt.Fprintf(stderr, "cakec: unknown subcommand %q\n\n%s", args[0], usage)
+	opts, err := parseBuildArgs(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "cakec: %v\n\nrun `cakec build --help` for usage\n", err)
 		return exitBadArgs
 	}
+	return runBuild(opts, stderr)
 }
 
 // buildOptions is what `cakec build` was asked to do, after parsing.
