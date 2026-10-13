@@ -129,8 +129,20 @@ parallel, so a CPU-heavy handler doesn't hold up the others. Eight requests to
 a handler computing `fib(38)` take about 1.3× as long as one; under Node they
 take about 7.7×, because its handlers share one thread.
 
+Handlers can be `async`. Each request is its own *domain*: the awaits inside
+one request run in exactly Node's order, while separate requests still run in
+parallel. Eight requests to a handler that awaits a timer and then computes
+`fib(38)` take about 1.2× as long as one; under Node they take about 7.2×.
+
+```ts
+createServer(async (req, res) => {
+  await sleep(10); // a promise resolved by setTimeout
+  res.end("fib: " + fib(38) + "\n");
+});
+```
+
 Because handlers overlap, one that changes shared state would be a data race.
-`cakec` refuses it at compile time:
+`cakec` refuses it at compile time, including after an `await`:
 
 ```console
 server.ts:10:3: cannot compile yet: this handler runs on many requests at once, so it can't change `hits`, which they all share
@@ -145,16 +157,20 @@ parameters and return; arithmetic; string concatenation; comparisons; `===` and
 `!==`; `&&`, `||`, `!`; unary minus; `if`/`else`; `while`; `return`;
 `console.log` of one primitive; calls to a function by name; arrow functions
 and function expressions as values (closures); `import` from `node:http`, and
-the members its bundled declarations list.
+the members its bundled declarations list; `async` functions and arrows,
+`await`, `Promise<T>`, `new Promise((resolve) => …)`, and `setTimeout` /
+`clearTimeout`.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but
-`node:http`, `for`, multi-file programs, bitwise operators, `async`, and the
-standard library's globals (`parseInt`, `NaN`, `isNaN`, `setTimeout`, …).
+`node:http`, `for`, multi-file programs, bitwise operators, `reject` and
+errors, `.then` and `Promise.all`, top-level `await`, and the standard
+library's other globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers
-run in parallel, where Node runs them one at a time. The compiler refuses
+run in parallel, where Node runs them one at a time. Async code within one
+request, or within the main program, keeps Node's order exactly. The compiler refuses
 shared mutable state in a handler, so that difference cannot become a data
 race. [`CLAUDE.md`](CLAUDE.md) lists the other accepted differences, such as log
 lines interleaving across requests and response header names being
