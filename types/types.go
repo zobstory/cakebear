@@ -59,6 +59,19 @@ func RootFiles() []tspath.RootedFilePath {
 	return paths
 }
 
+// LibText returns every declarations file joined, for appending to a bundled
+// lib file. That is how tsc mode and the language server see them: neither
+// can be given extra root files. Native builds keep the files separate,
+// because lowering recognises a declaration by the virtual file it is in.
+func LibText() string {
+	var b strings.Builder
+	for _, f := range virtualFiles {
+		b.WriteString("\n")
+		b.WriteString(f.contents)
+	}
+	return b.String()
+}
+
 func virtualFile(path string) (string, bool) {
 	for _, f := range virtualFiles {
 		if f.path == path {

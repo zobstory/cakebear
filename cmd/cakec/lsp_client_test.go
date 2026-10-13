@@ -142,12 +142,71 @@ func (s *lspServer) request(method string, params any) json.RawMessage {
 func (s *lspServer) initialize(dir string) json.RawMessage {
 	s.t.Helper()
 	result := s.request("initialize", map[string]any{
-		"processId":    nil,
-		"rootUri":      "file://" + filepath.ToSlash(dir),
-		"capabilities": map[string]any{},
+		"processId": nil,
+		"rootUri":   fileURI(dir),
+		"capabilities": map[string]any{"textDocument": map[string]any{
+			"diagnostic": map[string]any{}, "definition": map[string]any{}, "publishDiagnostics": map[string]any{},
+		}},
 	})
 	s.notify("initialized", map[string]any{})
 	return result
+}
+
+func fileURI(path string) string { return "file://" + filepath.ToSlash(path) }
+
+// open tells the server an editor opened the file at path.
+func (s *lspServer) open(path, text string) {
+	s.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
+		"uri": fileURI(path), "languageId": "typescript", "version": 1, "text": text,
+	}})
+}
+
+// lspDiagnostic is the part of a diagnostic the tests look at.
+type lspDiagnostic struct {
+	Code    json.RawMessage `json:"code"`
+	Message string          `json:"message"`
+}
+
+// lspLocation is a Location (uri) or a LocationLink (targetUri).
+type lspLocation struct {
+	URI       string `json:"uri"`
+	TargetURI string `json:"targetUri"`
+}
+
+// diagnostics pulls the open file's diagnostics.
+func (s *lspServer) diagnostics(path string) []lspDiagnostic {
+	s.t.Helper()
+	var report struct {
+		Items []lspDiagnostic `json:"items"`
+	}
+	result := s.request("textDocument/diagnostic", map[string]any{"textDocument": map[string]any{"uri": fileURI(path)}})
+	if err := json.Unmarshal(result, &report); err != nil {
+		s.t.Fatalf("diagnostics: %v in %s", err, result)
+	}
+	return report.Items
+}
+
+// definition returns the URIs go-to-definition offers at a position.
+func (s *lspServer) definition(path string, line, character int) []string {
+	s.t.Helper()
+	result := s.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI(path)},
+		"position":     map[string]any{"line": line, "character": character},
+	})
+	// A Location, a list of them, or a list of LocationLinks.
+	var locations []lspLocation
+	if err := json.Unmarshal(result, &locations); err != nil {
+		var one lspLocation
+		if err := json.Unmarshal(result, &one); err != nil {
+			s.t.Fatalf("definition: %v in %s", err, result)
+		}
+		locations = append(locations, one)
+	}
+	var uris []string
+	for _, l := range locations {
+		uris = append(uris, l.URI+l.TargetURI)
+	}
+	return uris
 }
 
 // close shuts the server down as an editor does and returns its exit code.
