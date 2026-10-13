@@ -2,6 +2,7 @@ package lower
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/ir"
@@ -21,12 +22,18 @@ import (
 //   - nor may it call, or pass on, a function that touches one, directly or
 //     through the functions it calls in turn.
 //
-// Reading a const is fine when it holds a primitive, a function or a host
-// value, because none of those can change. A promise can: it settles. So a
-// const promise counts as shared state too (M2 plan, D9), and the runtime,
-// which keeps each promise to the domain that made it, never sees one cross.
+// Reading a const is fine when it holds a primitive or a function, because
+// neither can change. A promise can: it settles. So a const promise counts as
+// shared state too (M2 plan, D9), and the runtime, which keeps each promise to
+// the domain that made it, never sees one cross. So does a const host value
+// (D10): the runtime's server and response types are not goroutine-safe, and
+// a handler or a spawned function reaching one made outside it would be using
+// it from two goroutines at once.
 // ⚠ Objects and arrays will be the same (a const array is still mutable
 // through `xs.push(…)`), and this rule must grow with them.
+//
+// The same rule holds a spawned function to what it may share with its caller
+// (spawn.go); concurrency says which of the two a diagnostic is about.
 
 // sharedUse is one mutable binding, declared outside some function, that the
 // function touches.
@@ -35,8 +42,34 @@ type sharedUse struct {
 	name    string
 	write   bool
 	promise bool // the binding holds a promise
+	host    bool // the binding holds a host value, such as a response
 	at      *ast.Node
 }
+
+// concurrency is the wording for one kind of function the runtime runs in
+// parallel with others: a request handler, or a spawned function.
+type concurrency struct {
+	kind     string // "request handler"
+	runs     string // what "this …" says about it
+	named    string // the same, for a function named in place of a literal
+	share    string // how a changed binding is shared
+	sharedBy string // the same, for a callee's binding
+	outside  string // where to copy a binding to
+	across   string // where a promise or host value may not cross
+}
+
+var (
+	handlerRuns = concurrency{
+		kind: "request handler", runs: "this handler runs on many requests at once",
+		named: "the handler `%s` runs on many requests at once", share: "which they all share",
+		sharedBy: "shared by them all", outside: "outside the handler", across: "between requests",
+	}
+	spawnRuns = concurrency{
+		kind: "spawned function", runs: "this spawned function runs in parallel with its caller",
+		named: "the spawned function `%s` runs in parallel with its caller", share: "which its caller shares",
+		sharedBy: "shared with its caller", outside: "outside the spawned function", across: "with a spawned function",
+	}
+)
 
 // reference is a use of a callable inside another function.
 type reference struct {
@@ -113,8 +146,11 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 		if n.Kind == ast.KindIdentifier && !isMemberName(n) {
 			if sym := rc.l.checker.GetSymbolAtLocation(n); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
-					promise := rc.l.typeOf(n).Kind == ir.KindPromise
-					uses = append(uses, sharedUse{sym: sym, name: n.Text(), write: isWrite(n), promise: promise, at: n})
+					kind := rc.l.typeOf(n).Kind
+					uses = append(uses, sharedUse{
+						sym: sym, name: n.Text(), write: isWrite(n),
+						promise: kind == ir.KindPromise, host: kind == ir.KindHost, at: n,
+					})
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
 					refs = append(refs, reference{sym: sym, at: n})
 				}
@@ -173,7 +209,9 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 	}
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
 		// A const is shared state only when it holds something that changes.
-		if name := decl.Name(); name == nil || rc.l.typeOf(name).Kind != ir.KindPromise {
+		if name := decl.Name(); name == nil {
+			return nil, false
+		} else if k := rc.l.typeOf(name).Kind; k != ir.KindPromise && k != ir.KindHost {
 			return nil, false
 		}
 	}
@@ -206,31 +244,37 @@ func isWrite(id *ast.Node) bool {
 
 // checkHandler applies the rule to createServer's listener argument.
 func (l *lowerer) checkHandler(arg *ast.Node, lowered ir.Expr) {
+	l.checkConcurrent(arg, lowered, handlerRuns)
+}
+
+// checkConcurrent applies the rule to a function the runtime runs in parallel
+// with others: a request handler, or a spawned function.
+func (l *lowerer) checkConcurrent(arg *ast.Node, lowered ir.Expr, who concurrency) {
 	rc := l.raceRule()
 	switch arg.Kind {
 	case ast.KindArrowFunction, ast.KindFunctionExpression:
 		if lit, ok := lowered.(*ir.FuncLit); ok {
 			lit.Concurrent = true
 		}
-		rc.checkLiteral(arg)
+		rc.checkLiteral(arg, who)
 	case ast.KindIdentifier:
 		c, ok := rc.callables[l.checker.GetSymbolAtLocation(arg)]
 		if !ok {
-			l.failf(arg, "cakebear can only check a request handler written inline or declared as a function; %s is neither", arg.Text())
+			l.failf(arg, "cakebear can only check a %s written inline or declared as a function; %s is neither", who.kind, arg.Text())
 			return
 		}
 		if u, ok := strongest(c.uses); ok {
-			l.failf(arg, "the handler `%s` runs on many requests at once, so it can't %s", c.name, touchPhrase(u))
+			l.failf(arg, "%s, so it can't %s", strings.Replace(who.named, "%s", c.name, 1), touchPhrase(u, who))
 		}
 	default:
-		l.failf(arg, "cakebear can only check a request handler written inline or declared as a function")
+		l.failf(arg, "cakebear can only check a %s written inline or declared as a function", who.kind)
 	}
 }
 
-// checkLiteral reports, in source order, each shared binding a handler
+// checkLiteral reports, in source order, each shared binding a concurrent
 // literal touches (once, at its first write if there is one) and each
 // callable it references that touches one.
-func (rc *raceChecker) checkLiteral(fn *ast.Node) {
+func (rc *raceChecker) checkLiteral(fn *ast.Node, who concurrency) {
 	uses, refs := rc.scan(fn)
 	type finding struct {
 		at  *ast.Node
@@ -249,7 +293,7 @@ func (rc *raceChecker) checkLiteral(fn *ast.Node) {
 		}
 	}
 	for _, u := range direct {
-		found = append(found, finding{u.at, "this handler runs on many requests at once, so it can't " + touchPhrase(u)})
+		found = append(found, finding{u.at, who.runs + ", so it can't " + touchPhrase(u, who)})
 	}
 
 	reported := map[*ast.Symbol]bool{}
@@ -264,8 +308,8 @@ func (rc *raceChecker) checkLiteral(fn *ast.Node) {
 		if p := r.at.Parent; p != nil && p.Kind == ast.KindCallExpression && p.Expression() == r.at {
 			verb, name = "call", c.name+"()"
 		}
-		found = append(found, finding{r.at, "this handler runs on many requests at once, so it can't " +
-			verb + " `" + name + "`, which " + calleePhrase(u)})
+		found = append(found, finding{r.at, who.runs + ", so it can't " +
+			verb + " `" + name + "`, which " + calleePhrase(u, who)})
 	}
 
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.Pos() < found[j].at.Pos() })
@@ -287,22 +331,26 @@ func strongest(uses []sharedUse) (sharedUse, bool) {
 	return sharedUse{}, false
 }
 
-func touchPhrase(u sharedUse) string {
+func touchPhrase(u sharedUse, who concurrency) string {
 	switch {
 	case u.write:
-		return "change `" + u.name + "`, which they all share"
+		return "change `" + u.name + "`, " + who.share
 	case u.promise:
-		return "use `" + u.name + "`, a promise created outside it; a promise can't be shared between requests yet"
+		return "use `" + u.name + "`, a promise created outside it; a promise can't be shared " + who.across + " yet"
+	case u.host:
+		return "use `" + u.name + "`, a node:http value created outside it; one can't be shared " + who.across + " yet"
 	}
-	return "read `" + u.name + "`, which can change while it runs; copy it into a `const` outside the handler if it doesn't change"
+	return "read `" + u.name + "`, which can change while it runs; copy it into a `const` " + who.outside + " if it doesn't change"
 }
 
-func calleePhrase(u sharedUse) string {
+func calleePhrase(u sharedUse, who concurrency) string {
 	switch {
 	case u.write:
-		return "changes `" + u.name + "`, shared by them all"
+		return "changes `" + u.name + "`, " + who.sharedBy
 	case u.promise:
-		return "uses `" + u.name + "`, a promise created outside the handler"
+		return "uses `" + u.name + "`, a promise created " + who.outside
+	case u.host:
+		return "uses `" + u.name + "`, a node:http value created " + who.outside
 	}
 	return "reads `" + u.name + "`, which can change while it runs"
 }

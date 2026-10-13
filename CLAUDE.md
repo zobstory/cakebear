@@ -250,19 +250,11 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 
 ## Current phase: **open**
 
-P0–P5, M1 and M2 are done, with M2's first stretch goal (top-level `await`),
-and nothing is blocked. The second stretch goal is the natural next step:
-
-- **`spawn`: Go's `go` as a cakebear global.** `spawn(fn)` would run `fn` in a
-  new domain, truly in parallel with its caller, and return a promise of its
-  result. It would be declared in `types/cakebear.d.ts`, so it needs no
-  import, unlike Perry's `perry/thread`. Its argument would be held to the
-  race rule like a request handler. A program waits for a spawned domain as
-  Node waits for a timer. Plain `tsc` reports it as an unknown name, so
-  editors need the declarations, which a `cakec --lsp` passthrough would
-  inject.
-
-Then, none urgent:
+P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
+`await` and `spawn`. Nothing is blocked. The order chosen for what follows is
+the `tsc` superset, ideally planned alongside multi-file programs and
+aggregates: a real `tsconfig.json` project is several files of objects and
+arrays, which native builds can't compile until those exist. None is urgent.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -275,7 +267,9 @@ Then, none urgent:
   unknown key is TS5023. Both were measured 2026-10-12. `execute` has no plugin
   or emit hook, and its `OnProgram` callback switches upstream into test mode,
   so native builds keep constructing their own Program. This replaces the
-  earlier "`tsconfig.json` support" item.
+  earlier "`tsconfig.json` support" item. Its `--lsp` passthrough should also
+  inject cakebear's declarations, so editors stop reporting `spawn` and `i32`
+  as unknown names.
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
   for most real programs, and aggregates must extend the race rule first.
@@ -287,7 +281,8 @@ type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
 **M1** a `node:http` server on goroutines: closures, `node:http` lowering, the
 runtime and its run loop, and the handler race rule; **M2** `async`/`await`:
 promises, `await`, `new Promise`, `setTimeout`/`clearTimeout`, a domain per
-request, matching Node's ordering byte for byte within a domain. Upstream then moved, and
+request, matching Node's ordering byte for byte within a domain, then
+top-level `await` and `spawn`. Upstream then moved, and
 cakebear was rebased onto `microsoft/TypeScript`'s `tsc/` with snapshot syncs.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
@@ -323,6 +318,10 @@ virtual path, so they resolve with no import or reference directive.
 | `u32` `u64` | `uint32` `uint64` | |
 | `f32` | `float32` | |
 | `base64` | `string` | compile-time refinement, no runtime representation |
+
+The same file declares one function that isn't a conversion: **`spawn`**
+(see the language subset). It is recognised by that declaration, so a
+program's own `spawn`, or one imported from elsewhere, is an ordinary call.
 
 They are **branded types** — an intersection of the primitive with a phantom
 property, e.g. `number & { readonly __cakebearBrand: "i32" }`. That is what
@@ -379,7 +378,12 @@ Since M2 (`lower/async.go`):
   by being declared only in `lib.dom.d.ts`. The callback must be `() => void`,
   and the id is a `number`;
 - top-level `await`. TypeScript allows it only in an ES module, a file with an
-  import or an export, so an empty `export {}` is accepted, as a no-op.
+  import or an export, so an empty `export {}` is accepted, as a no-op;
+- `spawn(fn)`, cakebear's own global (`types/cakebear.d.ts`, so it needs no
+  import). It runs `fn`, a function taking nothing, in a new domain, in
+  parallel with its caller, and returns a promise of its result. An async `fn`
+  runs until its own promise settles. `fn` is held to the race rule below, and
+  the program waits for every spawn before it exits.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from
@@ -498,6 +502,13 @@ no lock.
   process alive, because Go finishes a response when its handler returns.
 - With a top-level `await`, main's top-level code is itself an async body
   (`ts_module`). `RunModule` exits 13 if it never settles, as Node does.
+- `spawn` (`backend/runtime/spawn.go`) starts a domain on a goroutine of its
+  own. Its promise is the one promise another domain settles: the spawned
+  domain posts the result to the caller's **inbox**, a mutex-guarded queue
+  with a wake channel. That queue is the only part of a domain other
+  goroutines touch. The caller's driver runs posted work as tasks, and counts
+  outstanding spawns as pending work. A panic in a spawned function is
+  re-raised in the caller.
 
 Go has no goroutine-local storage, so every compiled function and function
 value takes the domain it runs in as its first parameter (`ts_domain`), and
@@ -535,6 +546,14 @@ it calls. The runtime assumes a promise never leaves the domain that created
 it, and panics if one does rather than race. A promise a handler creates
 itself is its own.
 
+`spawn` widened it again. A `const` holding a **host value** (a request, a
+response, a server) is shared state too, because the runtime's host types
+aren't goroutine-safe. That is refused for handlers as well: a handler
+reaching an outer `const server` was a latent M1 race. A spawned function is
+held to the same rule as a handler, with its caller in place of the other
+requests, so the inbox is the only thing the two domains share. Use
+`const url: string = req.url` to hand a spawn what it needs.
+
 **Accepted differences from Node** (M1 plan D5, M2 plan D6). Each is deliberate. Anything
 not listed here that behaves differently is a bug.
 
@@ -558,6 +577,7 @@ not listed here that behaves differently is a bug.
 | A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |
 | A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
+| `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

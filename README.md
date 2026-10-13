@@ -149,6 +149,24 @@ server.ts:10:3: cannot compile yet: this handler runs on many requests at once, 
 server.ts:11:3: cannot compile yet: this handler runs on many requests at once, so it can't call `bump()`, which changes `hits`, shared by them all
 ```
 
+## Parallel work: `spawn`
+
+`spawn` is Go's `go` for TypeScript. It runs a function on its own goroutine,
+in parallel with the caller, and returns a promise of its result. It is a
+global, like `setTimeout`, so there is nothing to import:
+
+```ts
+const a: Promise<number> = spawn(() => fib(38));
+const b: Promise<number> = spawn(() => fib(38));
+console.log((await a) + (await b));
+```
+
+Four spawned `fib(38)` calls take about 1.1× as long as one. Node has no
+equivalent short of worker threads. The spawned function is held to the same
+rule as a request handler: it can't touch a `let`, a promise or a request from
+outside it, so the two can't race. `spawn` is cakebear's, not TypeScript's, so
+plain `tsc` reports it as an unknown name.
+
 ## The language subset
 
 Supported today: `number`, `string`, `boolean` and the extension types above;
@@ -159,7 +177,7 @@ parameters and return; arithmetic; string concatenation; comparisons; `===` and
 and function expressions as values (closures); `import` from `node:http`, and
 the members its bundled declarations list; `async` functions and arrows,
 `await`, including at the top level of a module, `Promise<T>`,
-`new Promise((resolve) => …)`, and `setTimeout` / `clearTimeout`.
+`new Promise((resolve) => …)`, `setTimeout` / `clearTimeout`, and `spawn`.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but

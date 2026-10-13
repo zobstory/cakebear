@@ -267,6 +267,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	if out, handled := l.timerCall(n, c); handled {
 		return out
 	}
+	if out, handled := l.spawnCall(n, c); handled {
+		return out
+	}
 	if l.promiseMemberCall(n, c) {
 		return nil
 	}
