@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/diagnostics"
@@ -16,7 +18,11 @@ import (
 // build, and conflating them is how a warning quietly becomes unfixable.
 func report(diags []*ast.Diagnostic, cwd string, opts buildOptions, w io.Writer) int {
 	if len(diags) == 0 {
-		fmt.Fprintf(w, "cakec: %s type-checks clean\n", inputSummary(opts.files))
+		name := inputSummary(opts.files)
+		if opts.configFile != "" {
+			name = relativeTo(cwd, opts.configFile)
+		}
+		fmt.Fprintf(w, "cakec: %s type-checks clean\n", name)
 		return exitOK
 	}
 
@@ -74,6 +80,17 @@ func plural(n int, noun string) string {
 		return "1 " + noun
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// relativeTo shows path relative to dir where that reads better: inside dir,
+// or one directory up, as from a project's src/. Anything further away is
+// shown whole.
+func relativeTo(dir, path string) string {
+	rel, err := filepath.Rel(filepath.FromSlash(dir), path)
+	if err != nil || strings.HasPrefix(rel, filepath.Join("..", "..")) {
+		return path
+	}
+	return rel
 }
 
 // inputSummary names the inputs without pasting a thousand paths into the
