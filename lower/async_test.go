@@ -315,12 +315,53 @@ func TestOwnSetTimeoutIsAnOrdinaryCall(t *testing.T) {
 	}
 }
 
+// A top-level await makes the module's top-level code an async body (M2 step
+// 7). `export {}` is what makes a script a module, so TypeScript allows it,
+// and lowers to nothing.
+func TestTopLevelAwait(t *testing.T) {
+	t.Parallel()
+
+	m := lowerClean(t, sleepDecl+`export {};
+console.log("before");
+await sleep(10);
+const n: number = 1;
+console.log(n);
+`)
+	if !m.Async {
+		t.Fatal("a module with a top-level await is not marked Async")
+	}
+	if len(m.Main) != 4 {
+		t.Fatalf("main has %d statements, want 4 (export {} lowers to nothing): %#v", len(m.Main), m.Main)
+	}
+	if await := must[*ir.Await](t, must[*ir.ExprStmt](t, m.Main[1], "await sleep(10)").Expr, "await sleep(10)"); await.Typ != ir.Void {
+		t.Errorf("await sleep(10) has type %v, want void", await.Typ)
+	}
+	if m.File == "" || !strings.HasSuffix(m.File, "t.ts") {
+		t.Errorf("module File = %q, want the source path", m.File)
+	}
+}
+
+// Awaits inside functions belong to the functions: a module whose only awaits
+// are in async functions has ordinary top-level code.
+func TestAwaitInsideFunctionsIsNotTopLevel(t *testing.T) {
+	t.Parallel()
+
+	m := lowerClean(t, sleepSrc)
+	if m.Async {
+		t.Error("sleep.ts, whose only await is inside main(), was marked as having a top-level await")
+	}
+}
+
 func TestAsyncRefusals(t *testing.T) {
 	t.Parallel()
 
 	const g = "async function g(): Promise<number> {\n  return 1;\n}\n"
 	for _, tt := range []struct{ name, src, want string }{
-		{"top-level await", g + "const x: number = await g();\n", "top-level await is not supported yet"},
+		// Top-level await is supported since M2 step 7; an await in a plain
+		// function is still not (TypeScript rejects it before lowering does).
+		{"await in a plain function", g + "function f(): void {\n  const x: number = await g();\n}\n",
+			"await is allowed only in an async function or at the top level of a module"},
+		{"an export clause", "const x: number = 1;\nexport { x };\n", "exports are not supported yet"},
 		{"await on a non-promise", "async function f(): Promise<void> {\n  const x: number = await 5;\n}\n",
 			"await needs a promise; awaiting a number is not supported yet"},
 		{"returning a promise from async", g + "async function f(): Promise<number> {\n  return g();\n}\n",

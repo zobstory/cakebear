@@ -102,7 +102,13 @@ func (e *emitter) module(m *ir.Module) string {
 	})
 	e.usesDomain = false
 	mainBody := e.capture(func() {
-		e.stmts(m.Main, 1)
+		if m.Async {
+			// A top-level await: main's code is an async body, and its
+			// promise tells RunModule whether the module ever finished.
+			e.asyncBodyAs(moduleVar+" := ", ir.PromiseOf(ir.Void), m.Main, 1)
+		} else {
+			e.stmts(m.Main, 1)
+		}
 	})
 	mainDomain := e.usesDomain
 	if mainDomain {
@@ -123,7 +129,10 @@ func (e *emitter) module(m *ir.Module) string {
 		out.WriteString("\t" + domainVar + " := " + rtPkg + ".Main()\n")
 	}
 	out.WriteString(mainBody)
-	if e.needsRun {
+	if m.Async {
+		// Run, then exit 13 if the top-level await never settled, as Node does.
+		fmt.Fprintf(&out, "\t%s.RunModule(%s, %s)\n", rtPkg, moduleVar, strconv.Quote(m.File))
+	} else if e.needsRun {
 		// Last, so listen callbacks run after the top-level code, as in Node.
 		out.WriteString("\t" + rtPkg + ".Run()\n")
 	}

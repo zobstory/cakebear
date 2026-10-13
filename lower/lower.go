@@ -82,7 +82,7 @@ func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
 		name:    strings.TrimSuffix(filepath.Base(string(file.FileName())), filepath.Ext(string(file.FileName()))),
 	}
 
-	m := &ir.Module{Name: l.name}
+	m := &ir.Module{Name: l.name, File: string(file.FileName()), Async: hasTopLevelAwait(file)}
 	for _, stmt := range file.AsNode().Statements() {
 		switch stmt.Kind {
 		case ast.KindFunctionDeclaration:
@@ -91,8 +91,11 @@ func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
 			}
 		case ast.KindImportDeclaration:
 			l.importDecl(stmt)
+		case ast.KindExportDeclaration:
+			l.exportDecl(stmt)
 		default:
-			m.Main = append(m.Main, l.stmt(stmt)...)
+			// With a top-level await, top-level code is an async body.
+			l.inBody(m.Async, func() { m.Main = append(m.Main, l.stmt(stmt)...) })
 		}
 	}
 

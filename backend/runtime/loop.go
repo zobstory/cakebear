@@ -108,6 +108,20 @@ func Run() {
 	run(sigs)
 }
 
+// RunModule is Run for a module with a top-level await, whose top-level code
+// ran as an async body with the promise p. When the loop has nothing left to
+// do and p is still pending, nothing can ever settle it: Node exits 13 with a
+// warning then, and so does this. Node's warning also names the line of the
+// pending await; this one names only the file.
+func RunModule(p *Promise[struct{}], file string) {
+	Run()
+	if !p.settled {
+		Flush()
+		warnf("Warning: Detected unsettled top-level await at file://%s", file)
+		exit(13)
+	}
+}
+
 func run(sigs <-chan os.Signal) {
 	d := mainDomain
 	d.drain()

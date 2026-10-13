@@ -29,6 +29,9 @@ import (
 const (
 	domainVar = "ts_domain"
 	coVar     = "ts_co"
+	// moduleVar holds the promise of a module's top-level code, when it has a
+	// top-level await. Like the others, no user identifier mangles onto it.
+	moduleVar = "ts_module"
 )
 
 // domainParam is the parameter every compiled function opens with.
@@ -64,13 +67,20 @@ func goElem(t ir.Type) string {
 // An async call alone needs no Run: with no await or timer in it, it finishes
 // before Async returns, and an await of its promise sets needsRun itself.
 func (e *emitter) asyncBody(result ir.Type, body []ir.Stmt, depth int) {
+	lead := ""
+	if result.Kind == ir.KindPromise {
+		lead = "return "
+	}
+	e.asyncBodyAs(lead, result, body, depth)
+}
+
+// asyncBodyAs writes the Async call after lead, which is what is done with
+// its promise: returned, dropped (""), or kept in a variable, as main keeps a
+// top-level await's.
+func (e *emitter) asyncBodyAs(lead string, result ir.Type, body []ir.Stmt, depth int) {
 	e.usesRuntime = true
 	pad := strings.Repeat("\t", depth)
-	ret := ""
-	if result.Kind == ir.KindPromise {
-		ret = "return "
-	}
-	fmt.Fprintf(&e.buf, "%s%s%s.Async(%s, func(%s *%s.Co) %s {\n", pad, ret, rtPkg, e.dom(), coVar, rtPkg, goElem(result))
+	fmt.Fprintf(&e.buf, "%s%s%s.Async(%s, func(%s *%s.Co) %s {\n", pad, lead, rtPkg, e.dom(), coVar, rtPkg, goElem(result))
 
 	// The body's returns carry the promise's element. For Promise<void>, and
 	// for a dropped promise, that is struct{}, which the source never spells.

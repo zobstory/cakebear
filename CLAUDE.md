@@ -250,11 +250,9 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 
 ## Current phase: **open**
 
-P0–P5, M1 and M2 are done and nothing is blocked. M2's two stretch goals are
-the natural next steps:
+P0–P5, M1 and M2 are done, with M2's first stretch goal (top-level `await`),
+and nothing is blocked. The second stretch goal is the natural next step:
 
-- **Top-level `await`.** Main is already a domain, so this is lowering plus
-  running top-level code as an async body.
 - **`spawn`: Go's `go` as a cakebear global.** `spawn(fn)` would run `fn` in a
   new domain, truly in parallel with its caller, and return a promise of its
   result. It would be declared in `types/cakebear.d.ts`, so it needs no
@@ -379,7 +377,9 @@ Since M2 (`lower/async.go`):
   `Promise<void>`;
 - `setTimeout(callback, delay)` and `clearTimeout(id)`, the DOM's, recognised
   by being declared only in `lib.dom.d.ts`. The callback must be `() => void`,
-  and the id is a `number`.
+  and the id is a `number`;
+- top-level `await`. TypeScript allows it only in an ES module, a file with an
+  import or an export, so an empty `export {}` is accepted, as a no-op.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from
@@ -396,7 +396,7 @@ Not yet, from M2, each refused by name:
 - adopting one promise into another, through `resolve(p)` or an async `return p`
   (await it instead);
 - `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
-- top-level `await`;
+- any export but `export {}`, since that needs a second file to import it;
 - an async executor;
 - a string timer handler, extra timer arguments, or a missing delay;
 - a request handler that reaches a promise declared outside it (the race
@@ -496,6 +496,8 @@ no lock.
 - A request's domain is driven by its `net/http` goroutine until `res.end()`.
   Anything still pending then carries on on its own goroutine, and keeps the
   process alive, because Go finishes a response when its handler returns.
+- With a top-level `await`, main's top-level code is itself an async body
+  (`ts_module`). `RunModule` exits 13 if it never settles, as Node does.
 
 Go has no goroutine-local storage, so every compiled function and function
 value takes the domain it runs in as its first parameter (`ts_domain`), and
@@ -554,6 +556,8 @@ not listed here that behaves differently is a bug.
 | The cost of one `await` | ~32 ns | ~224 ns: a goroutine handoff |
 | A panic in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr (`cakebear: after a response was sent: …`); the process stays up |
 | A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |
+| A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
+| Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

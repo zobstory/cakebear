@@ -165,6 +165,30 @@ func TestRunWaitsForTimersAndFlushesBeforeWaiting(t *testing.T) { //nolint:paral
 	}
 }
 
+// A module whose top-level await can never settle exits 13 once nothing else
+// is left, with Node's warning; one whose top-level code finished exits
+// normally.
+func TestRunModuleExitsThirteenWhenUnsettled(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
+	_, stderr, exits := isolate(t)
+	pending := &Promise[struct{}]{d: Main()}
+	RunModule(pending, "/src/tla.ts")
+	if code := exitCode(t, exits); code != 13 {
+		t.Errorf("exit code = %d, want 13, as Node exits for an unsettled top-level await", code)
+	}
+	if want := "Warning: Detected unsettled top-level await at file:///src/tla.ts"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+
+	settled := &Promise[struct{}]{d: Main()}
+	settled.resolve(struct{}{})
+	RunModule(settled, "/src/tla.ts")
+	select {
+	case code := <-exits:
+		t.Errorf("a settled module exited with %d; it should just return", code)
+	default:
+	}
+}
+
 // Ctrl-C while main waits on a timer exits 130, as M1's server does.
 func TestSignalWhileWaitingOnATimer(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	stdout, _, exits := isolate(t)

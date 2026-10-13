@@ -282,6 +282,85 @@ setTimeout(() => {
 	}
 }
 
+// M2 step 7: a top-level await. The code after awaiting a settled promise runs
+// before a timer scheduled earlier, exactly as Node runs an ES module.
+func TestTopLevelAwaitMatchesNode(t *testing.T) {
+	t.Parallel()
+
+	bin := buildProgram(t, "tla", sleepFn+`
+async function now(n: number): Promise<number> {
+  return n;
+}
+
+export {};
+
+setTimeout(() => {
+  console.log("timer 0, scheduled first");
+}, 0);
+console.log("top: before the first await");
+const one: number = await now(1);
+console.log("top: after awaiting a settled promise");
+console.log(one);
+await sleep(5);
+console.log("top: after the timer");
+`)
+	// Recorded from Node 24.18, identical over 5 runs.
+	matchesNode(t, bin, "top: before the first await\n"+
+		"top: after awaiting a settled promise\n"+
+		"1\n"+
+		"timer 0, scheduled first\n"+
+		"top: after the timer\n", 20)
+}
+
+// A top-level await that can never settle exits 13 once nothing else is
+// pending, as Node does, rather than 0 with half the program unrun.
+func TestUnsettledTopLevelAwaitExits13(t *testing.T) {
+	t.Parallel()
+
+	bin := buildProgram(t, "unsettled", `export {};
+console.log("start");
+await new Promise<void>((resolve) => {});
+console.log("never");
+`)
+	cmd := exec.Command(bin)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, _ := cmd.Output()
+	if code := cmd.ProcessState.ExitCode(); code != 13 {
+		t.Errorf("exit code = %d, want 13", code)
+	}
+	if string(out) != "start\n" {
+		t.Errorf("stdout = %q, want only \"start\\n\"", out)
+	}
+	if want := "Warning: Detected unsettled top-level await at file://"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// Setup before serving, the common use: a server created after a top-level
+// await serves as one created at once does.
+func TestServerAfterTopLevelAwait(t *testing.T) {
+	t.Parallel()
+
+	bin, port := buildServer(t, `import { createServer } from "node:http";
+`+sleepFn+`
+await sleep(20);
+createServer((req, res) => {
+  res.end("ready\n");
+}).listen(3000, () => {
+  console.log("listening");
+});
+`, false)
+	server := startServer(t, bin)
+	server.waitForLine(t, "listening", 10*time.Second)
+	if status, _, body := get(t, "http://127.0.0.1:"+strconv.Itoa(port)+"/"); status != 200 || body != "ready\n" {
+		t.Errorf("got %d %q, want 200 \"ready\\n\"", status, body)
+	}
+	if code := server.interrupt(t); code != 130 {
+		t.Errorf("exit code after SIGINT = %d, want 130", code)
+	}
+}
+
 // A request's setTimeout fires in that request, after its handler's
 // synchronous code, and the timer's id is a number clearTimeout accepts.
 func TestAsyncTimersInAHandler(t *testing.T) {
