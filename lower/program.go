@@ -62,7 +62,8 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 
 // collect adds f and, in turn, every module of the program's own it imports.
 // A visited module is not followed again, which is what lets two modules
-// import each other.
+// import each other. An `import type` is erased, so it brings in nothing: the
+// program is what runs.
 func (p *program) collect(f *ast.SourceFile) {
 	if p.modules[f] {
 		return
@@ -70,7 +71,11 @@ func (p *program) collect(f *ast.SourceFile) {
 	p.modules[f] = true
 	for _, stmt := range f.AsNode().Statements() {
 		if stmt.Kind == ast.KindImportDeclaration {
-			if target := p.imported(stmt.AsImportDeclaration()); target != nil {
+			decl := stmt.AsImportDeclaration()
+			if clause := decl.ImportClause; clause != nil && clause.IsTypeOnly() {
+				continue
+			}
+			if target := p.imported(decl); target != nil {
 				p.collect(target)
 			}
 		}

@@ -34,6 +34,10 @@ var goPredeclared = map[string]bool{
 	"copy": true, "delete": true, "imag": true, "len": true, "make": true,
 	"max": true, "min": true, "new": true, "panic": true, "print": true,
 	"println": true, "real": true, "recover": true, "main": true,
+	// Not predeclared, but special at package level: Go runs a func init
+	// itself, and allows it no parameters. Renaming it also keeps a prefixed
+	// name from ever being a module's init function (emit_program.go).
+	"init": true,
 }
 
 // mangle turns a TypeScript identifier into a Go one.

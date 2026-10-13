@@ -264,7 +264,7 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
 `await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
 builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's steps 1 to 5 are
+M4, since a real project is several files of them. M3's steps 1 to 6 are
 done:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -275,10 +275,12 @@ done:
   lowering to that;
 - lowering across files (`lower/program.go`, `lower/module.go`): the entry
   module and every module of the program's own it imports, through one
-  checker, under the program-wide race rule.
+  checker, under the program-wide race rule;
+- emitting across files (`backend/emit_program.go`): one Go package, each
+  module's names prefixed, each module's top-level code run in ES order (see
+  "Modules" below).
 
-Until step 6 the backend still compiles one module, so a program of several
-type-checks and lowers, then stops there with a message saying so.
+Step 7, an end-to-end multi-file server and the docs, is what remains.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -316,7 +318,6 @@ type-checks and lowers, then stops there with a message saying so.
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
   for most real programs, and aggregates must extend the race rule first.
-- Multi-file programs: lowered since M3 step 5; emitting them is step 6.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
@@ -501,6 +502,25 @@ effects keep their order (a package-level initialiser would run before any of
 run, from a function called earlier, gives Go's zero value where JavaScript
 throws a `ReferenceError`.
 
+**Modules** (M3, `backend/emit_program.go`) all go into one Go package. A Go
+package per module fails: Go forbids the import cycles ES allows.
+- Each module's top-level names are prefixed `ts_m<i>_`, with its index in
+  `ir.Program.Modules`, which lowering sorts by file. That keeps two modules'
+  `helper`s apart, and `ts_` is the namespace `mangle` keeps for itself, so a
+  prefixed name never meets a local's. A program of one module has no
+  prefixes, and its Go is what it always was.
+- Each module but the entry has its top-level code in `ts_m<i>_init`. `main`
+  calls them in `ir.Program.EvaluationOrder`, then runs the entry's own:
+  depth first from the entry, each module after what it imports, in import
+  order, with a module already on the way not entered again, which settles a
+  cycle. That is an ES module graph's order, checked against Node 24.18.
+- An import evaluates its module whether or not what it names is used, as
+  under Node. `import type` is erased and brings in nothing. A module that
+  only types reach never runs.
+- Reading another module's binding across a cycle, before that module has
+  run, gives Go's zero value where JavaScript throws a `ReferenceError`. It's
+  the same difference as for a top-level variable read early.
+
 ## Semantics decisions
 
 Recorded before the emitter was written, per the rule above. Emitting Go means
@@ -637,6 +657,8 @@ not listed here that behaves differently is a bug.
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
 | `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value |
+| Reading an imported binding across an import cycle, before its module has run | `ReferenceError` | Go's zero value |
+| A top-level `await` in a module other than the entry | the modules importing it wait for it | refused at compile time (M3 plan D8) |
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
 | Ctrl-C / SIGTERM | exit 130 / 143 | exit 130 / 143, after flushing output |
 | The listen callback and the first request | the callback runs first | the same: serving starts after the callback |
