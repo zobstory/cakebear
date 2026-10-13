@@ -13,8 +13,6 @@ package lower
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/checker"
@@ -50,7 +48,9 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Span, e.Msg)
 }
 
+// lowerer lowers one module of a program.
 type lowerer struct {
+	p       *program
 	file    *ast.SourceFile
 	checker *checker.Checker
 	name    string
@@ -60,9 +60,6 @@ type lowerer struct {
 	// discard is set while lowering a function literal that stands in for a
 	// void callback, so its return values are evaluated and dropped.
 	discard bool
-	// race is the handler race rule's summary of the file, built the first
-	// time a request handler is checked (race.go).
-	race *raceChecker
 	// async is set while lowering the body of an async function, the only
 	// place an await may appear until top-level await lands.
 	async bool
@@ -71,21 +68,24 @@ type lowerer struct {
 	resolvers map[*ast.Symbol]ir.Type
 }
 
-// File lowers one checked source file into a module.
-//
-// It gathers every unsupported construct rather than stopping at the first, so
-// a user porting a file learns the whole gap in one run.
-func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
-	l := &lowerer{
-		file:    file,
-		checker: c,
-		name:    strings.TrimSuffix(filepath.Base(string(file.FileName())), filepath.Ext(string(file.FileName()))),
+// module lowers the lowerer's file into a module of the program.
+func (l *lowerer) module() *ir.Module {
+	m := &ir.Module{Name: l.name, File: string(l.file.FileName())}
+	if await := firstTopLevelAwait(l.file); await != nil {
+		m.Async = true
+		// M3 plan D8: an importer of a module with a top-level await waits for
+		// it, and ES interleaves sibling async modules. Not reproduced yet.
+		if l.file != l.p.entry {
+			l.failf(await, "a top-level await is supported only in the entry module; every module importing this one would have to wait for it")
+		}
 	}
-
-	m := &ir.Module{Name: l.name, File: string(file.FileName()), Async: hasTopLevelAwait(file)}
-	for _, stmt := range file.AsNode().Statements() {
+	for _, stmt := range l.file.AsNode().Statements() {
 		switch stmt.Kind {
 		case ast.KindFunctionDeclaration:
+			if ast.HasSyntacticModifier(stmt, ast.ModifierFlagsDefault) {
+				l.failf(stmt, "a default export is not supported yet; export the function by name")
+				continue
+			}
 			if fn := l.function(stmt); fn != nil {
 				m.Funcs = append(m.Funcs, fn)
 			}
@@ -93,16 +93,17 @@ func File(file *ast.SourceFile, c *checker.Checker) (*ir.Module, []*Error) {
 			l.importDecl(stmt)
 		case ast.KindExportDeclaration:
 			l.exportDecl(stmt)
+		case ast.KindExportAssignment:
+			l.failf(stmt, "a default export is not supported yet; export the value by name")
 		default:
+			if stmt.Kind == ast.KindVariableStatement && ast.HasSyntacticModifier(stmt, ast.ModifierFlagsExport) {
+				l.exportedVariables(stmt)
+			}
 			// With a top-level await, top-level code is an async body.
 			l.inBody(m.Async, func() { m.Main = append(m.Main, l.stmt(stmt)...) })
 		}
 	}
-
-	if len(l.errs) > 0 {
-		return nil, l.errs
-	}
-	return m, nil
+	return m
 }
 
 func (l *lowerer) span(n *ast.Node) ir.Span {
@@ -408,7 +409,7 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 		return true
 	}
 	if init.Kind == ast.KindIdentifier && l.libraryName(init) {
-		l.failf(init, "%s is a library global cakebear does not implement yet", init.Text())
+		l.failOutside(init, init, "global")
 		return true
 	}
 	return false
@@ -423,7 +424,8 @@ func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stm
 	if value == nil {
 		return nil
 	}
+	name, module := l.ref(bin.Left)
 	return []ir.Stmt{&ir.Assign{
-		Name: bin.Left.Text(), Module: l.moduleOf(bin.Left), Value: value, Span: l.span(stmt),
+		Name: name, Module: module, Value: value, Span: l.span(stmt),
 	}}
 }

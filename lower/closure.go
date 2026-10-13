@@ -241,7 +241,7 @@ func (l *lowerer) capture(fn, id *ast.Node, sym *ast.Symbol) (ir.Capture, bool) 
 	if sym.Flags()&ast.SymbolFlagsVariable == 0 || decl == nil || ast.GetSourceFileOfNode(decl) != l.file {
 		return ir.Capture{}, false
 	}
-	if decl.Pos() >= fn.Pos() && decl.End() <= fn.End() {
+	if within(decl, fn) {
 		return ir.Capture{}, false // declared inside the literal
 	}
 	mutable := true

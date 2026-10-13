@@ -21,19 +21,19 @@ import (
 // promise into another, .then and the other promise methods, top-level await,
 // and a timer callback that is anything but `() => void`.
 
-// hasTopLevelAwait reports whether file awaits outside any function: an ES
-// module's top-level code may, and then runs as an async body (M2 step 7).
-// TypeScript allows it only in a module, a file with an import or an export,
-// which is why an empty `export {}` is accepted (exportDecl).
-func hasTopLevelAwait(file *ast.SourceFile) bool {
-	found := false
+// firstTopLevelAwait returns file's first await outside any function, or nil.
+// An ES module's top-level code may await, and then runs as an async body (M2
+// step 7). TypeScript allows it only in a module, a file with an import or an
+// export, which is why an empty `export {}` is accepted (exportDecl).
+func firstTopLevelAwait(file *ast.SourceFile) *ast.Node {
+	var found *ast.Node
 	var visit func(n *ast.Node) bool
 	visit = func(n *ast.Node) bool {
 		switch {
-		case found:
+		case found != nil:
 			return true
 		case n.Kind == ast.KindAwaitExpression:
-			found = true
+			found = n
 			return true
 		case ast.IsFunctionLike(n) || n.Kind == ast.KindClassDeclaration || n.Kind == ast.KindClassExpression:
 			return false // its own scope: an await there is the function's
@@ -43,18 +43,6 @@ func hasTopLevelAwait(file *ast.SourceFile) bool {
 	}
 	file.AsNode().ForEachChild(visit)
 	return found
-}
-
-// exportDecl accepts `export {}`, which exports nothing and only makes a file
-// an ES module, so that TypeScript allows a top-level await in it. Any other
-// export needs a second file to import it.
-func (l *lowerer) exportDecl(n *ast.Node) {
-	decl := n.AsExportDeclaration()
-	if decl.ModuleSpecifier == nil && decl.ExportClause != nil &&
-		decl.ExportClause.Kind == ast.KindNamedExports && len(decl.ExportClause.AsNamedExports().Elements.Nodes) == 0 {
-		return
-	}
-	l.failf(n, "exports are not supported yet; cakebear compiles one file, so only an empty `export {}` is accepted")
 }
 
 // isAsync reports whether a function declaration or literal is async.

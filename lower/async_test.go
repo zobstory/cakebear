@@ -361,7 +361,6 @@ func TestAsyncRefusals(t *testing.T) {
 		// function is still not (TypeScript rejects it before lowering does).
 		{"await in a plain function", g + "function f(): void {\n  const x: number = await g();\n}\n",
 			"await is allowed only in an async function or at the top level of a module"},
-		{"an export clause", "const x: number = 1;\nexport { x };\n", "exports are not supported yet"},
 		{"await on a non-promise", "async function f(): Promise<void> {\n  const x: number = await 5;\n}\n",
 			"await needs a promise; awaiting a number is not supported yet"},
 		{"returning a promise from async", g + "async function f(): Promise<number> {\n  return g();\n}\n",

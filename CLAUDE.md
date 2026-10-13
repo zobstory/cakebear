@@ -264,13 +264,21 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
 `await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
 builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's steps 1 to 4 are
-done: the `tsc` passthrough; native builds from `tsconfig.json`, which still
-compile one module; cakebear's declarations in `tsc` mode and the language
-server; and the IR for programs. In that IR (`ir/program.go`), an
-`ir.Program` holds the modules sorted by file, and a reference to a top-level
-name says which module declares it. `Program.Validate`, which the backend
-runs before emitting, holds lowering to that.
+M4, since a real project is several files of them. M3's steps 1 to 5 are
+done:
+- the `tsc` passthrough;
+- native builds from `tsconfig.json`;
+- cakebear's declarations in `tsc` mode and the language server;
+- the IR for programs (`ir/program.go`): an `ir.Program` holds the modules
+  sorted by file, a reference to a top-level name says which module declares
+  it, and `Program.Validate`, which the backend runs before emitting, holds
+  lowering to that;
+- lowering across files (`lower/program.go`, `lower/module.go`): the entry
+  module and every module of the program's own it imports, through one
+  checker, under the program-wide race rule.
+
+Until step 6 the backend still compiles one module, so a program of several
+type-checks and lowers, then stops there with a message saying so.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -308,7 +316,7 @@ runs before emitting, holds lowering to that.
 - Widen the language subset. `null`/`undefined` need a nullable representation
   in the IR; arrays and objects need an aggregate one. Both are prerequisites
   for most real programs, and aggregates must extend the race rule first.
-- Multi-file programs, which need an import graph in the IR.
+- Multi-file programs: lowered since M3 step 5; emitting them is step 6.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
@@ -432,9 +440,26 @@ Since M2 (`lower/async.go`):
   runs until its own promise settles. `fn` is held to the race rule below, and
   the program waits for every spawn before it exits.
 
+Since M3 (`lower/module.go`), across the program's own modules:
+- named imports, renamed or not (`import { a, b as c } from "./x"`), of the
+  functions and `const`s a module declares at its top level;
+- `import "./x"` for its effects alone, and type-only imports and exports;
+- `export function`, `export const` and `export { x }`;
+- import cycles.
+
+The program is the entry module and everything it imports, directly or not,
+by a relative path to a TypeScript file. A file nothing imports is checked but
+is no part of it.
+
+Refused by name: default imports and exports, `import * as` (except
+`node:http`), `export … from` and re-exporting an import, exporting a `let`
+(every importer would share a binding that can change), and a top-level
+`await` outside the entry module (M3 plan D8).
+
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from
-anything but `node:http`, `for`, multi-file programs, bitwise operators;
+anything but `node:http` and the program's own modules, `for`, bitwise
+operators;
 calling anything but a name or a `node:http` member (`f()()`); named function
 expressions; optional, default, rest or destructured parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
@@ -443,11 +468,10 @@ a promise; the standard library's other globals (`parseInt`, `NaN`, `isNaN`,
 libs declare them. A program's own function of the same name is unaffected.
 
 Not yet, from M2, each refused by name:
-- `reject`, `throw` and errors (M3);
+- `reject`, `throw` and errors (M5);
 - adopting one promise into another, through `resolve(p)` or an async `return p`
   (await it instead);
 - `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
-- any export but `export {}`, since that needs a second file to import it;
 - an async executor;
 - a string timer handler, extra timer arguments, or a missing delay;
 - a request handler that reaches a promise declared outside it (the race
@@ -573,8 +597,8 @@ lowering refuses what could race, as `cannot compile yet`:
   writing, because the rest of the program can change the binding while
   handlers run;
 - nor may it call, or pass on, a function that touches one, directly or through
-  the functions it calls (a summary over the file's call graph, recursion
-  included);
+  the functions it calls (a summary over the whole program's call graph,
+  through imports, recursion included);
 - a handler the rule cannot see into, such as a parameter or a call's result,
   is refused rather than trusted.
 

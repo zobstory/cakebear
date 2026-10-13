@@ -112,17 +112,13 @@ func (l *lowerer) hostMemberOf(sym *ast.Symbol) (m hostMember, found, augmented 
 	return m, true, false
 }
 
-// importDecl accepts an import of node:http and produces no IR: the names it
-// binds are resolved through the checker wherever they are used.
-func (l *lowerer) importDecl(n *ast.Node) {
+// hostImport checks an import of node:http, the one bundled module. It
+// produces no IR: the names it binds are resolved through the checker
+// wherever they are used.
+func (l *lowerer) hostImport(n *ast.Node) {
 	decl := n.AsImportDeclaration()
-	spec := decl.ModuleSpecifier
-	if spec.Kind != ast.KindStringLiteral || (spec.Text() != "node:http" && spec.Text() != "http") {
-		l.failf(n, "imports from %q are not supported yet; cakebear bundles only node:http", spec.Text())
-		return
-	}
 	if clause := decl.ImportClause; clause != nil && clause.Name() != nil {
-		l.failf(n, "a default import of %s is not supported; use `import { createServer }` or `import * as http`", spec.Text())
+		l.failf(n, "a default import of %s is not supported; use `import { createServer }` or `import * as http`", decl.ModuleSpecifier.Text())
 	}
 }
 
