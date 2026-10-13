@@ -2,15 +2,15 @@ package main
 
 import (
 	"bytes"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestMultiModuleProjectReachesTheBackend: a project whose main imports
-// another module type-checks and lowers, so the only thing in the way is the
-// backend, which compiles one module until M3 step 6.
-func TestMultiModuleProjectReachesTheBackend(t *testing.T) {
+// TestMultiModuleProjectBuilds: a project whose main imports another module
+// builds into one binary that runs both.
+func TestMultiModuleProjectBuilds(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -19,12 +19,15 @@ func TestMultiModuleProjectReachesTheBackend(t *testing.T) {
 		"src/lib.ts":    "export function double(n: number): number {\n  return n * 2;\n}\n",
 		"src/main.ts":   "import { double } from \"./lib\";\nconsole.log(double(21));\n",
 	})
-	code, stderr := projectBuild(t, dir, buildOptions{})
-	if code != exitErrors || !strings.Contains(stderr, "the backend compiles one module so far, and this program has 2") {
-		t.Errorf("exit %d, want %d from the backend:\n%s", code, exitErrors, stderr)
+	if code, stderr := projectBuild(t, dir, buildOptions{}); code != exitOK {
+		t.Fatalf("exit %d:\n%s", code, stderr)
 	}
-	if strings.Contains(stderr, "cannot compile yet") || strings.Contains(stderr, "library function") {
-		t.Errorf("lowering refused part of the program:\n%s", stderr)
+	got, err := exec.Command(filepath.Join(dir, "main")).Output()
+	if err != nil {
+		t.Fatalf("running the binary: %v", err)
+	}
+	if string(got) != "42\n" {
+		t.Errorf("the binary printed %q, want %q", got, "42\n")
 	}
 }
 

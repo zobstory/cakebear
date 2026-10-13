@@ -57,23 +57,29 @@ func isTopLevel(decl *ast.Node) bool {
 	return false
 }
 
-// importDecl checks an import. node:http's are host imports (host.go). One of
-// the program's own modules emits nothing: Program has already brought the
-// module in, and each reference to what the import names refers into it.
-func (l *lowerer) importDecl(n *ast.Node) {
+// importDecl checks an import, and returns the file of the program's module
+// it evaluates, or "". node:http's are host imports (host.go). One of the
+// program's own modules emits no code: Program has already brought the module
+// in, and each reference to what the import names refers into it. What the
+// import does decide is evaluation order (ir.Module.Imports).
+func (l *lowerer) importDecl(n *ast.Node) string {
 	decl := n.AsImportDeclaration()
 	spec := decl.ModuleSpecifier
 	if spec.Kind == ast.KindStringLiteral && (spec.Text() == "node:http" || spec.Text() == "http") {
 		l.hostImport(n)
-		return
+		return ""
 	}
-	if l.p.imported(decl) == nil {
+	target := l.p.imported(decl)
+	if target == nil {
 		l.failf(n, "imports from %q are not supported; cakebear compiles node:http and the program's own TypeScript modules, imported by a relative path", spec.Text())
-		return
+		return ""
 	}
 	clause := decl.ImportClause
-	if clause == nil || clause.IsTypeOnly() {
-		return // `import "./x"`, for its effects alone, or only types
+	if clause == nil {
+		return string(target.FileName()) // `import "./x"`, for its effects alone
+	}
+	if clause.IsTypeOnly() {
+		return "" // `import type`: erased, so it evaluates nothing
 	}
 	if clause.Name() != nil {
 		l.failf(n, "a default import is not supported yet; import what %s exports by name", spec.Text())
@@ -81,6 +87,7 @@ func (l *lowerer) importDecl(n *ast.Node) {
 	if b := clause.AsImportClause().NamedBindings; b != nil && b.Kind == ast.KindNamespaceImport {
 		l.failf(n, "`import * as` is supported only for node:http; import what %s exports by name", spec.Text())
 	}
+	return string(target.FileName())
 }
 
 // exportDecl checks `export { … }`: each name must be a function or a const

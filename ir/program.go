@@ -28,6 +28,37 @@ func ProgramOf(m *Module) *Program { return &Program{Modules: []*Module{m}} }
 // EntryModule is the module the binary runs.
 func (p *Program) EntryModule() *Module { return p.Modules[p.Entry] }
 
+// EvaluationOrder is the order the modules' top-level code runs in, by index
+// in Modules, as an ES module graph evaluates: depth first from the entry,
+// each module after the modules it imports, in the order it imports them. A
+// module already on the way is not entered again, which is what settles a
+// cycle, and the entry comes last. A module the entry never reaches, through
+// imports that evaluate it, never runs. (Measured on Node 24.18: a graph of
+// main → a → b → a, main → c → b prints b, a, c, main.)
+func (p *Program) EvaluationOrder() []int {
+	index := make(map[string]int, len(p.Modules))
+	for i, m := range p.Modules {
+		index[m.File] = i
+	}
+	var order []int
+	visited := make([]bool, len(p.Modules))
+	var visit func(i int)
+	visit = func(i int) {
+		if visited[i] {
+			return
+		}
+		visited[i] = true
+		for _, file := range p.Modules[i].Imports {
+			if j, ok := index[file]; ok {
+				visit(j)
+			}
+		}
+		order = append(order, i)
+	}
+	visit(p.Entry)
+	return order
+}
+
 // Module returns the module whose File is file, or nil.
 func (p *Program) Module(file string) *Module {
 	for _, m := range p.Modules {
@@ -39,9 +70,9 @@ func (p *Program) Module(file string) *Module {
 }
 
 // Validate checks the invariants lowering keeps: the modules are in order
-// with an entry among them, and every module-qualified reference names a
-// top-level declaration of a module in the program, assigned only if it is a
-// let. A failure is a bug in lowering, not in the TypeScript, so a backend
+// with an entry among them, each imports only modules of the program, and
+// every module-qualified reference names a top-level declaration of a module
+// in the program, assigned only if it is a let. A failure is a bug in lowering, not in the TypeScript, so a backend
 // calls this rather than emit Go from a program that breaks it.
 func (p *Program) Validate() error {
 	if len(p.Modules) == 0 {
@@ -63,6 +94,13 @@ func (p *Program) Validate() error {
 	}
 
 	var errs []error
+	for _, m := range p.Modules {
+		for _, file := range m.Imports {
+			if p.Module(file) == nil {
+				errs = append(errs, fmt.Errorf("%s imports %s, which is not one of the program's modules", m.File, file))
+			}
+		}
+	}
 	check := func(module, name string, assigned bool, span Span) {
 		if err := p.checkRef(module, name, assigned); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", span, err))

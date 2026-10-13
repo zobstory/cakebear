@@ -90,7 +90,9 @@ func (l *lowerer) module() *ir.Module {
 				m.Funcs = append(m.Funcs, fn)
 			}
 		case ast.KindImportDeclaration:
-			l.importDecl(stmt)
+			if file := l.importDecl(stmt); file != "" {
+				m.Imports = append(m.Imports, file)
+			}
 		case ast.KindExportDeclaration:
 			l.exportDecl(stmt)
 		case ast.KindExportAssignment:

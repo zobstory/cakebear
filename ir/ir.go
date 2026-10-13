@@ -50,6 +50,13 @@ type Module struct {
 	// an async body, as an ES module's does: up to the first await at once,
 	// the rest as the awaited promises settle.
 	Async bool
+	// Imports are the files of the program's modules this one imports, in
+	// source order: what decides when each module's top-level code runs
+	// (Program.EvaluationOrder). An `import type` is erased, as Node and
+	// TypeScript both erase it, and so is not here; any other import
+	// evaluates its module, as under Node, whether or not what it names is
+	// used.
+	Imports []string
 }
 
 // Func is a top-level function declaration.

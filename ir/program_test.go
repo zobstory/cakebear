@@ -147,3 +147,29 @@ func TestInspectPanicsOnAnUnknownNode(t *testing.T) {
 	}()
 	Inspect(&Module{Main: []Stmt{strayStmt{}}}, func(any) {})
 }
+
+// TestEvaluationOrder: ES order on the graph TestModulesEvaluateInESOrder
+// (backend) runs, whose order was measured on Node 24.18: b, a, c, main. A
+// module no evaluating import reaches is not in it.
+func TestEvaluationOrder(t *testing.T) {
+	t.Parallel()
+
+	p := &Program{Entry: 3, Modules: []*Module{
+		{File: "/p/a.ts", Imports: []string{"/p/b.ts"}},
+		{File: "/p/b.ts", Imports: []string{"/p/a.ts"}},
+		{File: "/p/c.ts", Imports: []string{"/p/b.ts"}},
+		{File: "/p/main.ts", Imports: []string{"/p/a.ts", "/p/c.ts"}},
+		{File: "/p/types.ts"},
+	}}
+	got := fmt.Sprint(p.EvaluationOrder())
+	if want := "[1 0 2 3]"; got != want {
+		t.Errorf("EvaluationOrder = %s, want %s (b, a, c, main)", got, want)
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+	p.Modules[0].Imports = append(p.Modules[0].Imports, "/p/gone.ts")
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "/p/a.ts imports /p/gone.ts, which is not one of the program's modules") {
+		t.Errorf("Validate with an import outside the program = %v", err)
+	}
+}
