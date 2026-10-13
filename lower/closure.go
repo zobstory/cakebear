@@ -76,18 +76,30 @@ func (l *lowerer) closure(n *ast.Node) ir.Expr {
 
 	// Prefer the signature the surrounding code expects. TypeScript accepts a
 	// literal whose own signature merely fits the slot; Go needs it identical.
-	sig, discard := own.Sig, false
+	var slot *ir.Signature
 	if ctx := l.checker.GetContextualType(n, checker.ContextFlagsNone); ctx != nil {
-		if slot := l.typeFromType(ctx); slot.Kind == ir.KindFunc {
-			if !l.fitsSlot(n, own.Sig, slot.Sig) {
-				return nil
-			}
-			sig = slot.Sig
-			discard = slot.Sig.Result == ir.Void && own.Sig.Result != ir.Void
+		if s := l.typeFromType(ctx); s.Kind == ir.KindFunc {
+			slot = s.Sig
 		}
 	}
+	return l.closureFor(n, own.Sig, slot, false)
+}
 
-	lit := &ir.FuncLit{Result: sig.Result, Typ: ir.FuncType(sig.Params, sig.Result), Span: l.span(n)}
+// closureFor lowers a function literal whose own signature is own, emitted
+// with slot's when there is one. drop discards whatever the body returns, for
+// a literal whose result nothing reads, such as a Promise executor.
+func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir.Expr {
+	sig, discard := own, drop
+	if slot != nil {
+		if !l.fitsSlot(n, own, slot) {
+			return nil
+		}
+		sig = slot
+		discard = discard || (slot.Result == ir.Void && own.Result != ir.Void)
+	}
+
+	async := isAsync(n)
+	lit := &ir.FuncLit{Result: sig.Result, Async: async, Typ: ir.FuncType(sig.Params, sig.Result), Span: l.span(n)}
 	declared := n.Parameters()
 	for i, pt := range sig.Params {
 		param := ir.Param{Type: pt, Span: lit.Span}
@@ -97,7 +109,7 @@ func (l *lowerer) closure(n *ast.Node) ir.Expr {
 		}
 		lit.Params = append(lit.Params, param)
 	}
-	lit.Body = l.closureBody(n.Body(), sig.Result, discard)
+	l.inBody(async, func() { lit.Body = l.closureBody(n.Body(), bodyResult(sig.Result, async), discard) })
 	lit.Captures = l.captures(n)
 	return lit
 }
@@ -105,11 +117,7 @@ func (l *lowerer) closure(n *ast.Node) ir.Expr {
 // closureShapeOK refuses the forms of function literal the backend cannot
 // represent yet, each with its own diagnostic.
 func (l *lowerer) closureShapeOK(n *ast.Node) bool {
-	switch flags := ast.GetFunctionFlags(n); {
-	case flags&ast.FunctionFlagsAsync != 0:
-		l.failf(n, "async functions are not supported yet")
-		return false
-	case flags&ast.FunctionFlagsGenerator != 0:
+	if ast.GetFunctionFlags(n)&ast.FunctionFlagsGenerator != 0 {
 		l.failf(n, "generator functions are not supported yet")
 		return false
 	}
@@ -182,7 +190,8 @@ func (l *lowerer) fitsSlot(n *ast.Node, own, slot *ir.Signature) bool {
 }
 
 // closureBody lowers a block body, or a concise one such as `x => x + 1`.
-// discard drops returned values, for a literal standing in for a void slot.
+// result is what a return statement in it carries, and discard drops returned
+// values, for a literal standing in for a void slot.
 func (l *lowerer) closureBody(body *ast.Node, result ir.Type, discard bool) []ir.Stmt {
 	saved := l.discard
 	l.discard = discard

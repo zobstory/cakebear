@@ -260,8 +260,27 @@ by name until its emitter lands. The runtime has its domains
 microtask queue and a timer heap per domain, `Promise[T]`, `Async`, `Await`,
 `SetTimeout`, and a domain per request that carries on after `res.end()`.
 Generated code will pass the current domain as every function's first
-argument, because Go has no goroutine-local storage. Lowering, emission and
-the end-to-end checks follow.
+argument, because Go has no goroutine-local storage.
+
+Lowering accepts M2's code (`lower/async.go`):
+- async functions and arrows, `await`, and `new Promise` with an inline
+  executor;
+- `setTimeout(callback, delay)` and `clearTimeout(id)`, recognised by being
+  declared only in `lib.dom.d.ts`.
+
+The executor's `resolve` lowers as a plain function, because the checker's
+union type for it exists only for adopting another promise. Lowering refuses,
+each by name:
+- `reject`;
+- adopting one promise into another, through `resolve` or an async `return`;
+- `.then` and `Promise`'s statics;
+- top-level `await`;
+- a string or extra-argument timer;
+- a timer callback that isn't `() => void`.
+
+The race rule now treats a `const` promise as shared state. Until emission
+lands, `cakec` reports these programs as `cannot compile yet: the backend
+cannot emit …`. Emission and the end-to-end checks follow.
 
 After M2, none urgent:
 

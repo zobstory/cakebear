@@ -77,6 +77,12 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 	case ast.KindPropertyAccessExpression:
 		return l.property(n)
 
+	case ast.KindAwaitExpression:
+		return l.await(n)
+
+	case ast.KindNewExpression:
+		return l.newExpr(n)
+
 	default:
 		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
@@ -248,12 +254,21 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		case t.Kind == ir.KindHost:
 			l.failf(n, "console.log cannot print a %s yet", t)
 			return nil
+		case t.Kind == ir.KindPromise:
+			l.failf(n, "console.log cannot print a promise yet; log what it resolves to, with await")
+			return nil
 		}
 		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
 	}
 
 	if out, handled := l.hostCall(n, c); handled {
 		return out
+	}
+	if out, handled := l.timerCall(n, c); handled {
+		return out
+	}
+	if l.promiseMemberCall(n, c) {
+		return nil
 	}
 
 	// A callee is a name: a top-level function, or a parameter or variable
@@ -289,6 +304,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 			}
 			call.Args = append(call.Args, lowered)
 		}
+	}
+	if l.resolvesWithPromise(n, call) {
+		return nil
 	}
 	return call
 }

@@ -396,3 +396,29 @@ func TestResolveAndExecutorTypes(t *testing.T) {
 		}
 	}
 }
+
+// The timers are globals, not node:http: the backend's refusal names them
+// without the module, which IsTimer decides.
+func TestHostOpNamesAndTimers(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		op    HostOp
+		name  string
+		timer bool
+	}{
+		{HostCreateServer, "createServer", false},
+		{HostListen, "Server.listen", false},
+		{HostEnd, "ServerResponse.end", false},
+		{HostSetTimeout, "setTimeout", true},
+		{HostClearTimeout, "clearTimeout", true},
+		{HostOpInvalid, "invalid host operation", false},
+	} {
+		if got := tt.op.String(); got != tt.name {
+			t.Errorf("HostOp(%d).String() = %q, want %q", tt.op, got, tt.name)
+		}
+		if got := tt.op.IsTimer(); got != tt.timer {
+			t.Errorf("%s.IsTimer() = %v, want %v", tt.name, got, tt.timer)
+		}
+	}
+}

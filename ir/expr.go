@@ -150,6 +150,9 @@ type FuncLit struct {
 	Concurrent bool
 	// Async marks an `async` arrow or function expression, with Func.Async's
 	// convention: Result is the promise, the Returns in Body carry its element.
+	// The exception is a literal standing in for a void callback, such as an
+	// async request handler: there Result is Void, the promise is created and
+	// dropped, as JavaScript drops it, and the Returns carry nothing.
 	Async bool
 	Typ   Type
 	Span  Span

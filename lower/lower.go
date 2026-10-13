@@ -63,6 +63,12 @@ type lowerer struct {
 	// race is the handler race rule's summary of the file, built the first
 	// time a request handler is checked (race.go).
 	race *raceChecker
+	// async is set while lowering the body of an async function, the only
+	// place an await may appear until top-level await lands.
+	async bool
+	// resolvers holds the type of each Promise executor's resolve parameter,
+	// which the checker types as a union the IR cannot hold (async.go).
+	resolvers map[*ast.Symbol]ir.Type
 }
 
 // File lowers one checked source file into a module.
@@ -125,6 +131,9 @@ func (l *lowerer) invalidf(n *ast.Node, format string, args ...any) {
 
 // typeOf maps the checked type of a node onto the IR's type surface.
 func (l *lowerer) typeOf(n *ast.Node) ir.Type {
+	if t, ok := l.resolverType(n); ok {
+		return t
+	}
 	return l.typeFromType(l.checker.GetTypeAtLocation(n))
 }
 
@@ -156,8 +165,11 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 	case flags&checker.TypeFlagsUndefined != 0:
 		return ir.Undefined
 	default:
-		// Host types first: they are objects with call-able members, and
+		// Promises and host types first: both are objects with members, and
 		// funcType would refuse them for having properties.
+		if p, ok := l.promiseType(t); ok {
+			return p
+		}
 		if h := l.hostType(t); h != ir.HostNone {
 			return ir.HostOf(h)
 		}
@@ -226,8 +238,11 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 			l.failf(decl.Type, "function %s returns a type the backend cannot represent yet", fn.Name)
 		}
 	}
+	if fn.Async = isAsync(n); fn.Async {
+		l.asyncResult(n, fn)
+	}
 
-	fn.Body = l.block(decl.Body)
+	l.inBody(fn.Async, func() { fn.Body = l.block(decl.Body) })
 	return fn
 }
 
@@ -288,7 +303,7 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		s := n.AsReturnStatement()
 		out := &ir.Return{Span: l.span(n)}
 		if s.Expression != nil {
-			if out.Value = l.expr(s.Expression); out.Value == nil {
+			if out.Value = l.expr(s.Expression); out.Value == nil || !l.returnable(n, out.Value) {
 				return nil
 			}
 		}

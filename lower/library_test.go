@@ -15,8 +15,9 @@ func TestLibraryGlobalsAreRefused(t *testing.T) {
 
 	for _, tt := range []struct{ name, src, want string }{
 		{"call", "const n: number = parseInt(\"5\");\n", "parseInt is a library function cakebear does not implement yet"},
-		{"call with a callback", "setTimeout(() => {\n  console.log(\"t\");\n}, 0);\n",
-			"setTimeout is a library function cakebear does not implement yet"},
+		// setTimeout itself is lowered since M2 (async.go); setInterval is not.
+		{"call with a callback", "setInterval(() => {\n  console.log(\"t\");\n}, 0);\n",
+			"setInterval is a library function cakebear does not implement yet"},
 		{"value", "console.log(NaN);\n", "NaN is a library global cakebear does not implement yet"},
 		{"function passed as a value", "function apply(f: (x: number) => boolean, v: number): boolean {\n  return f(v);\n}\nconsole.log(apply(isNaN, 1));\n",
 			"isNaN is a library global cakebear does not implement yet"},

@@ -196,7 +196,6 @@ func TestClosureRefusals(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct{ name, src, want string }{
-		{"async", "const f = async (): Promise<void> => {};\n", "async functions are not supported yet"},
 		{"generator", "const g = function* (): Generator<number> { yield 1; };\n", "generator functions are not supported yet"},
 		{"named", "const h = function named(): number { return 1; };\n", "named function expressions are not supported yet"},
 		{"generic", "const id = <T,>(x: T): T => x;\n", "generic functions are not supported yet"},
