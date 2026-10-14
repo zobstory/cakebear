@@ -1,0 +1,12 @@
+{
+  // The imports name their .ts files, so Node runs these same sources:
+  // allowImportingTsExtensions, which TypeScript allows only with noEmit.
+  // cakec build never emits JavaScript anyway.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src"],
+  "cakebear": { "main": "src/main.ts", "output": "bin/server" }
+}

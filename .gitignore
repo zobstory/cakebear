@@ -3,8 +3,10 @@
 # are the rules from it that apply to the Go tree, with tsc/ stripped from their
 # paths, plus cakebear's own conventions.
 
-# cakebear builds binaries into bin/ (CLAUDE.md, "Build / test / run").
+# cakebear builds binaries into bin/ (CLAUDE.md, "Build / test / run"), and
+# an example project's tsconfig.json builds into its own bin/.
 /bin
+/examples/*/bin/
 # CLIs built in place by a bare `go build`.
 /cakec
 /tsc
