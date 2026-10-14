@@ -33,7 +33,8 @@ func helloModule() *ir.Module {
 	span := ir.Span{File: "hello.ts", Line: 1, Col: 1}
 	server, req, res := ir.HostOf(ir.HostHTTPServer), ir.HostOf(ir.HostIncomingMessage), ir.HostOf(ir.HostServerResponse)
 	handlerType := ir.FuncType([]ir.Type{req, res}, ir.Void)
-	resIdent := &ir.Ident{Name: "res", Typ: res, Span: span}
+	// Stable, as lowering marks a parameter nothing writes to.
+	resIdent := &ir.Ident{Name: "res", Stable: true, Typ: res, Span: span}
 	str := func(s string) ir.Expr { return &ir.StringLit{Value: s, Span: span} }
 
 	handler := &ir.FuncLit{
@@ -46,14 +47,14 @@ func helloModule() *ir.Module {
 			}},
 			&ir.If{Span: span, Cond: &ir.Binary{
 				Op: ir.OpEqual, Typ: ir.Boolean, Span: span, Right: str("/x"),
-				Left: &ir.HostProp{Prop: ir.HostURL, Recv: &ir.Ident{Name: "req", Typ: req, Span: span}, Typ: ir.String, Span: span},
+				Left: &ir.HostProp{Prop: ir.HostURL, Recv: &ir.Ident{Name: "req", Stable: true, Typ: req, Span: span}, Typ: ir.String, Span: span},
 			}, Then: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.HostCall{Op: ir.HostWriteHead, Recv: resIdent, Args: []ir.Expr{&ir.NumberLit{Value: 404, Span: span}}, Typ: res, Span: span}}}},
 		},
 	}
 	return &ir.Module{Name: "hello", Main: []ir.Stmt{
 		&ir.VarDecl{Name: "server", Type: server, Span: span, Init: &ir.HostCall{Op: ir.HostCreateServer, Args: []ir.Expr{handler}, Typ: server, Span: span}},
 		&ir.ExprStmt{Span: span, Expr: &ir.HostCall{
-			Op: ir.HostListen, Recv: &ir.Ident{Name: "server", Typ: server, Span: span}, Typ: server, Span: span,
+			Op: ir.HostListen, Recv: &ir.Ident{Name: "server", Stable: true, Typ: server, Span: span}, Typ: server, Span: span,
 			Args: []ir.Expr{&ir.NumberLit{Value: 3000, Span: span}, &ir.FuncLit{Result: ir.Void, Typ: ir.FuncType(nil, ir.Void), Span: span}},
 		}},
 	}}

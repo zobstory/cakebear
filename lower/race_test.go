@@ -181,3 +181,58 @@ createServer((req, res) => {
 		t.Errorf("diagnostic = line %d %q, want the first write, on line 5", errs[0].Span.Line, errs[0].Msg)
 	}
 }
+
+// TestOpaqueFunctionValuesRefused: a function value the rule can't see into,
+// here a counter a factory returned, may close over state no summary covers.
+// Called from concurrent code it raced (go build -race reported it), so a
+// handler or a spawned function may not use one, directly or through what it
+// calls.
+func TestOpaqueFunctionValuesRefused(t *testing.T) {
+	t.Parallel()
+
+	const counter = "function makeCounter(): () => number {\n  let n: number = 0;\n  return (): number => {\n    n = n + 1;\n    return n;\n  };\n}\n" +
+		"const next: () => number = makeCounter();\n"
+	const opaque = "`next`, a function value cakebear can't see into"
+	for _, tt := range []struct {
+		name, src, want string
+	}{
+		{"called in a handler", raceImport + counter + "createServer((req, res) => {\n  next();\n  res.end(\"ok\");\n}).listen(3000);\n",
+			"this handler runs on many requests at once, so it can't use " + opaque},
+		{"called in a spawned function", counter + "const p: Promise<number> = spawn(() => next());\nexport { p };\n",
+			"this spawned function runs in parallel with its caller, so it can't use " + opaque},
+		{"through a function the handler calls", raceImport + counter + "function tick(): number {\n  return next();\n}\n" +
+			"createServer((req, res) => {\n  tick();\n  res.end(\"ok\");\n}).listen(3000);\n",
+			"so it can't call `tick()`, which uses " + opaque},
+		{"passed on, not called", raceImport + counter + "createServer((req, res) => {\n  setTimeout(next, 1);\n  res.end(\"ok\");\n}).listen(3000);\n",
+			"so it can't use " + opaque},
+	} {
+		_, errs := lowerSource(t, tt.src)
+		if msgs := joinMsgs(errs); !strings.Contains(msgs, tt.want) {
+			t.Errorf("%s: errors = %q, want one containing %q", tt.name, msgs, tt.want)
+		}
+	}
+
+	// One the rule can see into is still fine.
+	_, errs := lowerSource(t, raceImport+"const double = (n: number): number => n * 2;\n"+
+		"createServer((req, res) => {\n  const d: number = double(2);\n  res.end(\"ok\");\n}).listen(3000);\n")
+	if len(errs) > 0 {
+		t.Errorf("a const bound to an arrow function was refused:\n%s", joinMsgs(errs))
+	}
+}
+
+// TestShareableConstIsAnAllowlist: a const counts as shareable only for the
+// kinds the rule names, so a new kind of value is shared until it says
+// otherwise.
+func TestShareableConstIsAnAllowlist(t *testing.T) {
+	t.Parallel()
+
+	for k := ir.KindInvalid; k <= ir.KindPromise; k++ {
+		want := k == ir.KindNumber || k == ir.KindString || k == ir.KindBoolean || k == ir.KindFunc || (ir.Type{Kind: k}).IsExtension()
+		if got := shareableConst(k); got != want {
+			t.Errorf("shareableConst(%v) = %v, want %v", ir.Type{Kind: k}, got, want)
+		}
+	}
+	if shareableConst(ir.KindPromise + 1) {
+		t.Error("a kind after the last known one counts as shareable; the rule must fail closed")
+	}
+}

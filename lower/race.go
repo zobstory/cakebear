@@ -24,7 +24,13 @@ import (
 //     through the functions it calls in turn.
 //
 // Reading a const is fine when it holds a primitive or a function, because
-// neither can change. A promise can: it settles. So a const promise counts as
+// neither can change, and those are the only consts allowed: what a const of
+// any other type holds counts as shared, so a new kind of value is refused
+// until the rule says otherwise (shareableConst). A function value is fine
+// only when the rule can see into it, as a function declaration or a const
+// bound to a function literal. One it can't, such as a const holding what a
+// call returned, may close over state nothing here sees, so a concurrent
+// function may not use it. A promise can: it settles. So a const promise counts as
 // shared state too (M2 plan, D9), and the runtime, which keeps each promise to
 // the domain that made it, never sees one cross. So does a const host value
 // (D10): the runtime's server and response types are not goroutine-safe, and
@@ -51,6 +57,7 @@ type sharedUse struct {
 	write   bool
 	promise bool // the binding holds a promise
 	host    bool // the binding holds a host value, such as a response
+	opaque  bool // the binding holds a function value the rule can't see into
 	at      *ast.Node
 }
 
@@ -166,6 +173,8 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 					})
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
 					refs = append(refs, reference{sym: sym, at: n})
+				} else if decl, ok := rc.opaqueFunction(sym); ok && !within(decl, fn) {
+					uses = append(uses, sharedUse{sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), opaque: true, at: n})
 				}
 			}
 		}
@@ -221,12 +230,37 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 		return nil, false
 	}
 	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
-		// A const is shared state only when it holds something that changes.
-		if name := decl.Name(); name == nil {
-			return nil, false
-		} else if k := rc.l.typeOf(name).Kind; k != ir.KindPromise && k != ir.KindHost {
+		// A const is shared state unless what it holds can't change.
+		if name := decl.Name(); name != nil && shareableConst(rc.l.typeOf(name).Kind) {
 			return nil, false
 		}
+	}
+	return decl, true
+}
+
+// shareableConst reports whether a const of kind k can be shared with a
+// concurrent function: a primitive, an extension type, or a function (which
+// scan checks as a callable, or refuses as opaque). It is an allowlist, so a
+// kind of value it doesn't name, a promise, a host value, and whatever comes
+// next, counts as shared.
+func shareableConst(k ir.Kind) bool {
+	switch k {
+	case ir.KindNumber, ir.KindString, ir.KindBoolean, ir.KindFunc:
+		return true
+	}
+	return ir.Type{Kind: k}.IsExtension()
+}
+
+// opaqueFunction reports whether sym is a binding of the program's own that
+// holds a function value the rule can't see into: of function type, but not a
+// callable. A mutable one is a mutableBinding already.
+func (rc *raceChecker) opaqueFunction(sym *ast.Symbol) (*ast.Node, bool) {
+	decl := sym.ValueDeclaration()
+	if sym.Flags()&ast.SymbolFlagsVariable == 0 || !rc.l.p.inProgram(decl) || decl.Name() == nil {
+		return nil, false
+	}
+	if _, known := rc.callables[sym]; known || rc.l.typeOf(decl.Name()).Kind != ir.KindFunc {
+		return nil, false
 	}
 	return decl, true
 }
@@ -366,6 +400,9 @@ func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
 	case u.host:
 		return "use " + name + ", a node:http value created outside it; one can't be shared " + who.across + " yet"
+	case u.opaque:
+		return "use " + name + ", a function value cakebear can't see into, which could touch anything; " +
+			"declare it with `function`, or as a const bound to an arrow function"
 	default:
 		return "read " + name + ", which can change while it runs; copy it into a `const` " + who.outside + " if it doesn't change"
 	}
@@ -379,6 +416,8 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "uses " + name + ", a promise created " + who.outside
 	case u.host:
 		return "uses " + name + ", a node:http value created " + who.outside
+	case u.opaque:
+		return "uses " + name + ", a function value cakebear can't see into"
 	default:
 		return "reads " + name + ", which can change while it runs"
 	}

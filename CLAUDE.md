@@ -509,6 +509,17 @@ match exactly, so lowering pads the parameters and drops the returned value.
 Each literal records what it captures and whether that binding is mutable,
 which the handler race rule (M1 step 8) builds on.
 
+**Evaluation order** (`backend/order.go`). JavaScript evaluates operands left
+to right, reads included, so in `a + f()` with `f` changing `a`, `a` is read
+first. Go orders an expression's calls but not its plain reads against them,
+and gc reads after the calls: `a + f()` gave `f`'s new `a`, silently, until M3
+closed. Now, in an expression with a call below its root, a read of a binding
+that some code writes to (`ir.Ident.Stable` false) goes through a generated
+identity function, `ts_read(a)`, and Go's left-to-right order of calls puts it
+where JavaScript reads it. A binding nothing writes after its declaration
+needs nothing, which keeps the generated Go readable. `TestEvaluationOrderMatchesNode`
+holds eight such expressions to Node's output.
+
 **Top-level variables** are declared at Go package level and assigned in `main`
 at their place in the source, so top-level functions can use them and side
 effects keep their order (a package-level initialiser would run before any of
@@ -634,14 +645,22 @@ lowering refuses what could race, as `cannot compile yet`:
   the functions it calls (a summary over the whole program's call graph,
   through imports, recursion included);
 - a handler the rule cannot see into, such as a parameter or a call's result,
-  is refused rather than trusted.
+  is refused rather than trusted;
+- so is using a function value it can't see into, a `const` holding what a
+  call returned, say, called or passed on. A counter a factory returned
+  compiled clean until this was added, and `go build -race` caught the race it
+  ran: what the function touches lives in the factory, where no summary looks.
+  A function declaration, or a `const` bound to an arrow function, is seen
+  into and fine.
 
-Reading a `const` is allowed. ⚠ **Carry-forward invariant:** that is only safe
-because every M1 `const` holds a primitive, a function or a host value. A
-`const` array or object is still mutable (`xs.push(…)`), so this rule must
-grow when aggregates arrive, before they do, not after. Explicit shared-state
-tools (an atomic counter type in `types/`, say) are how a later milestone
-widens it.
+Reading a `const` is allowed only when it holds a primitive, an extension
+type or a function: the rule's test is an allowlist (`shareableConst`), so a
+`const` of any other kind counts as shared, and a kind added later, objects
+and arrays among them, is refused until the rule names it. ⚠ **Carry-forward
+invariant:** a `const` array or object is still mutable (`xs.push(…)`), so it
+must stay off that list unless the rule learns to prove it unchanged. Explicit
+shared-state tools (an atomic counter type in `types/`, say) are how a later
+milestone widens it.
 
 M2 hit this invariant first, with promises. A `Promise` settles, so it is
 mutable state like any object. Lowering therefore refuses a handler that

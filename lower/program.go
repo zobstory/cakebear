@@ -24,6 +24,9 @@ type program struct {
 	// race is the handler race rule's summary of the whole program, built the
 	// first time a concurrent function is checked (race.go).
 	race *raceChecker
+	// assigned is every binding some code in the program writes to after
+	// its declaration. A read of any other is stable (ir.Ident.Stable).
+	assigned map[*ast.Symbol]bool
 }
 
 // Program lowers the program whose entry module is entry: entry and every
@@ -43,6 +46,7 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 	}
 	slices.SortFunc(files, func(a, b *ast.SourceFile) int { return strings.Compare(string(a.FileName()), string(b.FileName())) })
 	p.files = files
+	p.findAssigned()
 
 	out := &ir.Program{}
 	var errs []*Error
@@ -58,6 +62,33 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 		return nil, errs
 	}
 	return out, nil
+}
+
+// findAssigned records every binding the program writes to: the target of an
+// assignment, a compound assignment, or ++ or --, anywhere, nested functions
+// included.
+func (p *program) findAssigned() {
+	p.assigned = map[*ast.Symbol]bool{}
+	var visit func(n *ast.Node) bool
+	visit = func(n *ast.Node) bool {
+		if n.Kind == ast.KindIdentifier && isWrite(n) {
+			if sym := p.resolve(p.checker.GetSymbolAtLocation(n)); sym != nil {
+				p.assigned[sym] = true
+			}
+		}
+		n.ForEachChild(visit)
+		return false
+	}
+	for _, f := range p.files {
+		f.AsNode().ForEachChild(visit)
+	}
+}
+
+// stable reports whether the binding n names is never written after it is
+// declared (ir.Ident.Stable).
+func (l *lowerer) stable(n *ast.Node) bool {
+	sym := l.p.resolve(l.checker.GetSymbolAtLocation(n))
+	return sym != nil && !l.p.assigned[sym]
 }
 
 // collect adds f and, in turn, every module of the program's own it imports.

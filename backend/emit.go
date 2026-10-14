@@ -50,6 +50,10 @@ type emitter struct {
 	// emitted (emit_program.go).
 	prefixes map[string]string
 	cur      string
+	// order is set while emitting an expression whose reads must be ordered
+	// against its calls, and usesRead once one was (order.go).
+	order    bool
+	usesRead bool
 }
 
 // Emit renders a program as the contents of a Go main package. IR the backend
@@ -137,7 +141,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 	case *ir.VarDecl:
 		if e.hoisted[s] {
 			// Declared at package level already; see program.
-			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(e.cur, s.Name), e.expr(s.Init))
+			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(e.cur, s.Name), e.full(s.Init))
 			return
 		}
 		if s.Type.Kind == ir.KindFunc {
@@ -145,21 +149,21 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 			// itself. Go's scope for `var f = …` starts after the initialiser;
 			// JavaScript's starts at the declaration.
 			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), e.typ(s.Type))
-			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.expr(s.Init))
+			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.full(s.Init))
 		} else {
 			// An explicit type rather than := because TypeScript's annotation
 			// is the authority here, and := would let Go's inference disagree.
-			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type), e.expr(s.Init))
+			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type), e.full(s.Init))
 		}
 		// Go rejects unused locals; TypeScript does not. Referencing the
 		// variable keeps a legal TypeScript program from failing to build.
 		fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, mangle(s.Name))
 
 	case *ir.Assign:
-		fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(s.Module, s.Name), e.expr(s.Value))
+		fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(s.Module, s.Name), e.full(s.Value))
 
 	case *ir.If:
-		fmt.Fprintf(&e.buf, "%sif %s {\n", pad, e.expr(s.Cond))
+		fmt.Fprintf(&e.buf, "%sif %s {\n", pad, e.full(s.Cond))
 		e.stmts(s.Then, depth+1)
 		if len(s.Else) > 0 {
 			fmt.Fprintf(&e.buf, "%s} else {\n", pad)
@@ -168,7 +172,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		fmt.Fprintf(&e.buf, "%s}\n", pad)
 
 	case *ir.While:
-		fmt.Fprintf(&e.buf, "%sfor %s {\n", pad, e.expr(s.Cond))
+		fmt.Fprintf(&e.buf, "%sfor %s {\n", pad, e.full(s.Cond))
 		e.stmts(s.Body, depth+1)
 		fmt.Fprintf(&e.buf, "%s}\n", pad)
 
@@ -179,17 +183,17 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		case s.Value == nil:
 			fmt.Fprintf(&e.buf, "%sreturn\n", pad)
 		default:
-			fmt.Fprintf(&e.buf, "%sreturn %s\n", pad, e.expr(s.Value))
+			fmt.Fprintf(&e.buf, "%sreturn %s\n", pad, e.full(s.Value))
 		}
 
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
 		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise:
-			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.expr(s.Expr))
+			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.full(s.Expr))
 		default:
 			// Go accepts only calls as expression statements, TypeScript any
 			// expression: `x => x * 2` in a void slot evaluates and drops.
-			fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, e.expr(s.Expr))
+			fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, e.full(s.Expr))
 		}
 
 	default:
@@ -223,7 +227,7 @@ func (e *emitter) expr(x ir.Expr) string {
 		return "nil"
 
 	case *ir.Ident:
-		return e.top(x.Module, x.Name)
+		return e.read(x)
 
 	case *ir.Binary:
 		return e.binary(x)
