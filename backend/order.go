@@ -1,0 +1,101 @@
+package backend
+
+import (
+	"fmt"
+
+	"github.com/zobstory/cakebear/ir"
+)
+
+// Evaluation order.
+//
+// JavaScript evaluates an expression's operands left to right, reads
+// included: in `a + f()`, a is read before f runs, even when f changes it, so
+// with a = 1 and f setting a to 11, the sum is 12. Go orders only the calls,
+// receives and sends among an expression's operands. When a plain variable
+// read happens relative to them is unspecified, and gc reads after the
+// calls, which gave 22.
+//
+// The fix leans on what Go does order: calls, left to right, each after its
+// arguments. In an expression with a call below its root, every read of a
+// binding that is ever written (ir.Ident.Stable is false) becomes a call,
+// ts_read(a), and so happens where JavaScript would read it. A read with no
+// call below the root to race with needs nothing: `g(a)` evaluates a before g
+// runs, in either language.
+
+// readFunc is the generated identity function ordered reads go through. No
+// mangled or prefixed name can be ts_read (mangle.go, emit_program.go).
+const readFunc = "ts_read"
+
+// full emits x, the whole expression of a statement, ordering its reads if
+// they need it.
+func (e *emitter) full(x ir.Expr) string {
+	saved := e.order
+	e.order = innerCall(x)
+	defer func() { e.order = saved }()
+	return e.expr(x)
+}
+
+// read emits a read of a binding, through readFunc when the expression's
+// reads are being ordered and the binding is one code writes to.
+func (e *emitter) read(x *ir.Ident) string {
+	name := e.top(x.Module, x.Name)
+	if !e.order || x.Stable {
+		return name
+	}
+	e.usesRead = true
+	return readFunc + "(" + name + ")"
+}
+
+// innerCall reports whether x has a call anywhere below its root. A function
+// literal's body is not part of evaluating x, and is not looked into.
+func innerCall(x ir.Expr) bool {
+	for _, c := range operands(x) {
+		if isCall(c) || innerCall(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCall reports whether evaluating x runs code that could change a binding:
+// a call of any kind, including the runtime's.
+func isCall(x ir.Expr) bool {
+	switch x.(type) {
+	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog:
+		return true
+	}
+	return false
+}
+
+// operands are the expressions evaluating x evaluates first. It knows every
+// expression type: one it doesn't panics rather than hide the calls under it.
+func operands(x ir.Expr) []ir.Expr {
+	switch x := x.(type) {
+	case nil, *ir.NumberLit, *ir.StringLit, *ir.BoolLit, *ir.NullLit, *ir.UndefinedLit, *ir.Ident, *ir.FuncLit:
+		return nil
+	case *ir.Binary:
+		return []ir.Expr{x.Left, x.Right}
+	case *ir.Unary:
+		return []ir.Expr{x.Operand}
+	case *ir.Convert:
+		return []ir.Expr{x.Value}
+	case *ir.Call:
+		return x.Args
+	case *ir.Await:
+		return []ir.Expr{x.Value}
+	case *ir.NewPromise:
+		return []ir.Expr{x.Executor}
+	case *ir.ConsoleLog:
+		return []ir.Expr{x.Arg}
+	case *ir.HostCall:
+		return append([]ir.Expr{x.Recv}, x.Args...)
+	case *ir.HostProp:
+		return []ir.Expr{x.Recv}
+	default:
+		panic(fmt.Sprintf("backend: evaluation order has no case for %T", x))
+	}
+}
+
+// readDecl is readFunc's declaration, written once when anything uses it.
+const readDecl = "// ts_read orders a read against the calls around it; see backend/order.go.\n" +
+	"func " + readFunc + "[T any](v T) T { return v }\n\n"

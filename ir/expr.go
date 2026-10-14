@@ -37,6 +37,12 @@ type Ident struct {
 	// empty when Name is local to a function: a parameter, a binding in its
 	// body, or one it captures from an enclosing function (Program).
 	Module string
+	// Stable marks a binding nothing ever assigns after it is declared: a
+	// const, a function, or a parameter or let no code writes to. A read of
+	// any other binding is ordered against the calls of the expression it is
+	// in, as JavaScript orders it (backend/order.go). The zero value is the
+	// safe one: a read not known to be stable is ordered.
+	Stable bool
 	Typ    Type
 	Span   Span
 }

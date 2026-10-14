@@ -93,6 +93,9 @@ func (e *emitter) program(p *ir.Program) string {
 	}
 	out.WriteString(funcs.String())
 	out.WriteString(inits.String())
+	if e.usesRead {
+		out.WriteString(readDecl)
+	}
 	out.WriteString("func main() {\n")
 	if e.usesRuntime {
 		out.WriteString("\tdefer " + rtPkg + ".Flush()\n")
