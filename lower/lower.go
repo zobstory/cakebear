@@ -271,23 +271,11 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		return l.varStatement(n)
 
 	case ast.KindExpressionStatement:
-		expr := n.AsExpressionStatement().Expression
-		// Assignment is an expression in TypeScript and a statement in Go, so
-		// it is recognised here rather than in expr().
-		if expr.Kind == ast.KindBinaryExpression {
-			if bin := expr.AsBinaryExpression(); bin.OperatorToken.Kind == ast.KindEqualsToken {
-				return l.assignment(n, bin)
-			}
-		}
-		lowered := l.expr(expr)
-		if lowered == nil {
-			return nil
-		}
-		return []ir.Stmt{&ir.ExprStmt{Expr: lowered, Span: l.span(n)}}
+		return l.exprStatement(n, n.AsExpressionStatement().Expression)
 
 	case ast.KindIfStatement:
 		s := n.AsIfStatement()
-		cond := l.expr(s.Expression)
+		cond := l.condition(s.Expression)
 		if cond == nil {
 			return nil
 		}
@@ -299,7 +287,7 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 
 	case ast.KindWhileStatement:
 		s := n.AsWhileStatement()
-		cond := l.expr(s.Expression)
+		cond := l.condition(s.Expression)
 		if cond == nil {
 			return nil
 		}
@@ -320,6 +308,16 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 			return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
 		}
 		return []ir.Stmt{out}
+
+	case ast.KindForStatement:
+		return l.forStmt(n)
+
+	case ast.KindBreakStatement, ast.KindContinueStatement:
+		return l.jump(n)
+
+	case ast.KindInterfaceDeclaration, ast.KindTypeAliasDeclaration:
+		// Types alone: erased at runtime, so there is nothing to lower.
+		return nil
 
 	case ast.KindBlock:
 		return l.block(n)
@@ -349,6 +347,14 @@ func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 	if list == nil {
 		return nil
 	}
+	return l.declarations(n, list)
+}
+
+// declarations lowers a list of const or let declarations, from a statement
+// or a for loop's first clause. at is where a refusal of the whole list
+// points.
+func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
+	n := at
 	declList := list.AsVariableDeclarationList()
 
 	// `var` is hoisted and function-scoped; `const` and `let` are not. Rather

@@ -191,8 +191,8 @@ func TestImportedFunctionIsNotALibraryFunction(t *testing.T) {
 }
 
 // TestImportsAreEvaluationEdges: an import of the program's own module
-// evaluates it, unless it is `import type`, which is erased, as under Node,
-// and so brings no module into the program.
+// evaluates it, unless it is `import type` or names only types. Both are
+// erased, as in TypeScript's emit, and so bring no module into the program.
 func TestImportsAreEvaluationEdges(t *testing.T) {
 	t.Parallel()
 
@@ -202,16 +202,19 @@ func TestImportsAreEvaluationEdges(t *testing.T) {
 		"types.ts":  "export type Count = number;\n",
 		"unused.ts": "export function unused(): number {\n  return 2;\n}\n",
 		"main.ts": "import type { Count } from \"./types\";\nimport { a } from \"./a\";\nimport \"./setup\";\n" +
-			"import { unused } from \"./unused\";\nconst n: Count = a();\nconsole.log(n);\n",
+			"import { unused } from \"./unused\";\nimport { Name, type Tagged, type label } from \"./names\";\nimport { Id, id } from \"./mixed\";\n" +
+			"const n: Count = a();\nconsole.log(n);\n",
+		"names.ts": "export type Name = string;\nexport interface Tagged {\n  tag: string;\n}\nexport function label(): string {\n  return \"x\";\n}\nconsole.log(\"names\");\n",
+		"mixed.ts": "export type Id = number;\nexport function id(): number {\n  return 3;\n}\n",
 	}, "main.ts")
 	var imports []string
 	for _, file := range p.EntryModule().Imports {
 		imports = append(imports, filepath.Base(file))
 	}
-	if got, want := strings.Join(imports, " "), "a.ts setup.ts unused.ts"; got != want {
-		t.Errorf("main's imports = %s, want %s: an import evaluates, used or not, unless it is `import type`", got, want)
+	if got, want := strings.Join(imports, " "), "a.ts setup.ts unused.ts mixed.ts"; got != want {
+		t.Errorf("main's imports = %s, want %s: an import evaluates, used or not, unless it names only types", got, want)
 	}
-	if got, want := strings.Join(modulesOf(p), " "), "a.ts main.ts setup.ts unused.ts"; got != want {
-		t.Errorf("modules = %s, want %s, with no types.ts", got, want)
+	if got, want := strings.Join(modulesOf(p), " "), "a.ts main.ts mixed.ts setup.ts unused.ts"; got != want {
+		t.Errorf("modules = %s, want %s, with no types.ts or names.ts", got, want)
 	}
 }

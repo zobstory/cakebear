@@ -260,13 +260,20 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **open**, with M4 to plan
+## Current phase: **M4**, objects and arrays
 
-P0–P5, M1, M2 and M3 are done. Nothing is blocked. Next is **M4, objects and
-arrays**, since a real program is several files of them, and they must extend
-the race rule before they land (a `const` array is still mutable). Then
-**M5, errors**: `throw`, `try`/`catch`/`finally`, `reject`. Neither is
-planned in detail yet, per the per-phase rule below.
+P0–P5, M1, M2 and M3 are done. Nothing is blocked. M4, decided 2026-10-14, is
+objects and arrays, since a real program is several files of them: exact
+object types with required properties, arrays, `for…of`, the common array
+methods, printing both as Node does, and `JSON.stringify` (M4 plan D1). They
+must extend the race rule before they land, since a `const` array is still
+mutable. Then **M5**, `null` and `undefined`, and **M6**, errors: `throw`,
+`try`/`catch`/`finally`, `reject`. Neither is planned in detail yet, per the
+per-phase rule below.
+
+M4's step 1, the prerequisites, is done: `for (;;)`, `break` and `continue`,
+`++`, `--` and compound assignment, boolean conditions, and type declarations
+erased (see "Since M4" in the language subset).
 
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
@@ -322,11 +329,9 @@ M3 made `cakec` a superset of `tsc` that builds real projects:
   the language server, sees cakebear's declarations (see the type
   extensions).
 - Widen the language subset. `null`/`undefined` need a nullable representation
-  in the IR; arrays and objects need an aggregate one (M4). Both are
+  in the IR (M5); arrays and objects need an aggregate one (M4). Both are
   prerequisites for most real programs, and aggregates must extend the race
-  rule first. Type aliases and interfaces are erased at runtime but still
-  refused, which a project keeping its types in a module of their own will
-  hit.
+  rule first.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
@@ -470,11 +475,31 @@ Refused by name: default imports and exports, `import * as` (except
 (every importer would share a binding that can change), and a top-level
 `await` outside the entry module (M3 plan D8).
 
+Since M4 (`lower/loops.go`):
+- `for (init; cond; post)`, with any clause empty. A `let` in the first clause
+  is a binding per iteration, as in JavaScript, and so is a Go 1.22 loop
+  variable, so a closure made in the body keeps its own iteration's value;
+- unlabelled `break` and `continue`;
+- `++`, `--`, `+=`, `-=`, `*=` and `/=` on a `number` variable, and `+=` of a
+  `string` onto a `string`, as statements. They lower to `x = x op v`. On an
+  extension type they are refused, so the narrowing stays visible:
+  `n = i32(n + 1)`;
+- `interface` and `type` declarations, which are erased;
+- a condition (of an `if`, a `while` or a `for`) must be a `boolean`.
+  TypeScript tests any value's truthiness, which is refused for now.
+
+A function whose end TypeScript knows can't be reached, such as one ending in
+`while (true)`, gets a panic after its last statement: Go's rule for where a
+function may end is narrower (`backend/emit_loops.go`).
+
+Refused by name: labelled statements, a comma expression in a `for` clause,
+`++` or `--` as a value (`f(i++)`), and an update of anything but a
+variable's name.
+
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, `var`, loose equality, arrays, objects, classes, generics, type aliases
-and interfaces (erased at runtime, but refused for now), imports from
-anything but `node:http` and the program's own modules, `for`, bitwise
-operators;
+`+`, `var`, loose equality, arrays, objects, classes, generics, imports from
+anything but `node:http` and the program's own modules, `for…of`, `for…in`,
+`do…while`, `switch`, bitwise operators;
 calling anything but a name or a `node:http` member (`f()()`); named function
 expressions; optional, default, rest or destructured parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
@@ -483,7 +508,7 @@ a promise; the standard library's other globals (`parseInt`, `NaN`, `isNaN`,
 libs declare them. A program's own function of the same name is unaffected.
 
 Not yet, from M2, each refused by name:
-- `reject`, `throw` and errors (M5);
+- `reject`, `throw` and errors (M6);
 - adopting one promise into another, through `resolve(p)` or an async `return p`
   (await it instead);
 - `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
@@ -540,8 +565,9 @@ package per module fails: Go forbids the import cycles ES allows.
   order, with a module already on the way not entered again, which settles a
   cycle. That is an ES module graph's order, checked against Node 24.18.
 - An import evaluates its module whether or not what it names is used, as
-  under Node. `import type` is erased and brings in nothing. A module that
-  only types reach never runs.
+  under Node. `import type` is erased and brings in nothing, and so is an
+  import naming only types, as in TypeScript's emit (Node refuses one: a type
+  has no export to bind). A module that only types reach never runs.
 - Reading another module's binding across a cycle, before that module has
   run, gives Go's zero value where JavaScript throws a `ReferenceError`. It's
   the same difference as for a top-level variable read early.

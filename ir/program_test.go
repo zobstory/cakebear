@@ -95,7 +95,10 @@ func everyNode() *Module {
 	lit := &FuncLit{Body: []Stmt{
 		&If{
 			Cond: &Unary{Op: OpNot, Operand: &BoolLit{Value: true}},
-			Then: []Stmt{&While{Cond: &BoolLit{}, Body: []Stmt{&Return{}}}},
+			Then: []Stmt{&While{Cond: &BoolLit{}, Body: []Stmt{
+				&For{Init: []Stmt{&VarDecl{Name: "i"}}, Body: []Stmt{&Break{}, &Continue{}}},
+				&Return{},
+			}}},
 			Else: []Stmt{&ExprStmt{Expr: &Await{Value: &NewPromise{Executor: &FuncLit{}}}}},
 		},
 	}}
@@ -117,6 +120,7 @@ func TestInspectVisitsEveryNode(t *testing.T) {
 
 	for _, want := range []string{
 		"*ir.VarDecl", "*ir.Assign", "*ir.If", "*ir.While", "*ir.Return", "*ir.ExprStmt",
+		"*ir.For", "*ir.Break", "*ir.Continue",
 		"*ir.NumberLit", "*ir.StringLit", "*ir.BoolLit", "*ir.NullLit", "*ir.UndefinedLit",
 		"*ir.Ident", "*ir.Binary", "*ir.Unary", "*ir.Call", "*ir.FuncLit", "*ir.Await",
 		"*ir.NewPromise", "*ir.ConsoleLog", "*ir.Convert", "*ir.HostCall", "*ir.HostProp",

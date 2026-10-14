@@ -78,8 +78,8 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 	if clause == nil {
 		return string(target.FileName()) // `import "./x"`, for its effects alone
 	}
-	if clause.IsTypeOnly() {
-		return "" // `import type`: erased, so it evaluates nothing
+	if l.p.erased(decl) {
+		return "" // `import type`, or only types: it evaluates nothing
 	}
 	if clause.Name() != nil {
 		l.failf(n, "a default import is not supported yet; import what %s exports by name", spec.Text())

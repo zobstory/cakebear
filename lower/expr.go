@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
+	"github.com/zobstory/cakebear/internal/scanner"
 	"github.com/zobstory/cakebear/ir"
 	"github.com/zobstory/cakebear/types"
 )
@@ -65,6 +66,10 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 
 	case ast.KindPrefixUnaryExpression:
 		return l.unary(n)
+
+	case ast.KindPostfixUnaryExpression:
+		l.failUpdateValue(n, scanner.TokenToString(n.AsPostfixUnaryExpression().Operator))
+		return nil
 
 	case ast.KindBinaryExpression:
 		return l.binary(n)
@@ -126,6 +131,9 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 			return nil
 		}
 		return operand
+	case ast.KindPlusPlusToken, ast.KindMinusMinusToken:
+		l.failUpdateValue(n, scanner.TokenToString(u.Operator))
+		return nil
 	default:
 		l.failf(n, "unary %s is not supported yet", describeKind(u.Operator))
 		return nil
