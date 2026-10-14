@@ -135,6 +135,7 @@ scripts/copy-tsc-cmd.sh               # re-copy cmd/tsc into cmd/cakec (syncs ru
 bin/cakec build                       # the project in the nearest tsconfig.json
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
+bin/cakec build -p examples/http-project && examples/http-project/bin/server   # in three modules
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
 scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
@@ -259,13 +260,15 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M3**, real projects
+## Current phase: **open**, with M4 to plan
 
-P0–P5, M1 and M2 are done, including both of M2's stretch goals, top-level
-`await` and `spawn`. Nothing is blocked. M3 is the `tsc` superset, native
-builds from `tsconfig.json`, and multi-file programs; objects and arrays are
-M4, since a real project is several files of them. M3's steps 1 to 6 are
-done:
+P0–P5, M1, M2 and M3 are done. Nothing is blocked. Next is **M4, objects and
+arrays**, since a real program is several files of them, and they must extend
+the race rule before they land (a `const` array is still mutable). Then
+**M5, errors**: `throw`, `try`/`catch`/`finally`, `reject`. Neither is
+planned in detail yet, per the per-phase rule below.
+
+M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
 - cakebear's declarations in `tsc` mode and the language server;
@@ -278,9 +281,11 @@ done:
   checker, under the program-wide race rule;
 - emitting across files (`backend/emit_program.go`): one Go package, each
   module's names prefixed, each module's top-level code run in ES order (see
-  "Modules" below).
-
-Step 7, an end-to-end multi-file server and the docs, is what remains.
+  "Modules" below);
+- end to end: `examples/http-project`, a server in three modules built from
+  its `tsconfig.json`. Its imports name their `.ts` files, so Node runs the
+  same sources, and `TestMultiFileMatchesNode` holds four such programs to
+  Node's output, 20 runs each.
 
 - **`cakec` as a superset of `tsc`.** The end goal is tight integration with
   TypeScript: `cakec` behaves exactly as `tsc` (every flag, `tsconfig.json`,
@@ -288,7 +293,8 @@ Step 7, an end-to-end multi-file server and the docs, is what remains.
   commands to `cmd/tsc`, which is upstream's: a sync replaces it wholesale.
   But upstream's `cmd/tsc/main.go` is a thin wrapper around
   `execute.CommandLine`, so `cakec` makes the same call for anything that is
-  not `cakec build`. `TestCakecIsTsc` compares the two, built from this tree,
+  not `cakec build`. Only the bare word is cakebear's, one dash from `tsc`'s
+  `--build` (M3 plan D2). `TestCakecIsTsc` compares the two, built from this tree,
   over sample projects and flags: stdout, stderr, the exit code and every file
   written, plus `--watch` through an edit and the language server's
   `initialize`. Native settings go in a top-level `"cakebear"`
@@ -316,8 +322,11 @@ Step 7, an end-to-end multi-file server and the docs, is what remains.
   the language server, sees cakebear's declarations (see the type
   extensions).
 - Widen the language subset. `null`/`undefined` need a nullable representation
-  in the IR; arrays and objects need an aggregate one. Both are prerequisites
-  for most real programs, and aggregates must extend the race rule first.
+  in the IR; arrays and objects need an aggregate one (M4). Both are
+  prerequisites for most real programs, and aggregates must extend the race
+  rule first. Type aliases and interfaces are erased at runtime but still
+  refused, which a project keeping its types in a module of their own will
+  hit.
 
 Completed: **P0** fork established, **P1** guardrails and sync, **P2** `cakec`
 type-checks TypeScript, **P3** parallelism exposed and proven deterministic,
@@ -328,6 +337,10 @@ promises, `await`, `new Promise`, `setTimeout`/`clearTimeout`, a domain per
 request, matching Node's ordering byte for byte within a domain, then
 top-level `await` and `spawn`. Upstream then moved, and
 cakebear was rebased onto `microsoft/TypeScript`'s `tsc/` with snapshot syncs.
+**M3** real projects: `cakec` is `tsc` for everything but `cakec build`,
+native builds from `tsconfig.json`, cakebear's declarations in `tsc` mode and
+the language server, and programs of several modules, lowered under a
+program-wide race rule and run in ES order.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
 nothing. The only workflows in the tree are cakebear's own:
@@ -458,7 +471,8 @@ Refused by name: default imports and exports, `import * as` (except
 `await` outside the entry module (M3 plan D8).
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, `var`, loose equality, arrays, objects, classes, generics, imports from
+`+`, `var`, loose equality, arrays, objects, classes, generics, type aliases
+and interfaces (erased at runtime, but refused for now), imports from
 anything but `node:http` and the program's own modules, `for`, bitwise
 operators;
 calling anything but a name or a `node:http` member (`f()()`); named function

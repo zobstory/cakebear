@@ -78,10 +78,28 @@ cakec build --help                   # cakebear's flags
 cakec -p .                           # anything but `cakec build` is tsc, unchanged
 ```
 
+Building requires the Go toolchain on `PATH`; cakebear shells out to it.
+
+### `cakec` is `tsc`
+
+Anything but `cakec build` is upstream's `tsc`, unchanged: every flag,
+`tsconfig.json`, `--watch`, `--build` and the rest. A test holds the two
+byte for byte over sample projects: output, exit codes and every file
+written. So `cakec --help` and `cakec --version` are `tsc`'s, and cakebear's
+own are `cakec build --help` and `cakec build --version`. Mind the dash:
+`cakec build` makes a native binary, while `cakec --build` (or `-b`) is
+TypeScript's build of project references.
+
+`cakec --lsp --stdio` is TypeScript's language server, with cakebear's own
+names (`spawn`, `i32`, `node:http`) known in every project, so an editor that
+runs it stops reporting them as unknown.
+
+### Projects
+
 A project build uses the `tsconfig.json`'s files and compiler options. The
-module to build goes in a top-level `"cakebear"` block, which `tsc` ignores.
-Paths in it are relative to the config, and `output` defaults to `main`'s
-basename:
+module the binary runs goes in a top-level `"cakebear"` block, which `tsc`
+ignores. Paths in it are relative to the config, and `output` defaults to
+`main`'s basename:
 
 ```jsonc
 {
@@ -91,13 +109,20 @@ basename:
 }
 ```
 
-With that block, `cakec` in `tsc` mode (`cakec -p .`, `--watch`, `--build`)
-also knows cakebear's own names, so `spawn`, `i32` and `node:http` type-check.
-On a project without one, it is exactly `tsc`. `cakec --lsp --stdio` is
-TypeScript's language server with cakebear's names in every project, so an
-editor that runs it stops reporting them as unknown.
+The program is `main` and every module it imports, by a relative path,
+compiled into one binary. Each module's top-level code runs in the order Node
+runs an ES module graph, cycles included.
+[`examples/http-project`](examples/http-project) is a server in three
+modules. Its imports name their `.ts` files, so Node runs the same sources:
 
-Building requires the Go toolchain on `PATH`; cakebear shells out to it.
+```console
+$ cakec build -p examples/http-project && examples/http-project/bin/server
+$ node examples/http-project/src/main.ts      # the same server, under Node
+```
+
+With a `"cakebear"` block, `cakec` in `tsc` mode (`cakec -p .`, `--watch`,
+`--build`) knows cakebear's own names too. On a project without one, it is
+exactly `tsc`.
 
 ## Types cakebear adds
 
@@ -200,13 +225,17 @@ parameters and return; arithmetic; string concatenation; comparisons; `===` and
 and function expressions as values (closures); `import` from `node:http`, and
 the members its bundled declarations list; `async` functions and arrows,
 `await`, including at the top level of a module, `Promise<T>`,
-`new Promise((resolve) => …)`, `setTimeout` / `clearTimeout`, and `spawn`.
+`new Promise((resolve) => …)`, `setTimeout` / `clearTimeout`, and `spawn`;
+programs of several modules, with named imports and exports of top-level
+functions and `const`s, renamed or not, and import cycles.
 
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but
-`node:http`, `for`, multi-file programs, bitwise operators, `reject` and
-errors, `.then` and `Promise.all`, exports, and the standard library's other
-globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
+`node:http` and the program's own modules, default exports, `import * as` a
+module of your own, re-exports, exporting a `let`, type aliases and
+interfaces (erased at runtime, but refused for now), `for`, bitwise
+operators, `reject` and errors, `.then` and `Promise.all`, and the standard
+library's other globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers
