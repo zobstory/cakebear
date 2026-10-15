@@ -21,6 +21,10 @@ import (
 // ts_read(a), and so happens where JavaScript would read it. A read with no
 // call below the root to race with needs nothing: `g(a)` evaluates a before g
 // runs, in either language.
+//
+// A field read is ordered the same way, always, since any call can write to
+// a field through an alias: `p.x + bump()` reads `ts_read(p.x)`
+// (emit_object.go).
 
 // readFunc is the generated identity function ordered reads go through. No
 // mangled or prefixed name can be ts_read (mangle.go, emit_program.go).
@@ -86,11 +90,19 @@ func operands(x ir.Expr) []ir.Expr {
 	case *ir.NewPromise:
 		return []ir.Expr{x.Executor}
 	case *ir.ConsoleLog:
-		return []ir.Expr{x.Arg}
+		return x.Args
 	case *ir.HostCall:
 		return append([]ir.Expr{x.Recv}, x.Args...)
 	case *ir.HostProp:
 		return []ir.Expr{x.Recv}
+	case *ir.ObjectLit:
+		values := make([]ir.Expr, len(x.Fields))
+		for i, f := range x.Fields {
+			values[i] = f.Value
+		}
+		return values
+	case *ir.FieldGet:
+		return []ir.Expr{x.Object}
 	default:
 		panic(fmt.Sprintf("backend: evaluation order has no case for %T", x))
 	}

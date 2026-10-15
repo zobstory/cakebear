@@ -318,6 +318,20 @@ nothing lowered to it yet:
   only Hangul jamo and 94 other pairs compose into another width, so
   `displayWidth` composes those rather than carry NFC.
 
+Step 5, objects end to end, is done: objects lower, emit and print as Node
+prints them.
+- Lowering (`lower/object.go`): shapes, literals in their slot's shape,
+  fields, exact flows checked against every expression's contextual type,
+  D6's refusals by name, and the race rule for aggregates (D10).
+- Emitting (`backend/emit_object.go`): a struct per shape, `ts_shape<ID>`,
+  that is a `cakebearrt.Object`, and a package-level key table per shape and
+  key order. A literal is a keyed composite literal in source order, so its
+  calls run in JavaScript's order. In an ordered expression a field read is
+  `ts_read(p.x)` (check 7).
+- `TestObjectsMatchNode` and a multi-module case hold it to Node, 20 runs
+  each. `TestAggregateSharedStateRefused` holds the race rule through
+  `cakec`.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -537,7 +551,30 @@ function may end is narrower (`backend/emit_loops.go`).
 
 Refused by name: labelled statements, a comma expression in a `for` clause,
 `++` or `--` as a value (`f(i++)`), and an update of anything but a
-variable's name.
+variable's name or a field of one.
+
+Since M4 step 5 (`lower/object.go`), objects:
+- interfaces and object type aliases whose properties are all required and
+  of types the subset holds, and object literals of them. A type is a
+  **shape**, its fields sorted by name, so `interface Point` and
+  `type Vec = { y: number; x: number }` are one type, and a value flows
+  between them unchanged. A literal takes its slot's shape, from the
+  checker's contextual type.
+- a literal keeps the order it writes its keys in, which is the order Node
+  prints them (`{ y, x }` prints `y` first), and is evaluated in that order;
+- field reads, writes, and `++`, `--` and compound assignment on `name.f`;
+- `===` and `!==` on objects, which compare identity, as in JavaScript;
+- `console.log` of several values, objects included, printed through the
+  runtime's port of `util.inspect`. A string first, before other values, must
+  be a literal with no `%`: Node would treat it as a format.
+
+Flows are exact (M4 plan D5): a value of one shape can't fill a slot of
+another, even where TypeScript allows an object with more fields. Refused by
+name: optional properties, index signatures and `Record`, unions and
+intersections, classes, methods and accessors, computed, numeric and
+integer-like keys, `__proto__`, shorthand properties (step 8), spread,
+optional chaining, and `console.log` of a value holding a function (a Go
+func has no name to print). Arrays come in step 6.
 
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
@@ -732,12 +769,18 @@ lowering refuses what could race, as `cannot compile yet`:
 
 Reading a `const` is allowed only when it holds a primitive, an extension
 type or a function: the rule's test is an allowlist (`shareableConst`), so a
-`const` of any other kind counts as shared, and a kind added later, objects
-and arrays among them, is refused until the rule names it. ⚠ **Carry-forward
-invariant:** a `const` array or object is still mutable (`xs.push(…)`), so it
-must stay off that list unless the rule learns to prove it unchanged. Explicit
-shared-state tools (an atomic counter type in `types/`, say) are how a later
-milestone widens it.
+`const` of any other kind counts as shared, and a kind added later is refused
+until the rule names it. ⚠ **Carry-forward invariant:** a `const` object or
+array is still mutable (`o.f = …`, `xs.push(…)`), so it must stay off that
+list unless the rule learns to prove it unchanged. Explicit shared-state tools
+(an atomic counter type in `types/`, say) are how a later milestone widens it.
+
+M4 holds objects to it (plan D10): a request handler or a spawned function
+may use only the objects it creates itself, or that a function it calls
+returns. One declared outside it, a `const` or a `let`, is refused, read or
+written, directly or through what it calls: "use `home`, an object created
+outside it; an object can't be shared between requests yet: create it inside
+the handler, or in a function that returns a new one".
 
 M2 hit this invariant first, with promises. A `Promise` settles, so it is
 mutable state like any object. Lowering therefore refuses a handler that
@@ -766,7 +809,7 @@ not listed here that behaves differently is a bug.
 | A handler does what Node throws for (headers after they were sent, a bad status code, writing after `end`) | the uncaught exception kills the process | a panic with Node's message; `net/http` drops only that connection |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
 | `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
-| Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value |
+| Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
 | Reading an imported binding across an import cycle, before its module has run | `ReferenceError` | Go's zero value |
 | A top-level `await` in a module other than the entry | the modules importing it wait for it | refused at compile time (M3 plan D8) |
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |

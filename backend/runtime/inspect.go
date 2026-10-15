@@ -34,6 +34,9 @@ func Log(args ...any) { writeLine(Format(args...)) }
 // no `%`. Lowering refuses a first argument that might (D12), so no
 // substitution is ever needed; a `%` here would be a bug, so it panics.
 func Format(args ...any) string {
+	if len(args) == 0 {
+		return "" // console.log(): an empty line
+	}
 	if first, ok := args[0].(string); ok && len(args) > 1 && strings.Contains(first, "%") {
 		panic("cakebear: Format was given a format string")
 	}

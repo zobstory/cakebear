@@ -27,6 +27,14 @@ type program struct {
 	// assigned is every binding some code in the program writes to after
 	// its declaration. A read of any other is stable (ir.Ident.Stable).
 	assigned map[*ast.Symbol]bool
+	// shapes interns the program's object shapes (object.go); objects keeps
+	// what each object type was classified as, objectLog the order they were
+	// classified in, and pending the types being classified, with the shape
+	// reserved for one found to refer to itself.
+	shapes    ir.Shapes
+	objects   map[*checker.Type]objectResult
+	objectLog []*checker.Type
+	pending   map[*checker.Type]*ir.Shape
 }
 
 // Program lowers the program whose entry module is entry: entry and every
@@ -37,7 +45,10 @@ type program struct {
 // It gathers every unsupported construct rather than stopping at the first, so
 // a user porting a program learns the whole gap in one run.
 func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) {
-	p := &program{checker: c, entry: entry, modules: map[*ast.SourceFile]bool{}}
+	p := &program{
+		checker: c, entry: entry, modules: map[*ast.SourceFile]bool{},
+		objects: map[*checker.Type]objectResult{}, pending: map[*checker.Type]*ir.Shape{},
+	}
 	p.collect(entry)
 
 	files := make([]*ast.SourceFile, 0, len(p.modules))
@@ -61,6 +72,7 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 	if len(errs) > 0 {
 		return nil, errs
 	}
+	out.Shapes = usedShapes(out, p.shapes.All())
 	return out, nil
 }
 

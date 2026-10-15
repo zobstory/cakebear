@@ -55,7 +55,7 @@ func TestBuildRefusesIRItCannotEmit(t *testing.T) {
 // backend has no Go for is reported at its span, never emitted as a stand-in
 // (`any`, LogUndefined, `!`) that would build and quietly do the wrong
 // thing. unknown stands in for a kind the IR gains before the backend learns
-// it, as KindObject will.
+// it, as KindArray has.
 func TestUnspellableIsUnsupported(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +83,7 @@ func TestUnspellableIsUnsupported(t *testing.T) {
 		{"a function type with an unknown result", fn([]ir.Param{{Name: "get", Type: ir.FuncType(nil, unknown), Span: at}}, ir.Void, false), "a value of type () => invalid"},
 		{"a promise of an unknown type", fn(nil, ir.PromiseOf(unknown), true), "a value of type Promise<invalid>"},
 		{"a new Promise of an unknown type", stmt(&ir.NewPromise{Executor: &ir.FuncLit{Result: ir.Void, Span: at}, Typ: ir.PromiseOf(unknown), Span: at}), "a value of type Promise<invalid>"},
-		{"console.log of a function", stmt(&ir.ConsoleLog{Arg: &ir.Ident{Name: "f", Typ: callback, Stable: true, Span: at}, Span: at}), "cannot print a (invalid) => void yet"},
+		{"console.log of a function", stmt(&ir.ConsoleLog{Args: []ir.Expr{&ir.Ident{Name: "f", Typ: callback, Stable: true, Span: at}}, Span: at}), "cannot print a (invalid) => void yet"},
 		{"an unknown binary operator", stmt(&ir.Binary{Op: ir.OpOr + 50, Left: num(1), Right: num(2), Typ: ir.Number, Span: at}), "cannot emit the operator"},
 		{"an unknown unary operator", stmt(&ir.Unary{Op: ir.OpNot + 50, Operand: num(1), Typ: ir.Number, Span: at}), "cannot emit the operator ?"},
 	} {

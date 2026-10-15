@@ -15,6 +15,15 @@ import (
 // expr lowers an expression, returning nil when it could not be lowered. A nil
 // return always means a diagnostic was recorded.
 func (l *lowerer) expr(n *ast.Node) ir.Expr {
+	v := l.exprOf(n)
+	if v != nil && !l.exact(n, v) {
+		return nil
+	}
+	return v
+}
+
+// exprOf lowers n, for expr, which then holds it to its slot.
+func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	switch n.Kind {
 	case ast.KindNumericLiteral:
 		v, err := strconv.ParseFloat(n.Text(), 64)
@@ -53,7 +62,7 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 		}
 		t := l.typeOf(n)
 		if t == ir.Invalid {
-			l.failf(n, "%s has a type the backend cannot represent yet", n.Text())
+			l.failf(n, "%s has a type the backend cannot represent yet%s", n.Text(), l.reason())
 			return nil
 		}
 		name, module := l.ref(n)
@@ -88,6 +97,9 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 
 	case ast.KindNewExpression:
 		return l.newExpr(n)
+
+	case ast.KindObjectLiteralExpression:
+		return l.objectLit(n)
 
 	default:
 		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
@@ -241,33 +253,9 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 func (l *lowerer) call(n *ast.Node) ir.Expr {
 	c := n.AsCallExpression()
 
-	// console.log is an intrinsic rather than a method call: the subset has no
-	// object model, no `console` binding and no property access, so there is
-	// nothing to resolve it against. See ir.ConsoleLog.
+	// console.log is an intrinsic rather than a method call (ir.ConsoleLog).
 	if isConsoleLog(c.Expression) {
-		if c.Arguments == nil || len(c.Arguments.Nodes) != 1 {
-			l.failf(n, "console.log takes exactly one argument in this phase")
-			return nil
-		}
-		arg := l.expr(c.Arguments.Nodes[0])
-		if arg == nil {
-			return nil
-		}
-		switch t := arg.ExprType(); {
-		case t == ir.Invalid:
-			l.failf(n, "console.log cannot print this type yet")
-			return nil
-		case t.Kind == ir.KindFunc:
-			l.failf(n, "console.log cannot print a function yet")
-			return nil
-		case t.Kind == ir.KindHost:
-			l.failf(n, "console.log cannot print a %s yet", t)
-			return nil
-		case t.Kind == ir.KindPromise:
-			l.failf(n, "console.log cannot print a promise yet; log what it resolves to, with await")
-			return nil
-		}
-		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
+		return l.consoleLog(n, c)
 	}
 
 	if out, handled := l.hostCall(n, c); handled {

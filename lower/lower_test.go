@@ -103,7 +103,8 @@ func TestRefusesUnsupportedConstructs(t *testing.T) {
 		{"loose equality", "const b: boolean = 1 == 1;\n", "loose equality"},
 		{"mixed concat", "const s: string = \"a\" + 1;\n", "same type"},
 		{"null", "const n: null = null;\n", "null is not supported yet"},
-		{"two-arg log", "console.log(1, 2);\n", "exactly one argument"},
+		{"a format string", "const s: string = \"%s\";\nconsole.log(s, 2);\n", "a string before console.log's other arguments is a format to Node"},
+		{"a literal with a %", "console.log(\"%d items\", 2);\n", "make it a string literal with no %"},
 		{"for-of", "for (const x of [1]) { }\n", "not supported yet"},
 	}
 

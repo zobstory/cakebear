@@ -69,15 +69,15 @@ func updateOf(expr *ast.Node) (target, value *ast.Node, op ir.BinaryOp, text str
 
 // update lowers an update as a statement, to the assignment `x = x op v`,
 // and reports whether expr was one. x is read once and written once, so the
-// two spellings mean the same: the target is a variable, never an expression
-// a second evaluation could change.
+// two spellings mean the same: the target is a variable, or a field of one,
+// `name.f` (D13), never an expression a second evaluation could change.
 func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	target, value, op, text, ok := updateOf(expr)
 	if !ok {
 		return nil, false
 	}
-	if target.Kind != ast.KindIdentifier {
-		l.failf(stmt, "%s on anything but a variable's name is not supported yet", text)
+	if !updatable(target) {
+		l.failf(stmt, "%s on anything but a variable's name, or a field of one, is not supported yet", text)
 		return nil, true
 	}
 	left := l.expr(target)
@@ -95,16 +95,41 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	case t.IsExtension():
 		// TypeScript types i32 + i32 as number, and the subset makes the
 		// narrowing back visible (CLAUDE.md, the type extensions).
-		l.failf(stmt, "%s on a %s is not supported, so the conversion stays visible: write %s = %s(%s + …)", text, t, target.Text(), t, target.Text())
+		l.failf(stmt, "%s on a %s is not supported, so the conversion stays visible: write %s = %s(%s + …)", text, t, nodeText(target), t, nodeText(target))
 		return nil, true
 	case t == ir.Number && rt == ir.Number, t == ir.String && op == ir.OpAdd && rt == ir.String:
 	default:
 		l.failf(stmt, "%s with a %s and a %s is not supported yet", text, t, rt)
 		return nil, true
 	}
-	name, module := l.ref(target)
 	sum := &ir.Binary{Op: op, Left: left, Right: right, Typ: t, Span: l.span(expr)}
+	if get, ok := left.(*ir.FieldGet); ok {
+		return []ir.Stmt{&ir.FieldSet{Object: get.Object, Field: get.Field, Value: sum, Span: l.span(stmt)}}, true
+	}
+	name, module := l.ref(target)
 	return []ir.Stmt{&ir.Assign{Name: name, Module: module, Value: sum, Span: l.span(stmt)}}, true
+}
+
+// updatable reports whether an update may target n: a name, or a field of a
+// name, whose receiver a second read finds unchanged.
+func updatable(n *ast.Node) bool {
+	if n.Kind == ast.KindIdentifier {
+		return true
+	}
+	if n.Kind != ast.KindPropertyAccessExpression {
+		return false
+	}
+	access := n.AsPropertyAccessExpression()
+	return access.QuestionDotToken == nil && access.Expression.Kind == ast.KindIdentifier
+}
+
+// nodeText is n as written, for a message.
+func nodeText(n *ast.Node) string {
+	if n.Kind == ast.KindPropertyAccessExpression {
+		access := n.AsPropertyAccessExpression()
+		return nodeText(access.Expression) + "." + access.Name().Text()
+	}
+	return n.Text()
 }
 
 // failUpdateValue refuses ++ or -- where its value is used, `f(i++)` say.

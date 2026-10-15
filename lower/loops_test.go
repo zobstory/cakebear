@@ -85,7 +85,7 @@ func TestLoopRefusals(t *testing.T) {
 		{"a labelled break", "outer: for (let i: number = 0; i < 3; i++) {\n  break outer;\n}\n", "labeled statement is not supported yet"},
 		{"a labelled continue", "outer: for (let i: number = 0; i < 3; i++) {\n  continue outer;\n}\n", "labeled statement is not supported yet"},
 		{"a comma in a clause", "let j: number = 0;\nfor (let i: number = 0; i < 3; i++, j++) {\n}\n", "a comma expression in a for loop's clause is not supported yet"},
-		{"++ on a parenthesised name", "let n: number = 0;\n(n)++;\n", "++ on anything but a variable's name is not supported yet"},
+		{"++ on a parenthesised name", "let n: number = 0;\n(n)++;\n", "++ on anything but a variable's name, or a field of one, is not supported yet"},
 		{"++ on an i32", "let n: i32 = i32(0);\nn++;\n", "++ on a i32 is not supported, so the conversion stays visible: write n = i32(n + …)"},
 		{"+= mixing a string and a number", "let s: string = \"a\";\ns += 1;\n", "+= with a string and a number is not supported yet"},
 		{"postfix ++ as a value", "let n: number = 0;\nconst m: number = n++;\n", "++ as a value is not supported yet; use it as a statement of its own"},
