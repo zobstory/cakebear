@@ -31,22 +31,29 @@ var hostProps = map[ir.HostProperty]string{
 	ir.HostMethod: "Method",
 }
 
-func goHostType(h ir.HostType) string {
+func goHostType(h ir.HostType) (string, bool) {
 	if name, ok := hostGoTypes[h]; ok {
-		return "*" + rtPkg + "." + name
+		return "*" + rtPkg + "." + name, true
 	}
-	return "any"
+	return "", false
 }
 
 // typ spells a type for a declaration, noting when that needs the runtime: a
 // host type, a promise, or any function type (which takes a *Domain) is a
 // reference to the runtime package even in code that never calls it, and Go
 // rejects the import's absence as surely as an unused one.
-func (e *emitter) typ(t ir.Type) string {
+//
+// A type with no Go spelling is reported at at, the declaration or
+// expression that needs it.
+func (e *emitter) typ(t ir.Type, at ir.Span) string {
 	if mentionsRuntime(t) {
 		e.usesRuntime = true
 	}
-	return goType(t)
+	s, ok := goType(t)
+	if !ok {
+		return e.cannot(at, "the backend cannot emit a value of type "+t.String()+" yet")
+	}
+	return s
 }
 
 func mentionsRuntime(t ir.Type) bool {

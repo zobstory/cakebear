@@ -112,10 +112,13 @@ const (
 )
 
 func (o UnaryOp) String() string {
-	if o == OpNeg {
+	switch o {
+	case OpNeg:
 		return "-"
+	case OpNot:
+		return "!"
 	}
-	return "!"
+	return "?"
 }
 
 type Unary struct {

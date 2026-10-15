@@ -25,6 +25,14 @@ func (e *UnsupportedError) Error() string {
 	return fmt.Sprintf("the backend cannot emit %d construct(s) yet", len(e.Nodes))
 }
 
+// cannot records what at needs that the backend cannot emit yet, and returns
+// a stand-in no Go compiler accepts, so it fails loudly even if the record
+// were lost.
+func (e *emitter) cannot(at ir.Span, what string) string {
+	e.unsupported = append(e.unsupported, Unsupported{Span: at, What: what})
+	return "#error " + what
+}
+
 // describeUnsupported names a node the way its author would.
 func describeUnsupported(node any) string {
 	switch n := node.(type) {

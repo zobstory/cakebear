@@ -47,14 +47,15 @@ func (e *emitter) dom() string {
 
 // goPromiseType spells Promise<T>. Promise<void> holds struct{}, Go's empty
 // value.
-func goPromiseType(t ir.Type) string {
-	return "*" + rtPkg + ".Promise[" + goElem(t) + "]"
+func goPromiseType(t ir.Type) (string, bool) {
+	elem, ok := goElem(t)
+	return "*" + rtPkg + ".Promise[" + elem + "]", ok
 }
 
 // goElem is the Go type a promise of t holds, or an async body returns.
-func goElem(t ir.Type) string {
+func goElem(t ir.Type) (string, bool) {
 	if t.Kind != ir.KindPromise || t.Elem == nil || *t.Elem == ir.Void {
-		return "struct{}"
+		return "struct{}", true
 	}
 	return goType(*t.Elem)
 }
@@ -80,12 +81,15 @@ func (e *emitter) asyncBody(result ir.Type, body []ir.Stmt, depth int) {
 func (e *emitter) asyncBodyAs(lead string, result ir.Type, body []ir.Stmt, depth int) {
 	e.usesRuntime = true
 	pad := strings.Repeat("\t", depth)
-	fmt.Fprintf(&e.buf, "%s%s%s.Async(%s, func(%s *%s.Co) %s {\n", pad, lead, rtPkg, e.dom(), coVar, rtPkg, goElem(result))
+	// An element with no spelling was reported where the function's result
+	// type was spelled, the only place a promise's element can come from.
+	elem, _ := goElem(result)
+	fmt.Fprintf(&e.buf, "%s%s%s.Async(%s, func(%s *%s.Co) %s {\n", pad, lead, rtPkg, e.dom(), coVar, rtPkg, elem)
 
 	// The body's returns carry the promise's element. For Promise<void>, and
 	// for a dropped promise, that is struct{}, which the source never spells.
 	saved := e.asyncVoid
-	e.asyncVoid = goElem(result) == "struct{}"
+	e.asyncVoid = elem == "struct{}"
 	e.body(body, depth+1, !e.asyncVoid)
 	if e.asyncVoid {
 		fmt.Fprintf(&e.buf, "%s\treturn struct{}{}\n", pad)
@@ -108,7 +112,9 @@ func (e *emitter) await(x *ir.Await) string {
 func (e *emitter) newPromise(x *ir.NewPromise) string {
 	e.usesRuntime = true
 	ctor := "NewPromise"
-	if goElem(x.Typ) == "struct{}" {
+	if elem, ok := goElem(x.Typ); !ok {
+		return e.cannot(x.Span, "the backend cannot emit a value of type "+x.Typ.String()+" yet")
+	} else if elem == "struct{}" {
 		ctor = "NewPromiseVoid" // resolve takes no value (ir.ResolveType)
 	}
 	return fmt.Sprintf("%s.%s(%s, %s)", rtPkg, ctor, e.dom(), e.expr(x.Executor))

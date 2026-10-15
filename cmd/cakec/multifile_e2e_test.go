@@ -67,6 +67,14 @@ var multiModulePrograms = []struct {
 		},
 		"start\nfast\nslow\nend\n",
 	},
+	{
+		"names Go doesn't allow, across modules",
+		map[string]string{
+			"fmt.ts":  "export function $label(n: number): string {\n  if (n > 9) {\n    return \"#big\";\n  }\n  return \"#small\";\n}\nexport const $base: number = 7;\nconsole.log(\"fmt.ts\");\n",
+			"main.ts": "import { $label, $base as base$ } from \"./fmt.ts\";\n\nconsole.log($label(base$));\nconsole.log($label(base$ * 2));\n",
+		},
+		"fmt.ts\n#small\n#big\n",
+	},
 }
 
 // TestMultiFileMatchesNode (checks 4, 5 and 6): each program prints what Node

@@ -22,7 +22,7 @@ func TestGoTypeForHostTypes(t *testing.T) {
 			"func(*" + rtPkg + ".Domain, *" + rtPkg + ".IncomingMessage, *" + rtPkg + ".ServerResponse)",
 		},
 	} {
-		if got := goType(tt.in); got != tt.want {
+		if got, ok := goType(tt.in); !ok || got != tt.want {
 			t.Errorf("goType(%s) = %q, want %q", tt.in, got, tt.want)
 		}
 	}

@@ -273,7 +273,12 @@ per-phase rule below.
 
 M4's step 1, the prerequisites, is done: `for (;;)`, `break` and `continue`,
 `++`, `--` and compound assignment, boolean conditions, and type declarations
-erased (see "Since M4" in the language subset).
+erased (see "Since M4" in the language subset). So is step 2, the fail-loud
+emitter: a type, a printed value or an operator the backend has no Go for is
+reported as `cannot compile yet` at its span. Before, `goType` fell back to
+`any`, `console.log` to printing `undefined`, and an unknown unary operator
+to `!`, so the IR could gain a kind (as it will with objects) and build into
+a program that quietly did the wrong thing.
 
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
@@ -495,6 +500,14 @@ function may end is narrower (`backend/emit_loops.go`).
 Refused by name: labelled statements, a comma expression in a `for` clause,
 `++` or `--` as a value (`f(i++)`), and an update of anything but a
 variable's name.
+
+Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
+`$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
+and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
+becomes `ts_x_` and the name with `_` doubled, `$` as `_D`, and anything else
+as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
+The escape reads back to exactly one name, so two names never meet. Before,
+each reached `go build` and failed there.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, `var`, loose equality, arrays, objects, classes, generics, imports from

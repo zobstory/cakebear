@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"go/token"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,6 +22,8 @@ func TestMangle(t *testing.T) {
 		{"café", "café"},
 		{"日本", "日本"},
 		{"_private", "_private"},
+		{"item2", "item2"},
+		{"日本2", "日本2"},
 
 		// Go keywords that TypeScript allows as identifiers.
 		{"type", "ts_type"},
@@ -45,6 +49,15 @@ func TestMangle(t *testing.T) {
 
 		{"_", "ts_blank"},
 		{"", "_"},
+
+		// Characters TypeScript allows in a name and Go doesn't are escaped:
+		// `_` doubles, `$` is _D, anything else its code point.
+		{"$count", "ts_x__Dcount"},
+		{"add$", "ts_x_add_D"},
+		{"$", "ts_x__D"},
+		{"a_$", "ts_x_a___D"},
+		{"cafe\u0301", "ts_x_cafe_u301_"},
+		{"ts_$", "ts_x_ts___D"},
 	}
 
 	for _, tt := range tests {
@@ -59,13 +72,65 @@ func TestMangle(t *testing.T) {
 }
 
 // The collision this guards against: `type` and a user variable literally named
-// `ts_type` must not both become `ts_type`.
+// `ts_type` must not both become `ts_type`. Names are chosen to collide under a
+// careless escape: `a$$` and `a_D$` both become `a_D_D` if `_` isn't escaped.
 func TestMangleIsInjective(t *testing.T) {
 	t.Parallel()
 
-	if mangle("type") == mangle("ts_type") {
-		t.Errorf("mangle collapsed two distinct names onto %q", mangle("type"))
+	names := []string{
+		"type", "ts_type", "x", "_", "blank", "ts_blank", "init", "ts_init",
+		"$", "_D", "__D", "a$", "a_D", "a__D", "a$$", "a_D$", "a$_", "a_$",
+		"a_u24_", "x_a_D", "ts_x_a_D", "ts_x__D", "ts_$",
+		"e\u0301", "\u00e9", "a\u200c", "a\u200d", "\u216b", "\u216bx",
 	}
+	seen := map[string]string{}
+	for _, name := range names {
+		got := mangle(name)
+		if !token.IsIdentifier(got) {
+			t.Errorf("mangle(%q) = %q, which is not a Go identifier", name, got)
+		}
+		if other, ok := seen[got]; ok {
+			t.Errorf("mangle(%q) and mangle(%q) are both %q", name, other, got)
+		}
+		seen[got] = name
+		if rest, ok := strings.CutPrefix(got, escapedPrefix); ok {
+			if back := unescape(t, rest); back != name {
+				t.Errorf("mangle(%q) = %q, which reads back as %q", name, got, back)
+			}
+		}
+	}
+}
+
+// unescape reverses escape, failing the test on anything escape could not
+// have written.
+func unescape(t *testing.T, s string) string {
+	t.Helper()
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '_' {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch {
+		case strings.HasPrefix(s[i:], "__"):
+			b.WriteByte('_')
+			i++
+		case strings.HasPrefix(s[i:], "_D"):
+			b.WriteByte('$')
+			i++
+		case strings.HasPrefix(s[i:], "_u"):
+			end := strings.IndexByte(s[i+2:], '_')
+			r, err := strconv.ParseInt(s[i+2:i+2+max(end, 0)], 16, 32)
+			if end < 0 || err != nil {
+				t.Fatalf("bad escape at %d in %q", i, s)
+			}
+			b.WriteRune(rune(r))
+			i += 2 + end
+		default:
+			t.Fatalf("a lone _ at %d in %q", i, s)
+		}
+	}
+	return b.String()
 }
 
 func TestGoFloat(t *testing.T) {
@@ -102,7 +167,7 @@ func TestGoType(t *testing.T) {
 		{ir.String, "string"},
 		{ir.Boolean, "bool"},
 	} {
-		if got := goType(tt.in); got != tt.want {
+		if got, ok := goType(tt.in); !ok || got != tt.want {
 			t.Errorf("goType(%v) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
@@ -121,7 +186,7 @@ func TestLogFunc(t *testing.T) {
 		{ir.Null, "LogNull"},
 		{ir.Undefined, "LogUndefined"},
 	} {
-		if got := logFunc(tt.in); got != tt.want {
+		if got, ok := logFunc(tt.in); !ok || got != tt.want {
 			t.Errorf("logFunc(%v) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
@@ -234,7 +299,7 @@ func TestGoTypeForExtensions(t *testing.T) {
 		// runtime representation.
 		{ir.Base64, "string"},
 	} {
-		if got := goType(tt.in); got != tt.want {
+		if got, ok := goType(tt.in); !ok || got != tt.want {
 			t.Errorf("goType(%v) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
@@ -254,7 +319,7 @@ func TestLogFuncForExtensions(t *testing.T) {
 		{ir.Float32, "LogFloat32"},
 		{ir.Base64, "LogString"},
 	} {
-		if got := logFunc(tt.in); got != tt.want {
+		if got, ok := logFunc(tt.in); !ok || got != tt.want {
 			t.Errorf("logFunc(%v) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
