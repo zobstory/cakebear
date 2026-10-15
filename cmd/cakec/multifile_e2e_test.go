@@ -75,6 +75,15 @@ var multiModulePrograms = []struct {
 		},
 		"fmt.ts\n#small\n#big\n",
 	},
+	{
+		"one shape across modules, each literal with its own key order",
+		map[string]string{
+			"types.ts": "export interface User { id: number; name: string }\n",
+			"users.ts": "import type { User } from \"./types.ts\";\n\nexport function make(id: number, name: string): User {\n  return { name: name, id: id };\n}\nexport function rename(u: User, name: string): void {\n  u.name = name;\n}\n",
+			"main.ts":  "import type { User } from \"./types.ts\";\nimport { make, rename } from \"./users.ts\";\n\nconst ann: User = make(1, \"Ann\");\nconst bob: User = { id: 2, name: \"Bob\" };\nrename(ann, \"Anne\");\nconsole.log(ann, bob);\nconsole.log(ann === make(1, \"Anne\"));\n",
+		},
+		"{ name: 'Anne', id: 1 } { id: 2, name: 'Bob' }\nfalse\n",
+	},
 }
 
 // TestMultiFileMatchesNode (checks 4, 5 and 6): each program prints what Node

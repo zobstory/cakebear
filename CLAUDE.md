@@ -318,6 +318,20 @@ nothing lowered to it yet:
   only Hangul jamo and 94 other pairs compose into another width, so
   `displayWidth` composes those rather than carry NFC.
 
+Step 5, objects end to end, is done: objects lower, emit and print as Node
+prints them.
+- Lowering (`lower/object.go`): shapes, literals in their slot's shape,
+  fields, exact flows checked against every expression's contextual type,
+  D6's refusals by name, and the race rule for aggregates (D10).
+- Emitting (`backend/emit_object.go`): a struct per shape, `ts_shape<ID>`,
+  that is a `cakebearrt.Object`, and a package-level key table per shape and
+  key order. A literal is a keyed composite literal in source order, so its
+  calls run in JavaScript's order. In an ordered expression a field read is
+  `ts_read(p.x)` (check 7).
+- `TestObjectsMatchNode` and a multi-module case hold it to Node, 20 runs
+  each. `TestAggregateSharedStateRefused` holds the race rule through
+  `cakec`.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
