@@ -15,8 +15,8 @@ import (
 // they are when stdout isn't a terminal.
 //
 // Node measures in UTF-16 code units, and a Go string is UTF-8, so every
-// length here is utf16Len, never len. Grouping measures display width
-// (width.go) instead.
+// length here is utf16Len (str.go), never len. Grouping measures display
+// width (width.go) instead.
 
 const (
 	inspectDepth    = 2
@@ -318,15 +318,3 @@ func pad(s string, width int, start bool) string {
 
 // jsRound is Math.round: halves round up, toward +Infinity.
 func jsRound(f float64) float64 { return math.Floor(f + 0.5) }
-
-// utf16Len is a string's length as JavaScript counts it.
-func utf16Len(s string) int {
-	n := 0
-	for _, r := range s {
-		n++
-		if r >= 0x10000 {
-			n++
-		}
-	}
-	return n
-}

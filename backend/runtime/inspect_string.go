@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -11,53 +12,29 @@ import (
 // (Format); these are the ones inside an object or an array.
 
 // str is formatPrimitive for a string: cut at 10,000 UTF-16 units (R13), and
-// a long one split after each newline, a quoted piece per line (R12).
+// a long one split after each newline, a quoted piece per line (R12). A cut
+// through a pair leaves its high half, which quote escapes, as Node does.
 //
 // inspect.js also requires a string to split to be longer than 16 units.
 // That can't bind: within the depth limit a string is indented at most 6, so
 // the length it must exceed here is at least 70.
 func (c *inspector) str(s string) string {
-	trailer, lone := "", ""
+	trailer := ""
 	length := utf16Len(s)
 	if length > maxStringLength {
 		remaining := length - maxStringLength
-		s, lone = cutUTF16(s, maxStringLength)
+		s = firstUnits(s, maxStringLength)
 		trailer = fmt.Sprintf("... %d more character%s", remaining, plural(remaining))
 		length = maxStringLength
 	}
 	if length > breakLength-c.indent-4 {
 		lines := splitAfterNewlines(s)
 		for i, line := range lines {
-			suffix := ""
-			if i == len(lines)-1 {
-				suffix = lone
-			}
-			lines[i] = quoteWith(line, suffix)
+			lines[i] = quote(line)
 		}
 		return strings.Join(lines, " +\n"+strings.Repeat(" ", c.indent+2)) + trailer
 	}
-	return quoteWith(s, lone) + trailer
-}
-
-// cutUTF16 is s.slice(0, n) in UTF-16 units. A cut through a surrogate pair
-// leaves JavaScript the pair's first half, a lone surrogate, which no Go
-// string can hold; it is returned as the escape Node prints it as.
-func cutUTF16(s string, n int) (prefix, lone string) {
-	units := 0
-	for i, r := range s {
-		size := 1
-		if r >= 0x10000 {
-			size = 2
-		}
-		if units+size > n {
-			if units < n { // one unit left: the high surrogate
-				lone = fmt.Sprintf(`\u%x`, 0xd800+((r-0x10000)>>10))
-			}
-			return s[:i], lone
-		}
-		units += size
-	}
-	return s, ""
+	return quote(s) + trailer
 }
 
 // splitAfterNewlines is split(/(?<=\n)/): each piece ends in its newline,
@@ -75,15 +52,13 @@ func splitAfterNewlines(s string) []string {
 }
 
 // quote is strEscape: s in quotes, escaped (R2, R3).
-func quote(s string) string { return quoteWith(s, "") }
-
-// quoteWith quotes s with suffix, already escaped, before the closing quote.
 //
 // The quote is `'`, unless s holds one: then `"` if s holds none of those,
 // else a backtick if s holds none and no `${`, else `'` again with each `'`
-// escaped. Control characters, the C1 range and the backslash are escaped;
-// everything else, U+00A0 and emoji included, is written as it is.
-func quoteWith(s, suffix string) string {
+// escaped. Control characters, the C1 range and the backslash are escaped,
+// and so is a lone surrogate, as `\ud800`; everything else, U+00A0 and emoji
+// included, is written as it is.
+func quote(s string) string {
 	q := byte('\'')
 	if strings.Contains(s, "'") {
 		switch {
@@ -97,6 +72,17 @@ func quoteWith(s, suffix string) string {
 	b.Grow(len(s) + 2)
 	b.WriteByte(q)
 	for i := 0; i < len(s); {
+		if unit, ok := surrogateAt(s, i); ok {
+			if low, ok := surrogateAt(s, i+3); ok && unit < 0xdc00 && low >= 0xdc00 {
+				b.WriteRune(0x10000 + (unit-0xd800)<<10 + (low - 0xdc00)) // two halves that pair
+				i += 6
+				continue
+			}
+			b.WriteString(`\u`)
+			b.WriteString(strconv.FormatInt(int64(unit), 16))
+			i += 3
+			continue
+		}
 		r, size := utf8.DecodeRuneInString(s[i:])
 		switch {
 		case r == '\'' && q == '\'':
@@ -110,7 +96,6 @@ func quoteWith(s, suffix string) string {
 		}
 		i += size
 	}
-	b.WriteString(suffix)
 	b.WriteByte(q)
 	return b.String()
 }
