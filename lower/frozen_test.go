@@ -98,6 +98,7 @@ func TestNotFrozen(t *testing.T) {
 	for _, tt := range []struct{ name, src, want string }{
 		{"a mutable property", "interface Loose { path: string }\nconst routes: readonly Loose[] = [{ path: \"/\" }];\n", "its type isn't readonly all the way down: property `path` isn't readonly"},
 		{"a mutable array", "const routes: Route[] = [];\n", "a Route[] is mutable; write `readonly Route[]`"},
+		{"a mutable array, an", "interface Item { readonly id: number }\nconst routes: Item[] = [];\n", "an Item[] is mutable; write `readonly Item[]`"},
 		{"a mutable array inside", "interface Deep { readonly tags: string[] }\nconst routes: readonly Deep[] = [];\n", "a string[] is mutable; write `readonly string[]`"},
 		{"a function inside", "interface H { readonly f: () => number }\nconst routes: readonly H[] = [];\n", "it holds a function, whose captures can change"},
 		{"a call", "function make(): readonly Route[] {\n  return [];\n}\nconst routes: readonly Route[] = make();\n", "it holds a value from a call expression, which something else may hold too; build it from literals"},

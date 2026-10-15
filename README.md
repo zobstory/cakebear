@@ -185,7 +185,7 @@ parallel. Eight requests to a handler that awaits a timer and then computes
 ```ts
 createServer(async (req, res) => {
   await sleep(10); // a promise resolved by setTimeout
-  res.end("fib: " + fib(38) + "\n");
+  res.end(`fib: ${fib(38)}\n`);
 });
 ```
 
@@ -195,6 +195,51 @@ Because handlers overlap, one that changes shared state would be a data race.
 ```console
 server.ts:10:3: cannot compile yet: this handler runs on many requests at once, so it can't change `hits`, which they all share
 server.ts:11:3: cannot compile yet: this handler runs on many requests at once, so it can't call `bump()`, which changes `hits`, shared by them all
+```
+
+## A JSON API
+
+[`examples/route-server`](examples/route-server) is a small JSON API in four
+modules: a menu, query parsing, routes and the server. Every handler reads
+one route table, declared once at the top level:
+
+```ts
+export interface Item {
+  readonly id: number;
+  readonly name: string;
+  readonly price: number;
+  readonly tags: readonly string[];
+}
+
+export const items: readonly Item[] = [
+  { id: 1, name: "Green tea", price: 4.5, tags: ["hot", "tea"] },
+  { id: 2, name: "Straße cake", price: 2.25, tags: ["sweet"] },
+  // …
+];
+```
+
+```console
+$ cakec build -p examples/route-server && examples/route-server/bin/server
+listening on http://localhost:3000
+$ curl 'localhost:3000/items?tag=hot&q=chai'
+[{"id":4,"name":"Chai 😀","price":4,"tags":["hot","tea","spiced"]}]
+$ curl localhost:3000/menu
+Green tea      $4.50
+Straße cake    $2.25
+…
+```
+
+The same sources run unmodified under Node, and answer every request the same
+way, byte for byte: status, `Content-Type` and body
+(`TestRouteServerServes`).
+
+Requests run in parallel, so a handler may only read state nothing can
+change. A `const` whose type is `readonly` all the way down, and which is built
+from literals, qualifies: it is *frozen*. Make `items` a plain `Item[]` and
+the build is refused, through the function the handler calls, with the fix:
+
+```console
+src/main.ts:23:24: cannot compile yet: this handler runs on many requests at once, so it can't call `route()`, which uses `items` in data.ts, an array created outside the handler, which isn't frozen: its type isn't readonly all the way down: an Item[] is mutable; write `readonly Item[]`
 ```
 
 ## Parallel work: `spawn`
@@ -217,26 +262,40 @@ plain `tsc` reports it as an unknown name.
 
 ## The language subset
 
-Supported today: `number`, `string`, `boolean` and the extension types above;
-`const`/`let` with explicit annotations; function declarations with typed
-parameters and return; arithmetic; string concatenation; comparisons; `===` and
-`!==`; `&&`, `||`, `!`; unary minus; `if`/`else`; `while`; `for (;;)`,
-`break` and `continue`; `++`, `--`, `+=`, `-=`, `*=` and `/=` as statements;
-`return`; `interface` and `type` declarations;
-`console.log` of one primitive; calls to a function by name; arrow functions
-and function expressions as values (closures); `import` from `node:http`, and
-the members its bundled declarations list; `async` functions and arrows,
-`await`, including at the top level of a module, `Promise<T>`,
-`new Promise((resolve) => …)`, `setTimeout` / `clearTimeout`, and `spawn`;
-programs of several modules, with named imports and exports of top-level
-functions and `const`s, renamed or not, and import cycles.
+Supported today:
+- `number`, `string`, `boolean` and the extension types above; `const` and
+  `let`; function declarations with typed parameters and return; arithmetic,
+  comparisons, `===` and `!==`, `&&`, `||`, `!`, unary minus; `if`/`else`,
+  `while`, `for (;;)`, `for…of`, `break` and `continue`; `++`, `--` and the
+  compound assignments as statements; `interface` and `type` declarations;
+- `console.log` of any number of values, printed as Node prints them; calls
+  to a function by name; arrow functions and function expressions as values;
+- **objects** of interfaces and object types with required properties, and
+  **arrays**: literals, fields, `xs[i]`, `length`, `push`, `pop`, and `map`,
+  `filter`, `join`, `includes`, `indexOf`, `slice`, `sort`, `some`, `every`,
+  `forEach`, `reduce` and `findIndex`; shorthand properties and object
+  destructuring; `JSON.stringify`, byte for byte as Node writes it; frozen
+  consts a request handler may read;
+- **strings**: template literals, `String()`, `toString()`, `toFixed()`,
+  `length`, and the common methods (`includes`, `startsWith`, `split`,
+  `slice`, `replace` with a string pattern, `toUpperCase`, `trim`, `padStart`,
+  …), all counting in UTF-16 units as JavaScript does; `Number()`,
+  `parseInt`, `parseFloat`, `isNaN` and the URI functions;
+- `import` from `node:http`, and the members its bundled declarations list;
+  `async` functions and arrows, `await`, including at the top level of a
+  module, `Promise<T>`, `new Promise((resolve) => …)`, `setTimeout` /
+  `clearTimeout`, and `spawn`;
+- programs of several modules, with named imports and exports of top-level
+  functions and `const`s, renamed or not, and import cycles.
 
-Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
-equality, arrays, objects, classes, generics, imports from anything but
-`node:http` and the program's own modules, default exports, `import * as` a
-module of your own, re-exports, exporting a `let`, `for…of`, testing a
-non-boolean for truthiness, bitwise operators, `reject` and errors, `.then` and `Promise.all`, and the standard
-library's other globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
+Not yet: `null` and `undefined` as values, and so optional properties and
+`T | undefined` (next, M5); `throw`, `try` and `reject` (M6); unions,
+classes, generics, RegExp, `URL`, mixed-type `+` (a template literal does
+it), `var`, loose equality, imports from anything but `node:http` and the
+program's own modules, default exports, `import * as` a module of your own,
+re-exports, exporting a `let`, testing a non-boolean for truthiness, bitwise
+operators, `.then` and `Promise.all`, and the standard library's other
+globals (`Math`, `Date`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers

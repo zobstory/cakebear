@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strings"
+
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/checker"
 	"github.com/zobstory/cakebear/ir"
@@ -70,7 +72,7 @@ func (l *lowerer) deepReadonly(t *checker.Type, seen map[*checker.Type]bool) str
 	switch it := l.typeFromType(t); it.Kind {
 	case ir.KindArray:
 		if !l.isReadonlyArray(t) {
-			return "a " + it.String() + " is mutable; write `readonly " + it.String() + "`"
+			return withArticle(it.String()) + " is mutable; write `readonly " + it.String() + "`"
 		}
 		return l.deepReadonly(l.checker.GetElementTypeOfArrayType(t), seen)
 	case ir.KindObject:
@@ -246,4 +248,12 @@ func (l *lowerer) readonlyOK(n *ast.Node, v ir.Expr) bool {
 func (l *lowerer) failReadonlyFlow(n *ast.Node, src, dst *checker.Type, why string) {
 	l.failf(n, "a %s can't be used as a %s: %s; cakebear refuses a readonly value where a mutable one is wanted, so nothing frozen can be changed through another name",
 		l.checker.TypeToString(src), l.checker.TypeToString(dst), why)
+}
+
+// withArticle puts "a" or "an" before name, by its first letter.
+func withArticle(name string) string {
+	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) {
+		return "an " + name
+	}
+	return "a " + name
 }
