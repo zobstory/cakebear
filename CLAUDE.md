@@ -380,6 +380,20 @@ Node (`testdata/gen-json-goldens.mjs`, deterministic), cycles included, and
 `TestJSONStringifyMatchesNode` holds a program to it end to end. A cycle
 panics with V8's `TypeError` message, verbatim.
 
+Step 10, frozen consts, is done (D10b, `lower/frozen.go`). A request handler
+or a spawned function may read a `const` object or array declared outside it
+when the const is frozen: its type is readonly all the way down, and its
+initialiser builds everything it holds from literals or other frozen consts.
+That gives a server a route table. To keep it sound, lowering refuses a
+readonly value where a mutable one is wanted, which TypeScript allows for
+properties. `TestFrozenRouteTableServes` serves a route table as Node does.
+Two fixes came with it:
+- Since M1, a response the program gave no `Content-Type` went out with one
+  net/http sniffed from the body, where Node sends none
+  (`runtime/http.go`).
+- `TestSpawnsRunInParallel` timed two sleeps against a limit a loaded machine
+  could miss. It now waits at a barrier instead.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -684,6 +698,21 @@ serialising a function, a promise or a host value, or an object or array
 holding one: Node leaves the first out, or gives `undefined` for one alone,
 and serialises the others as objects of its own.
 
+Since M4 step 10 (`lower/frozen.go`), **frozen consts**: a `const` whose type
+is readonly all the way down (`readonly` properties, `readonly T[]` or
+`ReadonlyArray<T>`, `Readonly<T>`, of primitives or more of the same) and
+whose initialiser builds every object and array it holds from literals, or
+other frozen consts, may be read by a request handler or a spawned function.
+A name destructured from one is frozen too. A refusal for a const that isn't
+says why, such as ``property `path` isn't readonly``.
+
+Refused by name, since step 10: **a readonly value where a mutable one is
+wanted**, which TypeScript allows for properties (`const m: Route = frozen`,
+where `Route` has `path` and the frozen value's type `readonly path`), in a
+variable, an argument, a result, a field, an element, or a callback's
+parameter. It is the one way a mutable alias of a frozen const could be
+made. The other way round, mutable into readonly, is fine.
+
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
 and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
@@ -886,15 +915,26 @@ type or a function: the rule's test is an allowlist (`shareableConst`), so a
 `const` of any other kind counts as shared, and a kind added later is refused
 until the rule names it. ⚠ **Carry-forward invariant:** a `const` object or
 array is still mutable (`o.f = …`, `xs.push(…)`), so it must stay off that
-list unless the rule learns to prove it unchanged. Explicit shared-state tools
-(an atomic counter type in `types/`, say) are how a later milestone widens it.
+list unless the rule learns to prove it unchanged. Frozen consts (M4 step 10,
+below) are the one proof it has so far. Explicit shared-state tools (an atomic
+counter type in `types/`, say) are how a later milestone widens it.
 
 M4 holds objects to it (plan D10): a request handler or a spawned function
 may use only the objects it creates itself, or that a function it calls
 returns. One declared outside it, a `const` or a `let`, is refused, read or
 written, directly or through what it calls: "use `home`, an object created
-outside it; an object can't be shared between requests yet: create it inside
-the handler, or in a function that returns a new one".
+outside it; an object can be shared between requests only if it is frozen
+(…), and this one isn't: property `path` isn't readonly. Freeze it, or
+create it inside the handler, or in a function that returns a new one".
+
+A **frozen** const is the exception (M4 plan D10b, `lower/frozen.go`): its
+type is readonly all the way down, and its initialiser builds what it holds
+from literals or other frozen consts, so nothing anywhere holds a mutable
+reference to any of it. TypeScript refuses writes through it. TypeScript
+does let a readonly property flow into a mutable one, though, which would
+make such a reference, so lowering refuses that flow (`readonlyFlow`),
+wherever a value fills a slot. A function, a promise or a host value inside
+makes a const not frozen: what it captures or stands for can change.
 
 M2 hit this invariant first, with promises. A `Promise` settles, so it is
 mutable state like any object. Lowering therefore refuses a handler that

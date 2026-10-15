@@ -303,7 +303,10 @@ func (l *lowerer) exact(n *ast.Node, v ir.Expr) bool {
 		return true
 	}
 	slot := l.typeFromType(ct)
-	if slot == ir.Invalid || slot.Equal(t) {
+	if slot == ir.Invalid {
+		return true
+	}
+	if slot.Equal(t) {
 		return true
 	}
 	if t.Kind == ir.KindObject && slot.Kind == ir.KindObject {

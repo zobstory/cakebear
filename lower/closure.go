@@ -94,6 +94,13 @@ func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir
 		if !l.fitsSlot(n, own, slot) {
 			return nil
 		}
+		if ctx := l.checker.GetContextualType(n, checker.ContextFlagsNone); ctx != nil {
+			src := l.checker.GetTypeAtLocation(n)
+			if why := l.readonlyFlow(src, ctx, nil); why != "" {
+				l.failReadonlyFlow(n, src, ctx, why)
+				return nil
+			}
+		}
 		sig = slot
 		discard = discard || (slot.Result == ir.Void && own.Result != ir.Void)
 	}

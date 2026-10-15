@@ -35,6 +35,9 @@ type program struct {
 	objects   map[*checker.Type]objectResult
 	objectLog []*checker.Type
 	pending   map[*checker.Type]*ir.Shape
+	// frozen keeps, per const declaration, why it isn't frozen, or "" when
+	// it is (frozen.go).
+	frozen map[*ast.Node]string
 }
 
 // Program lowers the program whose entry module is entry: entry and every

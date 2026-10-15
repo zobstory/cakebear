@@ -81,7 +81,7 @@ func TestAggregateSharedStateRefused(t *testing.T) {
 			"createServer((req, res) => {\n  res.end(home.body);\n}).listen(3000);\n",
 	}))
 	code, stderr := projectBuild(t, dir, buildOptions{})
-	want := "main.ts:6:11: cannot compile yet: this handler runs on many requests at once, so it can't use `home`, an object created outside it; an object can't be shared between requests yet"
+	want := "main.ts:6:11: cannot compile yet: this handler runs on many requests at once, so it can't use `home`, an object created outside it; an object can be shared between requests only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: its type isn't readonly all the way down: property `body` isn't readonly"
 	if code != exitErrors || !strings.Contains(stderr, want) {
 		t.Errorf("exit %d, want %d with\n%s\ngot:\n%s", code, exitErrors, want, stderr)
 	}

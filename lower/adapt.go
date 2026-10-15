@@ -9,10 +9,14 @@ import (
 )
 
 // fit holds a value to the slot it fills, the contextual type the checker
-// gives the expression there: an object exactly (exact), and a function
-// value adapted to its slot's signature (adapt). It returns the value to
-// use, or nil once it has refused it.
+// gives the expression there: never readonly into mutable (readonlyOK), an
+// object exactly (exact), and a function value adapted to its slot's
+// signature (adapt). It returns the value to use, or nil once it has refused
+// it.
 func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
+	if !l.readonlyOK(n, v) {
+		return nil
+	}
 	if t := v.ExprType(); t.Kind == ir.KindFunc {
 		if slot := l.slotType(n); slot.Kind == ir.KindFunc && !slot.Equal(t) {
 			return l.adapt(n, v, slot)

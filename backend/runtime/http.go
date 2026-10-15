@@ -214,8 +214,16 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 // sendHeaders commits the status line and headers. net/http still buffers
 // them until the handler writes enough body or returns, which is why a short
 // response gets a Content-Length, as Node's res.end(chunk) does.
+//
+// net/http would also sniff a Content-Type from the body when the program set
+// none (`text/plain; charset=utf-8`, or `text/html` for markup), where Node
+// sends no Content-Type at all. A nil value for the key is how net/http is
+// told not to.
 func (r *ServerResponse) sendHeaders() {
 	if !r.headersSent {
+		if _, set := r.w.Header()["Content-Type"]; !set {
+			r.w.Header()["Content-Type"] = nil
+		}
 		r.w.WriteHeader(r.status)
 		r.headersSent = true
 	}

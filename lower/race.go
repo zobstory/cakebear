@@ -60,8 +60,10 @@ type sharedUse struct {
 	host    bool // the binding holds a host value, such as a response
 	opaque  bool // the binding holds a function value the rule can't see into
 	// aggregate is "object" or "array" when the binding holds one: shared
-	// state, whether the binding is a const or a let.
+	// state, whether the binding is a const or a let, unless it is frozen.
+	// notFrozen says why it isn't (frozen.go).
 	aggregate string
+	notFrozen string
 	at        *ast.Node
 }
 
@@ -173,10 +175,14 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 			if sym := rc.l.p.resolve(rc.l.valueSymbol(n)); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
 					kind := rc.l.typeOf(n).Kind
-					uses = append(uses, sharedUse{
+					u := sharedUse{
 						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
 						promise: kind == ir.KindPromise, host: kind == ir.KindHost, aggregate: aggregateWord(kind), at: n,
-					})
+					}
+					if u.aggregate != "" {
+						u.notFrozen = rc.l.frozenWhy(decl)
+					}
+					uses = append(uses, u)
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
 					refs = append(refs, reference{sym: sym, at: n})
 				} else if decl, ok := rc.opaqueFunction(sym); ok && !within(decl, fn) {
@@ -236,8 +242,13 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 		return nil, false
 	}
 	if isConstDecl(decl) {
-		// A const is shared state unless what it holds can't change.
+		// A const is shared state unless what it holds can't change: a
+		// primitive, a function the rule sees into, or a frozen object or
+		// array (frozen.go).
 		if name := decl.Name(); name != nil && shareableConst(rc.l.typeOf(name).Kind) {
+			return nil, false
+		}
+		if rc.l.frozenWhy(decl) == "" {
 			return nil, false
 		}
 	}
@@ -414,8 +425,9 @@ func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 	case u.write:
 		return "change " + name + ", " + who.share
 	case u.aggregate != "":
-		return "use " + name + ", an " + u.aggregate + " created outside it; an " + u.aggregate + " can't be shared " + who.across +
-			" yet: create it " + who.inside + ", or in a function that returns a new one"
+		return "use " + name + ", an " + u.aggregate + " created outside it; an " + u.aggregate + " can be shared " + who.across +
+			" only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: " + u.notFrozen +
+			". Freeze it, or create it " + who.inside + ", or in a function that returns a new one"
 	case u.promise:
 		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
 	case u.host:
@@ -433,7 +445,7 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 	case u.write:
 		return "changes " + name + ", " + who.sharedBy
 	case u.aggregate != "":
-		return "uses " + name + ", an " + u.aggregate + " created " + who.outside
+		return "uses " + name + ", an " + u.aggregate + " created " + who.outside + ", which isn't frozen: " + u.notFrozen
 	case u.promise:
 		return "uses " + name + ", a promise created " + who.outside
 	case u.host:
