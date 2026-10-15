@@ -66,7 +66,7 @@ func TestArrayRefusals(t *testing.T) {
 		{"for…of destructuring", "const ps: { a: number }[] = [{ a: 1 }];\nfor (const { a } of ps) {\n}\n", "destructuring is not supported yet"},
 		{"for…of over an existing variable", xs + "let x: number = 0;\nfor (x of xs) {\n}\n", "a for…of loop needs its own const or let"},
 		{"pop as a value", xs + "console.log(xs.pop());\n", "pop's value is an element or undefined, which waits for M5"},
-		{"a method of step 7", xs + "const ys: number[] = xs.map((x: number): number => x);\n", "the array method map is not supported yet"},
+		{"a method refused by name", xs + "const ys: number[] = xs.concat(xs);\n", "the array method concat is not supported yet"},
 		{"push as a value", xs + "console.log(xs.push);\n", "an array's push can only be called"},
 		{"element access on an object", "const o: { a: number } = { a: 1 };\nconst v: number = o[\"a\"];\n", "an element access on a { a: number } is not supported yet"},
 		{"a string index", xs + "const k: string = \"0\";\nconsole.log(xs[k]);\n", "an array's index must be a number, not a string"},

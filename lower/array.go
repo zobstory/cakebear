@@ -162,7 +162,14 @@ func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 		l.failf(n, "pop's value is an element or undefined, which waits for M5; call it as a statement of its own")
 		return nil, true
 	default:
-		l.failf(n, "the array method %s is not supported yet", name)
+		if m, ok := arrayMethods[name]; ok {
+			return l.arrayMethod(n, c, access, m), true
+		}
+		if why, ok := refusedArrayMembers[name]; ok && why != "" {
+			l.failf(n, "%s", why)
+		} else {
+			l.failf(n, "the array method %s is not supported yet", name)
+		}
 		return nil, true
 	}
 	arr := l.expr(access.Expression)
