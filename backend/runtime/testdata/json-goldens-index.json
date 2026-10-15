@@ -1,0 +1,60 @@
+{
+  "node": "v24.18.0",
+  "seed": 539365397,
+  "sections": {
+    "STR": {
+      "first": 1,
+      "last": 483,
+      "count": 483,
+      "throws": 0
+    },
+    "NUM": {
+      "first": 484,
+      "last": 740,
+      "count": 257,
+      "throws": 0
+    },
+    "KEYS": {
+      "first": 741,
+      "last": 1009,
+      "count": 269,
+      "throws": 0
+    },
+    "ORDER": {
+      "first": 1010,
+      "last": 1060,
+      "count": 51,
+      "throws": 0
+    },
+    "NEST": {
+      "first": 1061,
+      "last": 1239,
+      "count": 179,
+      "throws": 0
+    },
+    "SPACE": {
+      "first": 1240,
+      "last": 1745,
+      "count": 506,
+      "throws": 0
+    },
+    "SHARED": {
+      "first": 1746,
+      "last": 1757,
+      "count": 12,
+      "throws": 0
+    },
+    "CIRC": {
+      "first": 1758,
+      "last": 1872,
+      "count": 115,
+      "throws": 115
+    },
+    "INSPECT": {
+      "first": 1873,
+      "last": 10567,
+      "count": 8695,
+      "throws": 175
+    }
+  }
+}

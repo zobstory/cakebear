@@ -1,10 +1,16 @@
-// The value encoding shared by gen-inspect-goldens.mjs, verify-goldens.mjs
-// and check-console-log.mjs. See the contract in gen-inspect-goldens.mjs.
+// The value encoding shared by gen-inspect-goldens.mjs, verify-goldens.mjs,
+// check-console-log.mjs and gen-json-goldens.mjs. See the contract in
+// gen-inspect-goldens.mjs. One form is the JSON corpus's alone, a string
+// holding a lone surrogate, as its UTF-16 code units: {"u":[55296]}.
 
 import util from 'node:util';
 
 export function numText(x) {
   return Object.is(x, -0) ? '-0' : String(x);
+}
+
+export function codeUnits(s) {
+  return Array.from({ length: s.length }, (_, i) => s.charCodeAt(i));
 }
 
 // decodeArgs rebuilds the JS values of one entry's args. A container is
@@ -32,6 +38,14 @@ export function decodeArgs(args) {
     if ('s' in d) {
       if (keys.length !== 1 || typeof d.s !== 'string') throw new Error('bad string');
       return d.s;
+    }
+    if ('u' in d) {
+      if (keys.length !== 1 || !Array.isArray(d.u) || d.u.some((c) => !Number.isInteger(c) || c < 0 || c > 0xffff)) {
+        throw new Error('bad code units');
+      }
+      const s = String.fromCharCode(...d.u);
+      if (s.isWellFormed()) throw new Error('a well-formed string as code units');
+      return s;
     }
     if ('b' in d) {
       if (keys.length !== 1 || typeof d.b !== 'boolean') throw new Error('bad boolean');
@@ -88,7 +102,7 @@ export function encodeArgs(values) {
   const enc = (v) => {
     switch (typeof v) {
       case 'number': return { n: numText(v) };
-      case 'string': return { s: v };
+      case 'string': return v.isWellFormed() ? { s: v } : { u: codeUnits(v) };
       case 'boolean': return { b: v };
       case 'object': {
         if (v === null) throw new Error('null is outside the subset');
@@ -120,7 +134,10 @@ export function encodeArgs(values) {
 
 const isIntegerLike = (k) => /^(0|[1-9][0-9]*)$/.test(k) && Number(k) <= 4294967294;
 
-export function validate(args) {
+// forJSON is the JSON corpus's contract: args is one value, which may hold
+// a lone surrogate, in the {"u":…} form and never in a key, and whose
+// strings may hold '%', since no util.format reads them.
+export function validate(args, { forJSON = false } = {}) {
   const kindOf = new Map();
   const keySetOf = new Map();
   const keySet = (d) => d.o.map((p) => p[0]).sort().join('\u0000');
@@ -129,6 +146,10 @@ export function validate(args) {
     if ('b' in d) return 'b';
     if ('s' in d) {
       if (!d.s.isWellFormed()) throw new Error('lone surrogate in a string');
+      return 's';
+    }
+    if ('u' in d) {
+      if (!forJSON) throw new Error('lone surrogate in a string');
       return 's';
     }
     if ('ref' in d) {
@@ -161,7 +182,11 @@ export function validate(args) {
     throw new Error('unknown description');
   };
   args.forEach(walk);
-  if ('s' in args[0] && args[0].s.includes('%')) throw new Error("a first string argument holds '%'");
+  if (forJSON) {
+    if (args.length !== 1) throw new Error('JSON.stringify of several values');
+  } else if ('s' in args[0] && args[0].s.includes('%')) {
+    throw new Error("a first string argument holds '%'");
+  }
 }
 
 // checkEntry holds one entry to the contract and to Node, and returns its
