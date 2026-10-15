@@ -294,6 +294,9 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.ConsoleLog:
 		return e.consoleLog(x)
 
+	case *ir.JSONStringify:
+		return e.jsonStringify(x)
+
 	case *ir.ObjectLit:
 		return e.objectLit(x)
 

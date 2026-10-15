@@ -370,6 +370,16 @@ name, so in `for (let i = 0, j = i + 1; …)` the `i` that `j` read was an
 outer one. `backend/emit_loops.go` now declares them in order, before the
 loop.
 
+Step 9, `JSON.stringify`, is done (D15). Lowering (`lower/json.go`) makes
+an `ir.JSONStringify`, and the runtime (`runtime/json.go`, `json_string.go`)
+writes it as ECMA-262 does, with V8's two departures matched: a number space
+between 0 and 1 breaks lines but indents by nothing, and a string space ends
+at its first NUL. That is why the gap is a `JSONGap` value rather than a
+string. `TestJSONGoldens` holds the runtime to 10,600 outputs recorded from
+Node (`testdata/gen-json-goldens.mjs`, deterministic), cycles included, and
+`TestJSONStringifyMatchesNode` holds a program to it end to end. A cycle
+panics with V8's `TypeError` message, verbatim.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -657,6 +667,23 @@ keys, destructuring assignment (`({ a } = o)`), and destructuring anything
 but an object (a string, an array, a `node:http` value: read `req.url`
 instead).
 
+Since M4 step 9 (`lower/json.go`), `JSON.stringify(value)` and
+`JSON.stringify(value, null, space)`, byte for byte as Node writes it:
+objects in their literal's key order, `-0` as `0`, NaN and the infinities as
+`null`, and a space as a number of spaces (at most 10) or a string's first
+10 characters. V8 has a quirk of its own, matched too: a number strictly
+between 0 and 1 gives lines and `": "` with no indent, where the
+specification says compact. `JSON` is recognised as the global TypeScript's libs declare,
+so a program's own `JSON` is an ordinary binding. It is also the one way the
+subset has to turn a number into a string.
+
+Refused by name: a replacer (`null` or `undefined` in its place is how a call
+reaches the space), `JSON.parse` (it returns `any`, and decoding into a type
+needs checks that wait for M5 and M6), JSON's other members, and
+serialising a function, a promise or a host value, or an object or array
+holding one: Node leaves the first out, or gives `undefined` for one alone,
+and serialises the others as objects of its own.
+
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
 and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
@@ -912,6 +939,7 @@ not listed here that behaves differently is a bug.
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 | `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
 | Reading past an array's end, or a negative or fractional index (M4 D8) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2 |
+| `JSON.stringify` of a value that refers to itself | a `TypeError` naming the path around the circle, exit 1 | a panic with the same message: `cakebear: JSON.stringify met a cycle (Node throws TypeError: Converting circular structure to JSON …)`, exit 2 |
 | Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce` or `findIndex` (D9) | skips the indices it removed (`findIndex` reads them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |

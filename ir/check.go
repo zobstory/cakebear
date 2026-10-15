@@ -104,6 +104,8 @@ func (p *Program) checkNode(node any) error {
 		return checkIndex(n.Array, n.Index, n.Value.ExprType())
 	case *ArrayOp:
 		return checkArrayOp(n)
+	case *JSONStringify:
+		return checkJSONStringify(n)
 	case *ForOf:
 		elem, err := elemOf(n.Array.ExprType())
 		if err == nil && !n.Type.Equal(elem) {

@@ -44,10 +44,13 @@ func newTestObject(keys []string, values []any) *testObject {
 }
 
 // goldenValue is the corpus's encoding of a value
-// (testdata/gen-inspect-goldens.mjs).
+// (testdata/gen-inspect-goldens.mjs). U is a string holding a lone
+// surrogate, as its UTF-16 code units, which only the JSON corpus has
+// (testdata/gen-json-goldens.mjs).
 type goldenValue struct {
 	N   *string              `json:"n"`
 	S   *string              `json:"s"`
+	U   []uint16             `json:"u"`
 	B   *bool                `json:"b"`
 	A   []json.RawMessage    `json:"a"`
 	O   [][2]json.RawMessage `json:"o"`
@@ -72,6 +75,8 @@ func (d *decoder) value(raw json.RawMessage) any {
 		return parseNumber(d.t, *g.N)
 	case g.S != nil:
 		return *g.S
+	case g.U != nil:
+		return wtf8(g.U)
 	case g.B != nil:
 		return *g.B
 	case g.Ref != nil:
@@ -118,7 +123,7 @@ func (d *decoder) array(g goldenValue) any {
 		switch {
 		case first.N != nil:
 			kind = "n"
-		case first.S != nil:
+		case first.S != nil, first.U != nil:
 			kind = "s"
 		case first.B != nil:
 			kind = "b"
