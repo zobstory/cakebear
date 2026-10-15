@@ -1,0 +1,99 @@
+{
+  "node": "v24.18.0",
+  "seed": 539365397,
+  "whitespace": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    32,
+    160,
+    5760,
+    8192,
+    8193,
+    8194,
+    8195,
+    8196,
+    8197,
+    8198,
+    8199,
+    8200,
+    8201,
+    8202,
+    8232,
+    8233,
+    8239,
+    8287,
+    12288,
+    65279
+  ],
+  "sections": {
+    "FIXED_EDGE": {
+      "first": 1,
+      "last": 11413,
+      "count": 11413,
+      "throws": 0
+    },
+    "FIXED_TIES": {
+      "first": 11414,
+      "last": 18498,
+      "count": 7085,
+      "throws": 0
+    },
+    "FIXED_DIGITS": {
+      "first": 18499,
+      "last": 18740,
+      "count": 242,
+      "throws": 121
+    },
+    "FIXED_RANDOM": {
+      "first": 18741,
+      "last": 22740,
+      "count": 4000,
+      "throws": 0
+    },
+    "PARSE": {
+      "first": 22741,
+      "last": 23433,
+      "count": 693,
+      "throws": 0
+    },
+    "SPACE": {
+      "first": 23434,
+      "last": 25194,
+      "count": 1761,
+      "throws": 0
+    },
+    "HALFWAY": {
+      "first": 25195,
+      "last": 26326,
+      "count": 1132,
+      "throws": 0
+    },
+    "RADIX": {
+      "first": 26327,
+      "last": 30550,
+      "count": 4224,
+      "throws": 0
+    },
+    "RADIX_LONG": {
+      "first": 30551,
+      "last": 32328,
+      "count": 1778,
+      "throws": 0
+    },
+    "RANDOM": {
+      "first": 32329,
+      "last": 45439,
+      "count": 13111,
+      "throws": 0
+    },
+    "PREDICATES": {
+      "first": 45440,
+      "last": 46117,
+      "count": 678,
+      "throws": 0
+    }
+  }
+}
