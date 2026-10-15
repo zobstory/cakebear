@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"path/filepath"
+
 	"github.com/zobstory/cakebear/internal/ast"
 )
 
@@ -71,17 +73,24 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 		l.hostImport(n)
 		return ""
 	}
+	// An import of types alone evaluates nothing, so where it is from
+	// doesn't matter: `import type { NextRequest } from "next/server"` is
+	// fine, though a package is no module cakebear compiles.
+	if decl.ImportClause != nil && l.p.erased(decl) {
+		return ""
+	}
 	target := l.p.imported(decl)
 	if target == nil {
+		if js := l.p.importedScript(decl); js != nil {
+			l.failf(n, "%s is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module", filepath.Base(string(js.FileName())))
+			return ""
+		}
 		l.failf(n, "imports from %q are not supported; cakebear compiles node:http and the program's own TypeScript modules, imported by a relative path", spec.Text())
 		return ""
 	}
 	clause := decl.ImportClause
 	if clause == nil {
 		return string(target.FileName()) // `import "./x"`, for its effects alone
-	}
-	if l.p.erased(decl) {
-		return "" // `import type`, or only types: it evaluates nothing
 	}
 	if clause.Name() != nil {
 		l.failf(n, "a default import is not supported yet; import what %s exports by name", spec.Text())

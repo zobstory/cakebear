@@ -275,17 +275,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 		}
 	}
 
-	fn.Result = ir.Void
-	if decl.Type != nil {
-		fn.Result = l.typeOf(decl.Type)
-		if fn.Result == ir.Invalid {
-			l.failf(decl.Type, "function %s returns a type the backend cannot represent yet%s", fn.Name, l.reason())
-		}
-	}
-	if fn.Async = isAsync(n); fn.Async {
-		l.asyncResult(n, fn)
-	}
-
+	l.funcResult(n, fn)
 	l.inBody(fn.Async, func() { fn.Body = append(prologue, l.block(decl.Body)...) })
 	return fn
 }
