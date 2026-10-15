@@ -49,7 +49,7 @@ func (e *emitter) program(p *ir.Program) string {
 		globals.WriteString(e.capture(func() {
 			for _, s := range m.Main {
 				if d, ok := s.(*ir.VarDecl); ok {
-					fmt.Fprintf(&e.buf, "var %s %s\n", e.top(m.File, d.Name), e.typ(d.Type))
+					fmt.Fprintf(&e.buf, "var %s %s\n", e.top(m.File, d.Name), e.typ(d.Type, d.Span))
 					e.hoisted[d] = true
 				}
 			}

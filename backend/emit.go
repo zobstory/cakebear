@@ -112,11 +112,11 @@ func (e *emitter) function(fn *ir.Func) {
 	e.usesRuntime = true
 	fmt.Fprintf(&e.buf, "func %s(%s", e.top(e.cur, fn.Name), domainParam)
 	for _, p := range fn.Params {
-		fmt.Fprintf(&e.buf, ", %s %s", mangle(p.Name), e.typ(p.Type))
+		fmt.Fprintf(&e.buf, ", %s %s", mangle(p.Name), e.typ(p.Type, p.Span))
 	}
 	e.buf.WriteString(")")
 	if fn.Result != ir.Void {
-		fmt.Fprintf(&e.buf, " %s", e.typ(fn.Result))
+		fmt.Fprintf(&e.buf, " %s", e.typ(fn.Result, fn.Span))
 	}
 	e.buf.WriteString(" {\n")
 	if fn.Async {
@@ -148,12 +148,12 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 			// Declared before it is assigned, so a function literal can call
 			// itself. Go's scope for `var f = …` starts after the initialiser;
 			// JavaScript's starts at the declaration.
-			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), e.typ(s.Type))
+			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), e.typ(s.Type, s.Span))
 			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.full(s.Init))
 		} else {
 			// An explicit type rather than := because TypeScript's annotation
 			// is the authority here, and := would let Go's inference disagree.
-			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type), e.full(s.Init))
+			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type, s.Span), e.full(s.Init))
 		}
 		// Go rejects unused locals; TypeScript does not. Referencing the
 		// variable keeps a legal TypeScript program from failing to build.
@@ -242,13 +242,17 @@ func (e *emitter) expr(x ir.Expr) string {
 		return e.binary(x)
 
 	case *ir.Unary:
-		return fmt.Sprintf("(%s%s)", goUnaryOp(x.Op), e.expr(x.Operand))
+		op, ok := goUnaryOp(x.Op)
+		if !ok {
+			return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
+		}
+		return fmt.Sprintf("(%s%s)", op, e.expr(x.Operand))
 
 	case *ir.Convert:
 		// A plain Go conversion. Truncation and wrapping follow Go's rules,
 		// which are the machine's; the compile-time range check in types/
 		// catches the literal cases before they get here.
-		return fmt.Sprintf("%s(%s)", e.typ(x.Typ), e.expr(x.Value))
+		return fmt.Sprintf("%s(%s)", e.typ(x.Typ, x.Span), e.expr(x.Value))
 
 	case *ir.Call:
 		// The callee runs in the caller's domain, which goes first.
@@ -275,7 +279,11 @@ func (e *emitter) expr(x ir.Expr) string {
 
 	case *ir.ConsoleLog:
 		e.usesRuntime = true
-		return fmt.Sprintf("%s.%s(%s)", rtPkg, logFunc(x.Arg.ExprType()), e.expr(x.Arg))
+		log, ok := logFunc(x.Arg.ExprType())
+		if !ok {
+			return e.cannot(x.Span, "the backend cannot print a "+x.Arg.ExprType().String()+" yet")
+		}
+		return fmt.Sprintf("%s.%s(%s)", rtPkg, log, e.expr(x.Arg))
 
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
@@ -291,7 +299,7 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 	params := []string{domainParam} // its own: the domain of whoever calls it
 	for _, p := range x.Params {
 		// An empty name is a parameter the literal ignores; mangle gives `_`.
-		params = append(params, mangle(p.Name)+" "+e.typ(p.Type))
+		params = append(params, mangle(p.Name)+" "+e.typ(p.Type, p.Span))
 	}
 	// The literal's body refers to its own ts_domain parameter, so its uses do
 	// not count as the enclosing scope's (main declares one only if it uses it).
@@ -309,13 +317,17 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 
 	result := ""
 	if x.Result != ir.Void {
-		result = " " + e.typ(x.Result)
+		result = " " + e.typ(x.Result, x.Span)
 	}
 	return fmt.Sprintf("func(%s)%s {\n%s%s}", strings.Join(params, ", "), result, body, strings.Repeat("\t", depth))
 }
 
 func (e *emitter) binary(x *ir.Binary) string {
-	return fmt.Sprintf("(%s %s %s)", e.expr(x.Left), goBinaryOp(x.Op), e.expr(x.Right))
+	op, ok := goBinaryOp(x.Op)
+	if !ok {
+		return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
+	}
+	return fmt.Sprintf("(%s %s %s)", e.expr(x.Left), op, e.expr(x.Right))
 }
 
 // goFloat renders a TypeScript number as a Go float64 literal.
@@ -332,7 +344,10 @@ func goFloat(f float64) string {
 	return s
 }
 
-func goType(t ir.Type) string {
+// goType spells t as a Go type. ok is false for a type this backend has no
+// spelling for, which the caller reports (e.typ) rather than emit a stand-in:
+// `any` would build, and quietly lose what the type said.
+func goType(t ir.Type) (string, bool) {
 	switch t.Kind {
 	case ir.KindFunc:
 		return goFuncType(t.Sig)
@@ -343,105 +358,127 @@ func goType(t ir.Type) string {
 	}
 	switch t {
 	case ir.Number:
-		return "float64"
+		return "float64", true
 	case ir.String:
-		return "string"
+		return "string", true
 	case ir.Boolean:
-		return "bool"
+		return "bool", true
 	case ir.Int32:
-		return "int32"
+		return "int32", true
 	case ir.Int64:
-		return "int64"
+		return "int64", true
 	case ir.Uint32:
-		return "uint32"
+		return "uint32", true
 	case ir.Uint64:
-		return "uint64"
+		return "uint64", true
 	case ir.Float32:
-		return "float32"
+		return "float32", true
 	case ir.Base64:
 		// base64 is a compile-time refinement over string, not a distinct
 		// runtime representation. See types/cakebear.d.ts.
-		return "string"
+		return "string", true
 	default:
-		return "any"
+		return "", false
 	}
 }
 
 // goFuncType spells a function type, which takes the domain first:
-// `func(*cakebearrt.Domain, float64, string) bool`.
-func goFuncType(sig *ir.Signature) string {
+// `func(*cakebearrt.Domain, float64, string) bool`. ok is false if any of its
+// parameters or its result has no spelling.
+func goFuncType(sig *ir.Signature) (string, bool) {
+	if sig == nil {
+		return "", false
+	}
 	params := []string{"*" + rtPkg + ".Domain"}
 	for _, p := range sig.Params {
-		params = append(params, goType(p))
+		param, ok := goType(p)
+		if !ok {
+			return "", false
+		}
+		params = append(params, param)
 	}
 	s := "func(" + strings.Join(params, ", ") + ")"
 	if sig.Result != ir.Void {
-		s += " " + goType(sig.Result)
+		result, ok := goType(sig.Result)
+		if !ok {
+			return "", false
+		}
+		s += " " + result
 	}
-	return s
+	return s, true
 }
 
-func logFunc(t ir.Type) string {
+// logFunc names the runtime function that prints a value of type t as
+// console.log does. ok is false for a type it has none for: printing
+// `undefined` instead would build, and print the wrong thing.
+func logFunc(t ir.Type) (string, bool) {
 	switch t {
 	case ir.Number:
-		return "LogNumber"
+		return "LogNumber", true
 	case ir.String:
-		return "LogString"
+		return "LogString", true
 	case ir.Boolean:
-		return "LogBool"
+		return "LogBool", true
 	case ir.Null:
-		return "LogNull"
+		return "LogNull", true
+	case ir.Undefined:
+		return "LogUndefined", true
 	case ir.Int32:
-		return "LogInt32"
+		return "LogInt32", true
 	case ir.Int64:
-		return "LogInt64"
+		return "LogInt64", true
 	case ir.Uint32:
-		return "LogUint32"
+		return "LogUint32", true
 	case ir.Uint64:
-		return "LogUint64"
+		return "LogUint64", true
 	case ir.Float32:
-		return "LogFloat32"
+		return "LogFloat32", true
 	case ir.Base64:
-		return "LogString"
+		return "LogString", true
 	default:
-		return "LogUndefined"
+		return "", false
 	}
 }
 
-func goBinaryOp(op ir.BinaryOp) string {
+// goBinaryOp spells op in Go. ok is false for an operator it doesn't know.
+func goBinaryOp(op ir.BinaryOp) (string, bool) {
 	switch op {
 	case ir.OpAdd:
-		return "+"
+		return "+", true
 	case ir.OpSub:
-		return "-"
+		return "-", true
 	case ir.OpMul:
-		return "*"
+		return "*", true
 	case ir.OpDiv:
-		return "/"
+		return "/", true
 	case ir.OpLess:
-		return "<"
+		return "<", true
 	case ir.OpLessEq:
-		return "<="
+		return "<=", true
 	case ir.OpGreater:
-		return ">"
+		return ">", true
 	case ir.OpGreaterEq:
-		return ">="
+		return ">=", true
 	case ir.OpEqual:
-		return "=="
+		return "==", true
 	case ir.OpNotEqual:
-		return "!="
+		return "!=", true
 	case ir.OpAnd:
-		return "&&"
+		return "&&", true
 	case ir.OpOr:
-		return "||"
+		return "||", true
 	default:
-		return "?"
+		return "", false
 	}
 }
 
-func goUnaryOp(op ir.UnaryOp) string {
-	if op == ir.OpNeg {
-		return "-"
+// goUnaryOp spells op in Go. ok is false for an operator it doesn't know.
+func goUnaryOp(op ir.UnaryOp) (string, bool) {
+	switch op {
+	case ir.OpNeg:
+		return "-", true
+	case ir.OpNot:
+		return "!", true
 	}
-	return "!"
+	return "", false
 }

@@ -30,7 +30,7 @@ func TestGoFuncType(t *testing.T) {
 		{ir.FuncType(nil, ir.FuncType(nil, ir.Number)), "func(*cakebearrt.Domain) func(*cakebearrt.Domain) float64"},
 		{ir.FuncType([]ir.Type{ir.FuncType([]ir.Type{ir.Int32}, ir.Void)}, ir.Void), "func(*cakebearrt.Domain, func(*cakebearrt.Domain, int32))"},
 	} {
-		if got := goType(tt.in); got != tt.want {
+		if got, ok := goType(tt.in); !ok || got != tt.want {
 			t.Errorf("goType(%s) = %q, want %q", tt.in, got, tt.want)
 		}
 	}

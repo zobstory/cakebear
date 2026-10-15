@@ -65,7 +65,7 @@ func (e *emitter) forInit(init []ir.Stmt) string {
 	values := make([]string, len(decls))
 	for i, d := range decls {
 		names[i] = mangle(d.Name)
-		values[i] = conversion(e.typ(d.Type), e.expr(d.Init))
+		values[i] = conversion(e.typ(d.Type, d.Span), e.expr(d.Init))
 	}
 	return strings.Join(names, ", ") + " := " + strings.Join(values, ", ")
 }

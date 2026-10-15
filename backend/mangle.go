@@ -1,6 +1,10 @@
 package backend
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+	"unicode"
+)
 
 // genModule is the module path of the throwaway module cakec generates. It
 // never leaves the temp directory and is never published, so the name only has
@@ -52,9 +56,18 @@ var goPredeclared = map[string]bool{
 // substituted, so mangling can never map two distinct names onto one: `type`
 // becomes `ts_type`, and a user identifier already called `ts_type` becomes
 // `ts_ts_type`.
+//
+// The one place the languages' syntax differs is characters TypeScript allows
+// in a name and Go doesn't: `$`, combining marks (an `é` written as `e` and
+// U+0301), the joiners U+200C and U+200D, and letter-like numbers such as
+// `Ⅻ`. A name with any of them is escaped, under a prefix no other rule
+// produces (see escape).
 func mangle(name string) string {
 	if name == "" {
 		return "_"
+	}
+	if strings.ContainsFunc(name, notGoIdentifier) {
+		return escapedPrefix + escape(name)
 	}
 	if goKeywords[name] || goPredeclared[name] || name == rtPkg || strings.HasPrefix(name, "ts_") {
 		return "ts_" + name
@@ -65,4 +78,35 @@ func mangle(name string) string {
 		return "ts_blank"
 	}
 	return name
+}
+
+// escapedPrefix starts every escaped name. No keyword, predeclared name or
+// generated name begins `x_`, so it keeps escaped names apart from the rest.
+const escapedPrefix = "ts_x_"
+
+// notGoIdentifier reports a rune Go does not allow in an identifier: Go takes
+// only letters, decimal digits and `_`.
+func notGoIdentifier(r rune) bool {
+	return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r)
+}
+
+// escape writes `_` as `__`, `$` as `_D`, and any other rune Go rejects as
+// `_u` and its hex code point, closed by `_`: `$count` becomes `_Dcount`, and
+// `e` and U+0301 become `e_u301_`. An underscore always starts one of those
+// three, so the escaped name reads back to exactly one original.
+func escape(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r == '_':
+			b.WriteString("__")
+		case r == '$':
+			b.WriteString("_D")
+		case notGoIdentifier(r):
+			fmt.Fprintf(&b, "_u%X_", r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
