@@ -216,7 +216,7 @@ func TestEmitProducesCompilableShape(t *testing.T) {
 		}},
 		Main: []ir.Stmt{&ir.ExprStmt{
 			Expr: &ir.ConsoleLog{
-				Arg:  &ir.Call{Callee: "double", Args: []ir.Expr{&ir.NumberLit{Value: 21, Span: span}}, Typ: ir.Number, Span: span},
+				Args: []ir.Expr{&ir.Call{Callee: "double", Args: []ir.Expr{&ir.NumberLit{Value: 21, Span: span}}, Typ: ir.Number, Span: span}},
 				Span: span,
 			},
 			Span: span,
@@ -272,7 +272,7 @@ func TestEmitNegativeZeroUsesRuntimeValue(t *testing.T) {
 	m := &ir.Module{
 		Name: "t",
 		Main: []ir.Stmt{&ir.ExprStmt{
-			Expr: &ir.ConsoleLog{Arg: &ir.NumberLit{Value: negZero, Span: span}, Span: span},
+			Expr: &ir.ConsoleLog{Args: []ir.Expr{&ir.NumberLit{Value: negZero, Span: span}}, Span: span},
 			Span: span,
 		}},
 	}

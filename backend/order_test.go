@@ -26,8 +26,8 @@ func TestInnerCall(t *testing.T) {
 		{"a call inside a literal's body is not evaluated", &ir.Call{Callee: "g", Args: []ir.Expr{a, &ir.FuncLit{Body: []ir.Stmt{&ir.ExprStmt{Expr: f}}}}}, false},
 		{"an await", sum(a, &ir.Await{Value: a}), true},
 		{"a host property", sum(a, &ir.HostProp{Prop: ir.HostURL, Recv: a}), true},
-		{"console.log of a sum with a call", &ir.ConsoleLog{Arg: sum(a, f)}, true},
-		{"console.log of a read", &ir.ConsoleLog{Arg: a}, false},
+		{"console.log of a sum with a call", &ir.ConsoleLog{Args: []ir.Expr{sum(a, f)}}, true},
+		{"console.log of a read", &ir.ConsoleLog{Args: []ir.Expr{a}}, false},
 	} {
 		if got := innerCall(tt.x); got != tt.want {
 			t.Errorf("%s: innerCall = %v, want %v", tt.name, got, tt.want)

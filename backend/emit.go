@@ -278,12 +278,7 @@ func (e *emitter) expr(x ir.Expr) string {
 		return e.hostProp(x)
 
 	case *ir.ConsoleLog:
-		e.usesRuntime = true
-		log, ok := logFunc(x.Arg.ExprType())
-		if !ok {
-			return e.cannot(x.Span, "the backend cannot print a "+x.Arg.ExprType().String()+" yet")
-		}
-		return fmt.Sprintf("%s.%s(%s)", rtPkg, log, e.expr(x.Arg))
+		return e.consoleLog(x)
 
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})

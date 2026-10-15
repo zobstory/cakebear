@@ -85,7 +85,7 @@ func inspectExpr(e Expr, visit func(node any)) {
 	case *NewPromise:
 		inspectExpr(e.Executor, visit)
 	case *ConsoleLog:
-		inspectExpr(e.Arg, visit)
+		inspectExprs(e.Args, visit)
 	case *Convert:
 		inspectExpr(e.Value, visit)
 	case *HostCall:

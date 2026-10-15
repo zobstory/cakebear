@@ -241,33 +241,9 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 func (l *lowerer) call(n *ast.Node) ir.Expr {
 	c := n.AsCallExpression()
 
-	// console.log is an intrinsic rather than a method call: the subset has no
-	// object model, no `console` binding and no property access, so there is
-	// nothing to resolve it against. See ir.ConsoleLog.
+	// console.log is an intrinsic rather than a method call (ir.ConsoleLog).
 	if isConsoleLog(c.Expression) {
-		if c.Arguments == nil || len(c.Arguments.Nodes) != 1 {
-			l.failf(n, "console.log takes exactly one argument in this phase")
-			return nil
-		}
-		arg := l.expr(c.Arguments.Nodes[0])
-		if arg == nil {
-			return nil
-		}
-		switch t := arg.ExprType(); {
-		case t == ir.Invalid:
-			l.failf(n, "console.log cannot print this type yet")
-			return nil
-		case t.Kind == ir.KindFunc:
-			l.failf(n, "console.log cannot print a function yet")
-			return nil
-		case t.Kind == ir.KindHost:
-			l.failf(n, "console.log cannot print a %s yet", t)
-			return nil
-		case t.Kind == ir.KindPromise:
-			l.failf(n, "console.log cannot print a promise yet; log what it resolves to, with await")
-			return nil
-		}
-		return &ir.ConsoleLog{Arg: arg, Span: l.span(n)}
+		return l.consoleLog(n, c)
 	}
 
 	if out, handled := l.hostCall(n, c); handled {

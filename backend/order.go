@@ -86,7 +86,7 @@ func operands(x ir.Expr) []ir.Expr {
 	case *ir.NewPromise:
 		return []ir.Expr{x.Executor}
 	case *ir.ConsoleLog:
-		return []ir.Expr{x.Arg}
+		return x.Args
 	case *ir.HostCall:
 		return append([]ir.Expr{x.Recv}, x.Args...)
 	case *ir.HostProp:

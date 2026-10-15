@@ -15,7 +15,7 @@ var span = ir.Span{File: "t.ts", Line: 1, Col: 1}
 func num(v float64) ir.Expr { return &ir.NumberLit{Value: v, Span: span} }
 
 func logNum(e ir.Expr) ir.Stmt {
-	return &ir.ExprStmt{Expr: &ir.ConsoleLog{Arg: e, Span: span}, Span: span}
+	return &ir.ExprStmt{Expr: &ir.ConsoleLog{Args: []ir.Expr{e}, Span: span}, Span: span}
 }
 
 // TestBuildProducesRunnableBinary exercises the whole backend: emit, write the

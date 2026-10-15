@@ -207,14 +207,19 @@ type Capture struct {
 	Mutable bool // let or a parameter, versus const
 }
 
-// ConsoleLog is `console.log(x)` as an intrinsic rather than a method call.
+// ConsoleLog is `console.log(a, b, …)` as an intrinsic rather than a method
+// call.
 //
-// Modelling it as a call would require an object model, a `console` binding and
-// property access, none of which exist in the Phase-1 subset. Making it an IR
-// node keeps the subset honest: the backend can lower exactly what the language
-// currently supports and reject the rest.
+// Modelling it as a call would require a `console` binding and a method on
+// it. Making it an IR node keeps the subset honest: the backend can lower
+// exactly what the language currently supports and reject the rest.
+//
+// Args print as Node prints them: a string as it is, anything else
+// inspected, separated by spaces. Node treats a first string followed by
+// more arguments as a format, so lowering allows one there only if it is a
+// literal with no `%` in it (M4 plan D12).
 type ConsoleLog struct {
-	Arg  Expr
+	Args []Expr
 	Span Span
 }
 

@@ -87,7 +87,7 @@ func TestEmitRunOnlyWhenNodeHTTPIsUsed(t *testing.T) {
 	t.Parallel()
 
 	span := ir.Span{File: "t.ts", Line: 1, Col: 1}
-	m := &ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.ConsoleLog{Arg: &ir.NumberLit{Value: 1, Span: span}, Span: span}}}}
+	m := &ir.Module{Name: "t", Main: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.ConsoleLog{Args: []ir.Expr{&ir.NumberLit{Value: 1, Span: span}}, Span: span}}}}
 	if got := Emit(ir.ProgramOf(m)); strings.Contains(got, "Run()") {
 		t.Errorf("a program without a server calls Run:\n%s", got)
 	}
@@ -120,7 +120,7 @@ func TestEmitHoistsTopLevelVariables(t *testing.T) {
 	m := &ir.Module{
 		Name: "t",
 		Funcs: []*ir.Func{{Name: "show", Result: ir.Void, Span: span, Body: []ir.Stmt{&ir.ExprStmt{Span: span,
-			Expr: &ir.ConsoleLog{Arg: &ir.Ident{Name: "n", Typ: ir.Number, Span: span}, Span: span}}}}},
+			Expr: &ir.ConsoleLog{Args: []ir.Expr{&ir.Ident{Name: "n", Typ: ir.Number, Span: span}}, Span: span}}}}},
 		Main: []ir.Stmt{
 			&ir.ExprStmt{Span: span, Expr: &ir.Call{Callee: "show", Typ: ir.Void, Span: span}},
 			&ir.VarDecl{Name: "n", Type: ir.Number, Mutable: true, Init: &ir.NumberLit{Value: 7, Span: span}, Span: span},

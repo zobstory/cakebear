@@ -22,7 +22,7 @@ func twoModules() *Program {
 		File: "/p/main.ts",
 		Main: []Stmt{
 			&Assign{Name: "count", Module: "/p/lib.ts", Value: &Call{Callee: "helper", Module: "/p/lib.ts", Typ: Number}},
-			&ExprStmt{Expr: &ConsoleLog{Arg: &Ident{Name: "limit", Module: "/p/lib.ts", Typ: Number}}},
+			&ExprStmt{Expr: &ConsoleLog{Args: []Expr{&Ident{Name: "limit", Module: "/p/lib.ts", Typ: Number}}}},
 		},
 	}
 	return &Program{Modules: []*Module{lib, main}, Entry: 1}
@@ -63,7 +63,7 @@ func TestValidate(t *testing.T) {
 		{"the same file twice", func(p *Program) { p.Modules[1].File = "/p/lib.ts" }, "out of order, or the same file twice"},
 		{"a module without a file among several", func(p *Program) { p.Modules[0].File = "" }, "module 0 of 2 has no file"},
 		{"into a module not in the program", func(p *Program) {
-			p.Modules[1].Main[1].(*ExprStmt).Expr.(*ConsoleLog).Arg.(*Ident).Module = "/p/gone.ts"
+			p.Modules[1].Main[1].(*ExprStmt).Expr.(*ConsoleLog).Args[0].(*Ident).Module = "/p/gone.ts"
 		}, "limit refers into /p/gone.ts, which is not one of the program's modules"},
 		{"a name the module doesn't declare", func(p *Program) {
 			p.Modules[1].Main[0].(*Assign).Value.(*Call).Callee = "missing"
@@ -107,7 +107,7 @@ func everyNode() *Module {
 		Main: []Stmt{
 			&VarDecl{Name: "s", Init: &Binary{Op: OpAdd, Left: &StringLit{}, Right: &Ident{Name: "x"}}},
 			&Assign{Name: "s", Value: &Call{Callee: "g", Args: []Expr{lit, &NullLit{}, &UndefinedLit{}}}},
-			&ExprStmt{Expr: &ConsoleLog{Arg: &HostProp{Prop: HostURL, Recv: &HostCall{Op: HostCreateServer}}}},
+			&ExprStmt{Expr: &ConsoleLog{Args: []Expr{&HostProp{Prop: HostURL, Recv: &HostCall{Op: HostCreateServer}}}}},
 			&FieldSet{Object: &ObjectLit{Fields: []FieldInit{{Value: &FieldGet{Object: &Ident{Name: "o"}}}}}, Value: &NumberLit{}},
 			&IndexSet{Array: &ArrayLit{Elems: []Expr{&IndexGet{Array: &Ident{Name: "xs"}, Index: &NumberLit{}}}}, Index: &NumberLit{}, Value: &NumberLit{}},
 			&ForOf{Name: "x", Array: &ArrayOp{Method: ArrayMap, Array: &Ident{Name: "xs"}, Args: []Expr{&FuncLit{}}}},

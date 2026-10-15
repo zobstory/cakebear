@@ -56,7 +56,7 @@ func TestQualifiersLeaveOneModuleUnchanged(t *testing.T) {
 			}},
 			Main: []ir.Stmt{
 				&ir.VarDecl{Name: "count", Type: ir.Number, Init: &ir.NumberLit{Value: 0}, Mutable: true},
-				&ir.ExprStmt{Expr: &ir.ConsoleLog{Arg: &ir.Call{Callee: "bump", Module: file, Typ: ir.Number}}},
+				&ir.ExprStmt{Expr: &ir.ConsoleLog{Args: []ir.Expr{&ir.Call{Callee: "bump", Module: file, Typ: ir.Number}}}},
 			},
 		}
 	}

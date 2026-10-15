@@ -17,7 +17,7 @@ var (
 )
 
 func logStr(s string) ir.Stmt {
-	return &ir.ExprStmt{Span: span, Expr: &ir.ConsoleLog{Arg: &ir.StringLit{Value: s, Span: span}, Span: span}}
+	return &ir.ExprStmt{Span: span, Expr: &ir.ConsoleLog{Args: []ir.Expr{&ir.StringLit{Value: s, Span: span}}, Span: span}}
 }
 
 func ident(name string, t ir.Type) ir.Expr { return &ir.Ident{Name: name, Typ: t, Span: span} }
