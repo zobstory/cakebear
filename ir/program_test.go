@@ -108,6 +108,9 @@ func everyNode() *Module {
 			&VarDecl{Name: "s", Init: &Binary{Op: OpAdd, Left: &StringLit{}, Right: &Ident{Name: "x"}}},
 			&Assign{Name: "s", Value: &Call{Callee: "g", Args: []Expr{lit, &NullLit{}, &UndefinedLit{}}}},
 			&ExprStmt{Expr: &ConsoleLog{Arg: &HostProp{Prop: HostURL, Recv: &HostCall{Op: HostCreateServer}}}},
+			&FieldSet{Object: &ObjectLit{Fields: []FieldInit{{Value: &FieldGet{Object: &Ident{Name: "o"}}}}}, Value: &NumberLit{}},
+			&IndexSet{Array: &ArrayLit{Elems: []Expr{&IndexGet{Array: &Ident{Name: "xs"}, Index: &NumberLit{}}}}, Index: &NumberLit{}, Value: &NumberLit{}},
+			&ForOf{Name: "x", Array: &ArrayOp{Method: ArrayMap, Array: &Ident{Name: "xs"}, Args: []Expr{&FuncLit{}}}},
 		},
 	}
 }
@@ -120,7 +123,8 @@ func TestInspectVisitsEveryNode(t *testing.T) {
 
 	for _, want := range []string{
 		"*ir.VarDecl", "*ir.Assign", "*ir.If", "*ir.While", "*ir.Return", "*ir.ExprStmt",
-		"*ir.For", "*ir.Break", "*ir.Continue",
+		"*ir.For", "*ir.Break", "*ir.Continue", "*ir.FieldSet", "*ir.IndexSet", "*ir.ForOf",
+		"*ir.ObjectLit", "*ir.ArrayLit", "*ir.FieldGet", "*ir.IndexGet", "*ir.ArrayOp",
 		"*ir.NumberLit", "*ir.StringLit", "*ir.BoolLit", "*ir.NullLit", "*ir.UndefinedLit",
 		"*ir.Ident", "*ir.Binary", "*ir.Unary", "*ir.Call", "*ir.FuncLit", "*ir.Await",
 		"*ir.NewPromise", "*ir.ConsoleLog", "*ir.Convert", "*ir.HostCall", "*ir.HostProp",
@@ -133,6 +137,25 @@ func TestInspectVisitsEveryNode(t *testing.T) {
 	if len(seen) < 3 || seen[0] != "*ir.Return" || seen[1] != "*ir.Convert" || seen[2] != "*ir.NumberLit" {
 		t.Errorf("visit order starts %q, want the function's Return, Convert, NumberLit", seen[:min(3, len(seen))])
 	}
+}
+
+// strayExpr is an expression type Inspect has no case for.
+type strayExpr struct{}
+
+func (strayExpr) isExpr()        {}
+func (strayExpr) ExprType() Type { return Invalid }
+func (strayExpr) ExprSpan() Span { return Span{} }
+
+func TestInspectPanicsOnAnUnknownExpression(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "no case for expression ir.strayExpr") {
+			t.Errorf("recovered %v, want Inspect's panic naming the type", r)
+		}
+	}()
+	// Below an object literal, which is where a new node would first sit.
+	Inspect(&Module{Main: []Stmt{&ExprStmt{Expr: &ObjectLit{Fields: []FieldInit{{Value: strayExpr{}}}}}}}, func(any) {})
 }
 
 // strayStmt is a statement type Inspect has no case for.

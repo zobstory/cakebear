@@ -47,6 +47,16 @@ func inspectStmt(s Stmt, visit func(node any)) {
 		inspectStmts(s.Post, visit)
 		inspectStmts(s.Body, visit)
 	case *Break, *Continue:
+	case *FieldSet:
+		inspectExpr(s.Object, visit)
+		inspectExpr(s.Value, visit)
+	case *IndexSet:
+		inspectExpr(s.Array, visit)
+		inspectExpr(s.Index, visit)
+		inspectExpr(s.Value, visit)
+	case *ForOf:
+		inspectExpr(s.Array, visit)
+		inspectStmts(s.Body, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for statement %T", s))
 	}
@@ -83,6 +93,20 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExprs(e.Args, visit)
 	case *HostProp:
 		inspectExpr(e.Recv, visit)
+	case *ObjectLit:
+		for _, f := range e.Fields {
+			inspectExpr(f.Value, visit)
+		}
+	case *ArrayLit:
+		inspectExprs(e.Elems, visit)
+	case *FieldGet:
+		inspectExpr(e.Object, visit)
+	case *IndexGet:
+		inspectExpr(e.Array, visit)
+		inspectExpr(e.Index, visit)
+	case *ArrayOp:
+		inspectExpr(e.Array, visit)
+		inspectExprs(e.Args, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for expression %T", e))
 	}

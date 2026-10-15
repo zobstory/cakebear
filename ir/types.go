@@ -4,7 +4,8 @@ import "strings"
 
 // Kind says which family a Type belongs to.
 //
-// It is today's primitive enum, widened by KindFunc, KindHost and KindPromise.
+// It is today's primitive enum, widened by KindFunc, KindHost, KindPromise,
+// KindObject and KindArray.
 // The order is load-bearing in one place: IsExtension tests the
 // KindInt32..KindBase64 range, so new kinds are appended after KindBase64
 // rather than inserted before it.
@@ -37,6 +38,13 @@ const (
 	// KindPromise is TypeScript's own Promise<T>, not a bundled copy. Elem is
 	// T, what the promise resolves to; Promise<void> has Elem Void.
 	KindPromise
+	// KindObject is an object of an exact shape: Shape says which (M4 plan
+	// D2, D3). An object is a reference, as in JavaScript.
+	KindObject
+	// KindArray is T[], and ReadonlyArray<T>, whose readonliness is checked
+	// at compile time only (D7). Elem is T. An array is a reference too, so a
+	// push is seen through every alias.
+	KindArray
 )
 
 // HostType names a value the host runtime owns, such as the object a Node
@@ -95,15 +103,17 @@ func (s *Signature) Equal(o *Signature) bool {
 // and lower/ refuses anything outside it rather than guessing.
 //
 // Only the field that Kind selects is meaningful: Host for KindHost, Sig for
-// KindFunc, Elem for KindPromise, none for a primitive. The primitives are
-// package-level values (Number, String, ...), so `t == ir.Number` and
-// `switch t { case ir.Number: }` keep working. Between two function or promise
-// types == compares the pointers, so use Equal there.
+// KindFunc, Elem for KindPromise and KindArray, Shape for KindObject, none for
+// a primitive. The primitives are package-level values (Number, String, ...),
+// so `t == ir.Number` and `switch t { case ir.Number: }` keep working. Between
+// two function, promise or array types == compares the pointers, so use Equal
+// there.
 type Type struct {
-	Kind Kind
-	Host HostType   // KindHost only
-	Sig  *Signature // KindFunc only
-	Elem *Type      // KindPromise only
+	Kind  Kind
+	Host  HostType   // KindHost only
+	Sig   *Signature // KindFunc only
+	Elem  *Type      // KindPromise and KindArray only
+	Shape *Shape     // KindObject only: interned, so == on it is structural
 }
 
 var (
@@ -139,6 +149,17 @@ func PromiseOf(elem Type) Type {
 	return Type{Kind: KindPromise, Elem: &elem}
 }
 
+// ArrayOf returns elem[].
+func ArrayOf(elem Type) Type {
+	return Type{Kind: KindArray, Elem: &elem}
+}
+
+// ObjectOf returns the type of an object of shape s, which must come from the
+// program's Shapes.
+func ObjectOf(s *Shape) Type {
+	return Type{Kind: KindObject, Shape: s}
+}
+
 // ResolveType is the type of a Promise executor's resolve parameter, for a
 // promise of elem: `(elem) => void`, or `() => void` for Promise<void>.
 //
@@ -164,8 +185,10 @@ func ExecutorType(elem Type) Type {
 // Primitives are equal when their kinds are. Host types are equal when they
 // name the same HostType. Function types are equal when their parameters and
 // results are, however the two Signatures were built; == would compare the
-// pointers and call two identical signatures different. Promise types are
-// equal when their element types are, for the same reason.
+// pointers and call two identical signatures different. Promise and array
+// types are equal when their element types are, for the same reason. Object
+// types are equal when they have the same shape, which interning makes the
+// same as having the same fields.
 func (t Type) Equal(u Type) bool {
 	if t.Kind != u.Kind {
 		return false
@@ -175,11 +198,13 @@ func (t Type) Equal(u Type) bool {
 		return t.Host == u.Host
 	case KindFunc:
 		return t.Sig.Equal(u.Sig)
-	case KindPromise:
+	case KindPromise, KindArray:
 		if t.Elem == nil || u.Elem == nil {
 			return t.Elem == u.Elem
 		}
 		return t.Elem.Equal(*u.Elem)
+	case KindObject:
+		return t.Shape == u.Shape
 	default:
 		return true
 	}
@@ -232,6 +257,16 @@ func (t Type) String() string {
 			return "Promise<invalid>"
 		}
 		return "Promise<" + t.Elem.String() + ">"
+	case KindArray:
+		if t.Elem == nil {
+			return "invalid[]"
+		}
+		if t.Elem.Kind == KindFunc {
+			return "(" + t.Elem.String() + ")[]"
+		}
+		return t.Elem.String() + "[]"
+	case KindObject:
+		return t.Shape.String()
 	default:
 		return "invalid"
 	}
