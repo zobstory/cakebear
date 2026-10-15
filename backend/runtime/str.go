@@ -251,13 +251,9 @@ func StrConcat(parts ...string) string {
 	case 1:
 		return parts[0]
 	}
-	total, joins, high := 0, false, false
+	total := 0
 	for _, p := range parts {
 		total += len(p)
-		if p != "" {
-			joins = joins || high && startsLow(p)
-			high = endsHigh(p)
-		}
 	}
 	if total > stringLimit { // a code unit is at least a byte
 		units := 0
@@ -266,14 +262,51 @@ func StrConcat(parts ...string) string {
 		}
 		checkLength(float64(units))
 	}
-	if !joins {
-		return strings.Join(parts, "")
+	return joinStrings(parts, "")
+}
+
+// joinStrings is strings.Join, but a high half at the end of one piece, an
+// element or the separator, joins a low half at the start of the next, as
+// the code units would pair in JavaScript. Pieces with no halves at their
+// ends, which is nearly all of them, go through strings.Join.
+func joinStrings(items []string, sep string) string {
+	if !joinsHalves(items, sep) {
+		return strings.Join(items, sep)
 	}
-	b := strBuilder{b: make([]byte, 0, total)}
-	for _, p := range parts {
-		b.str(p)
+	n := len(sep) * (len(items) - 1)
+	for _, s := range items {
+		n += len(s)
+	}
+	b := strBuilder{b: make([]byte, 0, n)}
+	for i, s := range items {
+		if i > 0 {
+			b.str(sep)
+		}
+		b.str(s)
 	}
 	return b.string()
+}
+
+// joinsHalves reports whether joining items with sep puts a high half
+// before a low one anywhere, an empty piece between them or not.
+func joinsHalves(items []string, sep string) bool {
+	sepLow, sepHigh := startsLow(sep), endsHigh(sep)
+	high := false
+	for i, s := range items {
+		if i > 0 && sep != "" {
+			if high && sepLow {
+				return true
+			}
+			high = sepHigh
+		}
+		if s != "" {
+			if high && startsLow(s) {
+				return true
+			}
+			high = endsHigh(s)
+		}
+	}
+	return false
 }
 
 // toInteger is ToIntegerOrInfinity: NaN is 0, and anything else is

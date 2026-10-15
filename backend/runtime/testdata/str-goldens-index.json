@@ -115,15 +115,21 @@
       "count": 98,
       "throws": 0
     },
-    "LOG": {
+    "JOIN": {
       "first": 31676,
-      "last": 31771,
+      "last": 32347,
+      "count": 672,
+      "throws": 0
+    },
+    "LOG": {
+      "first": 32348,
+      "last": 32443,
       "count": 96,
       "throws": 0
     },
     "RANDOM": {
-      "first": 31772,
-      "last": 43771,
+      "first": 32444,
+      "last": 44443,
       "count": 12000,
       "throws": 67
     }

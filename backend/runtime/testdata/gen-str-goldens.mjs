@@ -22,6 +22,8 @@
 //   uint     the same for a u64 (UintToString)
 //   log      console.log(...args): the bytes Node writes, without "\n"
 //   inspect  util.inspect(args[0])
+//   join     args[0].join(args[1]), an array of strings, or of arrays of
+//            them, and a separator (Array.Join)
 //
 // The index file maps each section to its 1-based line range, and records
 // JavaScript's whitespace, every code point trim removes, found by trying
@@ -91,6 +93,7 @@ function run(fn, args) {
     case 'uint': return BigInt.asUintN(64, BigInt(args[0])).toString();
     case 'log': return util.format(...args).toWellFormed();
     case 'inspect': return util.inspect(args[0]);
+    case 'join': return args[0].join(args[1]);
   }
   throw new Error(`unknown fn ${fn}`);
 }
@@ -357,6 +360,26 @@ function sectionINT() {
   for (const v of uints) add('INT', 'uint', String(v));
 }
 
+// join, where a pair split between pieces, elements or the separator,
+// pairs again.
+function sectionJOIN() {
+  const H = '\uD83D';
+  const L = '\uDE00';
+  const PIECES = ['', 'a', H, L, '😀', 'é', 'a' + H, L + 'b', L + H];
+  for (const sep of ['', ',', '-', H, L, L + H, '😀']) {
+    for (const a of PIECES) {
+      add('JOIN', 'join', [a], sep);
+      for (const b of PIECES) add('JOIN', 'join', [a, b], sep);
+    }
+    add('JOIN', 'join', [], sep);
+    add('JOIN', 'join', [H, '', L], sep);
+    add('JOIN', 'join', [H, '', '', L, H], sep);
+    add('JOIN', 'join', [[H], [L]], sep);
+    add('JOIN', 'join', [[H, L], [L]], sep);
+    add('JOIN', 'join', [[], [L], [H]], sep);
+  }
+}
+
 // console.log and util.inspect of strings holding halves.
 function sectionLOG() {
   const H = '\uD83D';
@@ -473,6 +496,7 @@ sectionTRIM();
 sectionCOMPARE();
 sectionCONCAT();
 sectionINT();
+sectionJOIN();
 sectionLOG();
 const deliberate = entries.length;
 const RANDOM_TARGET = deliberate + RANDOM;

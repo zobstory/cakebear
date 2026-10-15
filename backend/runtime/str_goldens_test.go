@@ -88,6 +88,7 @@ var strFns = map[string]func(a strArgs) any{
 	// TestLogWritesWellFormed holds Log to that.
 	"log":     func(a strArgs) any { return wellFormed(Format(a...)) },
 	"inspect": func(a strArgs) any { return Inspect(a[0]) },
+	"join":    func(a strArgs) any { return a[0].(interface{ Join(sep string) string }).Join(a.str(1)) },
 }
 
 // callStr runs one entry, with the message of a panic, if it panicked.
