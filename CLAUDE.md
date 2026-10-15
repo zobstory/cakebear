@@ -340,6 +340,19 @@ caller when the spawn left work behind (`runtime/spawn.go`, D11). What Node
 answers with `undefined` or a hole panics (D8, D9). `TestArraysMatchNode`
 holds it to Node.
 
+Step 7, the array methods, is done (D16). Lowering
+(`lower/array_methods.go`) gives each callback its slot's full signature,
+and `TestArrayMembersAreAccountedFor` fails when TypeScript's libs give
+`Array` a member that is neither lowered nor refused by name. The runtime
+(`runtime/array_methods.go`, `array_join.go`) follows ECMA-262: length taken
+at the start, SameValueZero for `includes`, ToString for `join`,
+ToIntegerOrInfinity for `slice`, a stable sort. `TestArrayMethodsMatchNode`
+holds it to Node. Two silent bugs from before turned up and are fixed:
+- a named function with fewer parameters than the function type it fills
+  failed `go build` (`lower/adapt.go` wraps it);
+- arithmetic on two literals ran at Go's compile time, exactly, so
+  `0.1 + 0.2` printed 0.3 (`backend/emit_const.go`).
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -598,10 +611,22 @@ Since M4 step 6 (`lower/array.go`), arrays:
   arrays of arrays.
 
 Refused by name: tuples, holes, spread, `pop()` as a value (its
-`T | undefined` waits for M5), the iteration methods (step 7), a member a
-program adds to `Array`, an element access on anything but an array, an
-index that isn't a number, and `for…of` over a string, with `await`, with
-destructuring, or over an existing variable.
+`T | undefined` waits for M5), a member a program adds to `Array`, an
+element access on anything but an array, an index that isn't a number, and
+`for…of` over a string, with `await`, with destructuring, or over an
+existing variable.
+
+Since M4 step 7 (`lower/array_methods.go`), the array methods: `map`,
+`filter`, `join`, `includes`, `indexOf`, `slice`, `sort(compare)`, `some`,
+`every`, `forEach`, `reduce(fn, initial)` and `findIndex`. A callback may be
+written in place or named. A named function taking fewer parameters than its
+slot passes is adapted to it, here and wherever a function flows
+(`lower/adapt.go`). Refused by name: every other `Array` member (`find`,
+`at`, `shift` and `findLast` wait for M5's `T | undefined`), `sort()` with no
+comparator, `reduce()` with no initial value, a `thisArg`, `fromIndex`, a
+callback testing truthiness, `map` returning nothing, `includes` or
+`indexOf` over functions, and `join` over functions, promises, host values
+or objects with their own `toString` or `valueOf`.
 
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
@@ -712,6 +737,12 @@ int32/uint32 coercion (`a | b` becomes `float64(int32(a) | int32(b))`), and
 `5.000000`. Go's `%v` on a float64 is not JS's Number-to-String algorithm, so
 the runtime implements it. This is why `console.log` is a runtime call rather
 than a direct `fmt.Println`.
+
+*Since M4 step 7:* arithmetic. Go evaluates an expression of constants
+exactly, at compile time, so `0.1 + 0.2` emitted as is gives 0.3 and
+`1e308 * 10` won't compile. Arithmetic on two literals passes one through the
+identity function `ts_read`, which makes it a run-time float64 operation,
+rounded as JavaScript rounds it (`backend/emit_const.go`).
 
 **3. `async`/`await` maps to goroutines: parallel across requests, in Node's
 order within one.** JS async is concurrent but never parallel, so correct
@@ -854,6 +885,8 @@ not listed here that behaves differently is a bug.
 | Reading past an array's end, or a negative or fractional index (M4 D8) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2 |
 | Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |
+| A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce` or `findIndex` (D9) | skips the indices it removed (`findIndex` reads them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
+| The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,

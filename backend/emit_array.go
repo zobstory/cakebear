@@ -7,7 +7,7 @@ import (
 	"github.com/zobstory/cakebear/ir"
 )
 
-// Arrays (M4 plan D7–D9, D13): a TypeScript array is a *cakebearrt.Array[T],
+// Arrays (M4 plan D7–D9, D13, D16): a TypeScript array is a *cakebearrt.Array[T],
 // a reference to its elements, and every access goes through a method that
 // checks what Node would answer with undefined or a hole (runtime/array.go).
 // A method call is a call, so Go orders an element read among the calls of
@@ -50,8 +50,13 @@ func (e *emitter) indexSet(s *ir.IndexSet) string {
 	return fmt.Sprintf("%s.Set(%s, %s)", e.expr(s.Array), e.expr(s.Index), e.expr(s.Value))
 }
 
-// arrayOp emits the array members step 6 lowers. The iteration methods are
-// step 7's, and reported until then.
+// arrayOp emits an array member (D16), each a method or a function of the
+// runtime's (runtime/array.go, array_methods.go, array_join.go). The array
+// is evaluated first and then each argument, in source order, as JavaScript
+// evaluates them: they are a Go call's receiver and arguments, or all its
+// arguments, and with a call among them full has ordered the reads
+// (order.go). A method that takes a callback passes the domain the call
+// runs in, which the callback runs in too.
 func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 	arr := e.expr(x.Array)
 	args := make([]string, len(x.Args))
@@ -67,8 +72,70 @@ func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 		return arr + ".Push(" + strings.Join(args, ", ") + ")"
 	case ir.ArrayPop:
 		return arr + ".Pop()"
+	case ir.ArraySlice:
+		return arr + ".Slice(" + strings.Join(args, ", ") + ")"
+	case ir.ArrayJoin:
+		elem := *x.Array.ExprType().Elem
+		if why := unjoinable(elem); why != "" {
+			return e.cannot(x.Span, "the backend cannot join an array of "+elem.String()+" yet: "+why)
+		}
+		if len(args) == 0 {
+			args = []string{`","`}
+		}
+		return arr + ".Join(" + args[0] + ")"
+	case ir.ArrayIncludes, ir.ArrayIndexOf:
+		// A function value has no == in Go, and nothing to compare but
+		// identity in JavaScript; lowering refuses searching for one.
+		if elem := *x.Array.ExprType().Elem; elem.Kind == ir.KindFunc {
+			return e.cannot(x.Span, "the backend cannot emit "+x.Method.String()+" on an array of "+elem.String()+": Go can't compare functions")
+		}
+		e.usesRuntime = true
+		return rtPkg + "." + arrayFuncs[x.Method] + "(" + arr + ", " + args[0] + ")"
+	case ir.ArrayMap, ir.ArrayReduce:
+		e.usesRuntime = true
+		return rtPkg + "." + arrayFuncs[x.Method] + "(" + strings.Join(append([]string{e.dom(), arr}, args...), ", ") + ")"
+	}
+	if method, ok := callbackMethods[x.Method]; ok {
+		return arr + "." + method + "(" + e.dom() + ", " + args[0] + ")"
 	}
 	return e.cannot(x.Span, "the backend cannot emit the array method "+x.Method.String()+" yet")
+}
+
+// callbackMethods are the runtime's methods for the array members taking a
+// callback alone, and arrayFuncs the functions for those that are
+// functions: Map and Reduce, whose results have a type parameter of their
+// own, and Includes and IndexOf, which need their elements comparable.
+var (
+	callbackMethods = map[ir.ArrayMethod]string{
+		ir.ArrayFilter: "Filter", ir.ArrayForEach: "ForEach", ir.ArraySome: "Some",
+		ir.ArrayEvery: "Every", ir.ArrayFindIndex: "FindIndex", ir.ArraySort: "Sort",
+	}
+	arrayFuncs = map[ir.ArrayMethod]string{
+		ir.ArrayMap: "Map", ir.ArrayReduce: "Reduce", ir.ArrayIncludes: "Includes", ir.ArrayIndexOf: "IndexOf",
+	}
+)
+
+// unjoinable says why join can't convert an element of type t to a string,
+// or returns "" if it can (runtime.joinString). A function's string is its
+// source text, a promise's and a host value's are their classes', and an
+// object with a toString of its own has ToString call it.
+func unjoinable(t ir.Type) string {
+	switch t.Kind {
+	case ir.KindNumber, ir.KindString, ir.KindBoolean, ir.KindInt32, ir.KindInt64,
+		ir.KindUint32, ir.KindUint64, ir.KindFloat32, ir.KindBase64:
+		return ""
+	case ir.KindArray:
+		if t.Elem == nil {
+			return "it has no element type"
+		}
+		return unjoinable(*t.Elem)
+	case ir.KindObject:
+		if t.Shape != nil && t.Shape.Index("toString") >= 0 {
+			return "an object with its own toString"
+		}
+		return ""
+	}
+	return "a " + t.String() + " has no string the runtime can give"
 }
 
 // forOf is `for (const x of xs)`. xs is evaluated once, as JavaScript

@@ -15,11 +15,10 @@ import (
 // expr lowers an expression, returning nil when it could not be lowered. A nil
 // return always means a diagnostic was recorded.
 func (l *lowerer) expr(n *ast.Node) ir.Expr {
-	v := l.exprOf(n)
-	if v != nil && !l.exact(n, v) {
-		return nil
+	if v := l.exprOf(n); v != nil {
+		return l.fit(n, v)
 	}
-	return v
+	return nil
 }
 
 // exprOf lowers n, for expr, which then holds it to its slot.
