@@ -210,6 +210,9 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 		}
 		return &ir.HostProp{Prop: prop, Recv: recv, Typ: l.typeOf(n), Span: l.span(n)}
 	}
+	if v, ok := l.fieldGet(n); ok {
+		return v
+	}
 	switch {
 	case augmented:
 		l.failf(n, "%s is augmented outside node:http, which is not supported yet", access.Name().Text())

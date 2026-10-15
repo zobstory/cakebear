@@ -36,8 +36,9 @@ import (
 // (D10): the runtime's server and response types are not goroutine-safe, and
 // a handler or a spawned function reaching one made outside it would be using
 // it from two goroutines at once.
-// ⚠ Objects and arrays will be the same (a const array is still mutable
-// through `xs.push(…)`), and this rule must grow with them.
+// Objects and arrays are the same (M4 plan D10): a const object's fields
+// can still change, and so can a const array's elements. A concurrent
+// function may use only the objects and arrays it creates itself.
 //
 // The same rule holds a spawned function to what it may share with its caller
 // (spawn.go); concurrency says which of the two a diagnostic is about.
@@ -58,7 +59,10 @@ type sharedUse struct {
 	promise bool // the binding holds a promise
 	host    bool // the binding holds a host value, such as a response
 	opaque  bool // the binding holds a function value the rule can't see into
-	at      *ast.Node
+	// aggregate is "object" or "array" when the binding holds one: shared
+	// state, whether the binding is a const or a let.
+	aggregate string
+	at        *ast.Node
 }
 
 // concurrency is the wording for one kind of function the runtime runs in
@@ -70,6 +74,7 @@ type concurrency struct {
 	share    string // how a changed binding is shared
 	sharedBy string // the same, for a callee's binding
 	outside  string // where to copy a binding to
+	inside   string // where to create an object instead
 	across   string // where a promise or host value may not cross
 }
 
@@ -77,12 +82,13 @@ var (
 	handlerRuns = concurrency{
 		kind: "request handler", runs: "this handler runs on many requests at once",
 		named: "the handler `%s` runs on many requests at once", share: "which they all share",
-		sharedBy: "shared by them all", outside: "outside the handler", across: "between requests",
+		sharedBy: "shared by them all", outside: "outside the handler", inside: "inside the handler", across: "between requests",
 	}
 	spawnRuns = concurrency{
 		kind: "spawned function", runs: "this spawned function runs in parallel with its caller",
 		named: "the spawned function `%s` runs in parallel with its caller", share: "which its caller shares",
-		sharedBy: "shared with its caller", outside: "outside the spawned function", across: "with a spawned function",
+		sharedBy: "shared with its caller", outside: "outside the spawned function", inside: "inside the spawned function",
+		across: "with a spawned function",
 	}
 )
 
@@ -169,7 +175,7 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 					kind := rc.l.typeOf(n).Kind
 					uses = append(uses, sharedUse{
 						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
-						promise: kind == ir.KindPromise, host: kind == ir.KindHost, at: n,
+						promise: kind == ir.KindPromise, host: kind == ir.KindHost, aggregate: aggregateWord(kind), at: n,
 					})
 				} else if c, ok := rc.callables[sym]; ok && !within(c.node, fn) {
 					refs = append(refs, reference{sym: sym, at: n})
@@ -392,10 +398,24 @@ func (u sharedUse) label(from *ast.SourceFile) string {
 	return "`" + u.name + "`"
 }
 
+// aggregateWord names the aggregate a binding of kind k holds, or is "".
+func aggregateWord(k ir.Kind) string {
+	switch k {
+	case ir.KindObject:
+		return "object"
+	case ir.KindArray:
+		return "array"
+	}
+	return ""
+}
+
 func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 	switch name := u.label(from); {
 	case u.write:
 		return "change " + name + ", " + who.share
+	case u.aggregate != "":
+		return "use " + name + ", an " + u.aggregate + " created outside it; an " + u.aggregate + " can't be shared " + who.across +
+			" yet: create it " + who.inside + ", or in a function that returns a new one"
 	case u.promise:
 		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
 	case u.host:
@@ -412,6 +432,8 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 	switch name := u.label(from); {
 	case u.write:
 		return "changes " + name + ", " + who.sharedBy
+	case u.aggregate != "":
+		return "uses " + name + ", an " + u.aggregate + " created " + who.outside
 	case u.promise:
 		return "uses " + name + ", a promise created " + who.outside
 	case u.host:

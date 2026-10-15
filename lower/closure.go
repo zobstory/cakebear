@@ -154,7 +154,7 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 func (l *lowerer) failClosureType(n *ast.Node) {
 	for _, p := range n.Parameters() {
 		if !storable(l.typeOf(p)) {
-			l.failf(p, "parameter %s has a type the backend cannot represent yet", p.Name().Text())
+			l.failf(p, "parameter %s has a type the backend cannot represent yet%s", p.Name().Text(), l.reason())
 			return
 		}
 	}

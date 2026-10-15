@@ -66,6 +66,11 @@ type lowerer struct {
 	// resolvers holds the type of each Promise executor's resolve parameter,
 	// which the checker types as a union the IR cannot hold (async.go).
 	resolvers map[*ast.Symbol]ir.Type
+	// why says what the type mapped last can't represent, for the message
+	// refusing it (object.go); typeDepth tells the outermost mapping, which
+	// starts it afresh, from those it makes of the type's parts.
+	why       string
+	typeDepth int
 }
 
 // module lowers the lowerer's file into a module of the program.
@@ -148,6 +153,11 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 	if t == nil {
 		return ir.Invalid
 	}
+	if l.typeDepth == 0 {
+		l.why = ""
+	}
+	l.typeDepth++
+	defer func() { l.typeDepth-- }()
 
 	// cakebear's extensions are checked first: they are intersections whose
 	// primitive half would otherwise match below and lose the brand, turning
@@ -178,6 +188,16 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		}
 		if h := l.hostType(t); h != ir.HostNone {
 			return ir.HostOf(h)
+		}
+		switch {
+		case flags&checker.TypeFlagsUnion != 0:
+			l.because("union types are not supported yet")
+			return ir.Invalid
+		case flags&checker.TypeFlagsIntersection != 0:
+			l.because("intersection types are not supported yet")
+			return ir.Invalid
+		case l.isObjectType(t):
+			return l.objectType(t)
 		}
 		return l.funcType(t)
 	}
@@ -226,7 +246,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 			}
 			t := l.typeOf(p)
 			if t == ir.Invalid {
-				l.failf(p, "parameter %s has a type the backend cannot represent yet", param.Name().Text())
+				l.failf(p, "parameter %s has a type the backend cannot represent yet%s", param.Name().Text(), l.reason())
 				continue
 			}
 			fn.Params = append(fn.Params, ir.Param{
@@ -241,7 +261,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 	if decl.Type != nil {
 		fn.Result = l.typeOf(decl.Type)
 		if fn.Result == ir.Invalid {
-			l.failf(decl.Type, "function %s returns a type the backend cannot represent yet", fn.Name)
+			l.failf(decl.Type, "function %s returns a type the backend cannot represent yet%s", fn.Name, l.reason())
 		}
 	}
 	if fn.Async = isAsync(n); fn.Async {
@@ -379,8 +399,8 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 		}
 		t := l.typeOf(decl.Name())
 		if t == ir.Invalid {
-			if !l.explainInitializer(decl.Initializer) {
-				l.failf(d, "%s has a type the backend cannot represent yet", name)
+			if why := l.reason(); !l.explainInitializer(decl.Initializer) {
+				l.failf(d, "%s has a type the backend cannot represent yet%s", name, why)
 			}
 			continue
 		}
@@ -424,6 +444,9 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 }
 
 func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stmt {
+	if out, ok := l.fieldSet(stmt, bin.Left, bin.Right); ok {
+		return out
+	}
 	if bin.Left.Kind != ast.KindIdentifier {
 		l.failf(stmt, "only assignment to a simple variable is supported yet")
 		return nil
