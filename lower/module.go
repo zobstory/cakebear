@@ -46,6 +46,8 @@ func isTopLevel(decl *ast.Node) bool {
 	switch decl.Kind {
 	case ast.KindFunctionDeclaration:
 		return decl.Parent != nil && decl.Parent.Kind == ast.KindSourceFile
+	case ast.KindBindingElement:
+		return isTopLevel(bindingRoot(decl))
 	case ast.KindVariableDeclaration:
 		list := decl.Parent
 		if list == nil || list.Parent == nil || list.Parent.Kind != ast.KindVariableStatement {
@@ -133,7 +135,7 @@ func (l *lowerer) exportedVariables(n *ast.Node) {
 
 // isLet reports whether sym is a variable declared with let.
 func isLet(sym *ast.Symbol) bool {
-	decl := sym.ValueDeclaration()
+	decl := bindingRoot(sym.ValueDeclaration())
 	return decl != nil && decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil &&
 		decl.Parent.Flags&ast.NodeFlagsLet != 0
 }

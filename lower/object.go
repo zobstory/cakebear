@@ -178,10 +178,7 @@ func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 	out := &ir.ObjectLit{Typ: t, Span: l.span(n)}
 	for _, p := range n.AsObjectLiteralExpression().Properties.Nodes {
 		switch p.Kind {
-		case ast.KindPropertyAssignment:
-		case ast.KindShorthandPropertyAssignment:
-			l.failf(p, "a shorthand property is not supported yet; write `%s: %s`", p.Name().Text(), p.Name().Text())
-			return nil
+		case ast.KindPropertyAssignment, ast.KindShorthandPropertyAssignment:
 		case ast.KindSpreadAssignment:
 			l.failf(p, "spreading into an object literal is not supported yet")
 			return nil
@@ -201,7 +198,12 @@ func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 			l.invalidf(p, "%s has no property %s", shape, name)
 			return nil
 		}
-		value := l.expr(p.AsPropertyAssignment().Initializer)
+		var value ir.Expr
+		if p.Kind == ast.KindShorthandPropertyAssignment {
+			value = l.fitField(p, l.shorthand(p), shape.Fields[i].Type)
+		} else {
+			value = l.expr(p.AsPropertyAssignment().Initializer)
+		}
 		if value == nil {
 			return nil
 		}

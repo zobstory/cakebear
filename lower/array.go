@@ -271,10 +271,6 @@ func (l *lowerer) forOf(n *ast.Node) []ir.Stmt {
 		return nil
 	}
 	decl := list.Declarations.Nodes[0]
-	if decl.Name().Kind != ast.KindIdentifier {
-		l.failf(decl, "destructuring is not supported yet")
-		return nil
-	}
 	t := l.typeOf(s.Expression)
 	if t.Kind != ir.KindArray {
 		l.failf(s.Expression, "for…of over a %s is not supported yet; only over an array", t)
@@ -284,9 +280,20 @@ func (l *lowerer) forOf(n *ast.Node) []ir.Stmt {
 	if arr == nil {
 		return nil
 	}
-	body := l.statementBody(s.Statement)
+	mutable := list.Flags&ast.NodeFlagsConst == 0
+	name := bindingText(decl.Name())
+	var prologue []ir.Stmt
+	if decl.Name().Kind != ast.KindIdentifier {
+		// `for (const { a, b } of xs)`: the element gets a name of its own,
+		// and the body opens by binding the pattern's names from it.
+		name = l.tempName("element")
+		source := &ir.Ident{Name: name, Stable: true, Typ: *t.Elem, Span: l.span(decl)}
+		if prologue = l.bindPattern(decl.Name(), source, mutable); prologue == nil {
+			return nil
+		}
+	}
+	body := append(prologue, l.statementBody(s.Statement)...)
 	return []ir.Stmt{&ir.ForOf{
-		Name: decl.Name().Text(), Type: *t.Elem, Mutable: list.Flags&ast.NodeFlagsConst == 0,
-		Array: arr, Body: body, Span: l.span(n),
+		Name: name, Type: *t.Elem, Mutable: mutable, Array: arr, Body: body, Span: l.span(n),
 	}}
 }

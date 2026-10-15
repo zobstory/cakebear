@@ -24,6 +24,24 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 	return v
 }
 
+// fitField holds v, the value of a shorthand property, to its field's type
+// t, as fit holds an expression to its contextual type: a shorthand has no
+// expression of its own for the checker to give one.
+func (l *lowerer) fitField(n *ast.Node, v ir.Expr, t ir.Type) ir.Expr {
+	if v == nil || v.ExprType().Equal(t) {
+		return v
+	}
+	switch got := v.ExprType(); {
+	case got.Kind == ir.KindFunc && t.Kind == ir.KindFunc:
+		return l.adapt(n, v, t)
+	case got.Kind == ir.KindObject && t.Kind == ir.KindObject:
+		l.failf(n, "a %s can't be used as a %s: an object has exactly the fields of its type in cakebear%s", got, t, extraFields(got.Shape, t.Shape))
+	default:
+		l.failf(n, "a %s can't be used as a %s", got, t)
+	}
+	return nil
+}
+
 // slotType is the IR type of the slot n fills, or ir.Invalid where there is
 // none, or none the IR can hold.
 func (l *lowerer) slotType(n *ast.Node) ir.Type {
