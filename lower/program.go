@@ -159,9 +159,28 @@ func (p *program) erased(decl *ast.ImportDeclaration) bool {
 }
 
 // imported returns the module an import declaration names, when it is one of
-// the program's own: a TypeScript module, not a declaration file, named by a
-// relative path. Anything else is nil, and importDecl says why.
+// the program's own: a TypeScript module, not a declaration file or a
+// JavaScript one, named by a relative path. Anything else is nil, and
+// importDecl says why.
 func (p *program) imported(decl *ast.ImportDeclaration) *ast.SourceFile {
+	if f := p.importedFile(decl); f != nil && !ast.IsInJSFile(f.AsNode()) {
+		return f
+	}
+	return nil
+}
+
+// importedScript returns the JavaScript module an import declaration names
+// by a relative path, which the program can't compile, or nil.
+func (p *program) importedScript(decl *ast.ImportDeclaration) *ast.SourceFile {
+	if f := p.importedFile(decl); f != nil && ast.IsInJSFile(f.AsNode()) {
+		return f
+	}
+	return nil
+}
+
+// importedFile is the source file, TypeScript or JavaScript, that an import
+// names by a relative path, or nil.
+func (p *program) importedFile(decl *ast.ImportDeclaration) *ast.SourceFile {
 	spec := decl.ModuleSpecifier
 	if spec == nil || spec.Kind != ast.KindStringLiteral || !tspath.IsExternalModuleNameRelative(spec.Text()) {
 		return nil

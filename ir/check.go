@@ -83,7 +83,10 @@ func (p *Program) checkNode(node any) error {
 	case *VarDecl:
 		return p.checkType(n.Type)
 	case *FuncLit:
-		return p.checkParams(n.Params)
+		if err := p.checkParams(n.Params); err != nil {
+			return err
+		}
+		return checkReturns(n.Body, returnType(n.Result, n.Async))
 	case *ObjectLit:
 		return p.checkObjectLit(n)
 	case *ArrayLit:

@@ -224,10 +224,11 @@ type ConsoleLog struct {
 }
 
 // Convert is an explicit conversion to one of cakebear's extension types,
-// written as `i32(x)` in source.
+// written as `i32(x)` in source, or the widening of one to a number where it
+// fills a number's slot, which TypeScript allows and Go doesn't.
 //
-// It is never inserted implicitly. TypeScript types `i32 + i32` as `number`
-// because adding two 32-bit integers can overflow, so widening back is
+// Narrowing is never inserted implicitly. TypeScript types `i32 + i32` as
+// `number` because adding two 32-bit integers can overflow, so going back is
 // something the author writes and the reader can see.
 type Convert struct {
 	Value Expr

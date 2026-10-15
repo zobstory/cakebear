@@ -269,6 +269,15 @@ return it (`find`, `at`, `pop()` as a value, `match`). Then **M6**, errors:
 per the per-phase rule below. M4's re-measurement of wx-next (check 9, below)
 is the first input to M5's plan.
 
+It also found four lowering bugs, fixed after M4 closed: a function with no
+result type was lowered as void whatever it returned; an extension type in a
+`number`'s slot reached Go unconverted; `import type` from a package was
+refused; and a relative import of a `.mjs` file was lowered as TypeScript,
+where it is refused by name now. Three of the four failed inside `go build`,
+so `Program.Validate` now holds every `return` to its function's result
+(`ir/returns.go`): the next such bug is reported as invalid IR at the return,
+before `go build` runs.
+
 M4, decided 2026-10-14 and done 2026-10-15, was objects and arrays, since a
 real program is several files of them: exact object types with required
 properties, arrays, `for…of`, the common array methods, printing both as Node
@@ -558,7 +567,10 @@ unpicking a patch.
 Each brand has a conversion function of the same name, and conversion is
 deliberately explicit: TypeScript types `i32 + i32` as `number`, because adding
 two 32-bit integers can overflow, so widening back is `i32(a + b)` and the
-truncation is visible to whoever reads it.
+truncation is visible to whoever reads it. The other way, an extension type
+filling a `number`'s slot (a variable, an argument, a result), TypeScript
+allows, so lowering widens it to a float64; it used to reach `go build`
+unconverted and fail there.
 
 **Literal arguments are validated at compile time.** `i32(3000000000)`,
 `i32(1.5)`, `u32(-1)` and `base64("!!!")` are all compile errors. This is the
@@ -613,7 +625,9 @@ Since M2 (`lower/async.go`):
 Since M3 (`lower/module.go`), across the program's own modules:
 - named imports, renamed or not (`import { a, b as c } from "./x"`), of the
   functions and `const`s a module declares at its top level;
-- `import "./x"` for its effects alone, and type-only imports and exports;
+- `import "./x"` for its effects alone, and type-only imports and exports,
+  from a package too (`import type { NextRequest } from "next/server"`), since
+  they evaluate nothing;
 - `export function`, `export const` and `export { x }`;
 - import cycles.
 
@@ -621,7 +635,7 @@ The program is the entry module and everything it imports, directly or not,
 by a relative path to a TypeScript file. A file nothing imports is checked but
 is no part of it.
 
-Refused by name: default imports and exports, `import * as` (except
+Refused by name: a JavaScript module (`./helper.mjs`), default imports and exports, `import * as` (except
 `node:http`), `export … from` and re-exporting an import, exporting a `let`
 (every importer would share a binding that can change), and a top-level
 `await` outside the entry module (M3 plan D8).

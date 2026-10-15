@@ -120,6 +120,9 @@ func (p *Program) Validate() error {
 			if err := p.checkType(fn.Result); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %s's result: %w", fn.Span, fn.Name, err))
 			}
+			if err := checkReturns(fn.Body, returnType(fn.Result, fn.Async)); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", fn.Name, err))
+			}
 		}
 		Inspect(m, func(node any) {
 			if err := p.checkNode(node); err != nil {
