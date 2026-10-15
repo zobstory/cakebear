@@ -120,8 +120,8 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 			op.Typ = ir.Number
 		}
 	case ir.ArrayJoin:
-		if elem.Kind == ir.KindFunc {
-			l.failf(n, "join of an array of functions is not supported: Node joins their source text")
+		if what, why := unjoinable(elem); what != "" {
+			l.failf(n, "join of an array of %s is not supported%s", what, why)
 			return nil
 		}
 		op.Typ = ir.String
@@ -172,6 +172,30 @@ func (l *lowerer) callback(n *ast.Node, slot ir.Type, drop bool) ir.Expr {
 		return nil
 	}
 	return l.adapt(n, v, slot)
+}
+
+// unjoinable names what in an element of type t join can't turn into a
+// string as Node does, and why, or returns "": a function, whose string is
+// its source text; a promise or a host value; and an object with its own
+// toString or valueOf, which Node's ToString calls rather than print
+// [object Object]. Arrays are joined in turn, so their elements are held to
+// the same.
+func unjoinable(t ir.Type) (what, why string) {
+	switch t.Kind {
+	case ir.KindFunc:
+		return "functions", ": Node joins their source text"
+	case ir.KindHost, ir.KindPromise:
+		return t.String() + " values", ""
+	case ir.KindArray:
+		if t.Elem != nil {
+			return unjoinable(*t.Elem)
+		}
+	case ir.KindObject:
+		if t.Shape != nil && (t.Shape.Index("toString") >= 0 || t.Shape.Index("valueOf") >= 0) {
+			return "objects with their own toString or valueOf", ": Node calls it"
+		}
+	}
+	return "", ""
 }
 
 // callbackResult is what a callback returns, by its own type.

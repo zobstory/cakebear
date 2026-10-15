@@ -74,6 +74,9 @@ func TestArrayMethodRefusals(t *testing.T) {
 		{"includes with fromIndex", xs + "const h: boolean = xs.includes(1, 1);\n", "includes's fromIndex is not supported yet"},
 		{"indexOf on functions", "const fs: (() => void)[] = [];\nconst f = (): void => {};\nconst i: number = fs.indexOf(f);\n", "indexOf on an array of functions is not supported"},
 		{"join of functions", "const fs: (() => void)[] = [];\nconst s: string = fs.join();\n", "join of an array of functions is not supported"},
+		{"join of nested functions", "const fs: (() => void)[][] = [];\nconst s: string = fs.join();\n", "join of an array of functions is not supported"},
+		{"join of objects with their own toString", "interface T { toString: () => string }\nconst ts: T[] = [{ toString: (): string => \"own\" }];\nconst s: string = ts.join();\n",
+			"join of an array of objects with their own toString or valueOf is not supported: Node calls it"},
 		{"a function value that isn't a name", "interface Box { f: (x: number) => number }\nconst b: Box = { f: (x: number): number => x };\n" + xs + "const ys: number[] = xs.map(b.f);\n",
 			"can't be used as a (number, number, number[]) => number yet: write an arrow function in its place that calls it"},
 	} {

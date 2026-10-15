@@ -351,7 +351,17 @@ func (e *emitter) binary(x *ir.Binary) string {
 	if !ok {
 		return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
 	}
-	return fmt.Sprintf("(%s %s %s)", e.expr(x.Left), op, e.expr(x.Right))
+	left, right := e.expr(x.Left), e.expr(x.Right)
+	// Go evaluates an expression of constants exactly, at compile time, where
+	// JavaScript rounds every step as a double: `0.1 + 0.2` would be 0.3,
+	// not 0.30000000000000004, and `1e308 * 10` and `0 / 0` compile errors
+	// rather than Infinity and NaN. Passing an operand through readFunc makes
+	// the operation a run-time float64 one; with one operand a variable, it
+	// is one already.
+	if arithmetic(x.Op) && (x.Typ == ir.Number || x.Typ == ir.Float32) && goConstant(x.Left) && goConstant(x.Right) {
+		left = e.runtimeValue(left)
+	}
+	return fmt.Sprintf("(%s %s %s)", left, op, right)
 }
 
 // goFloat renders a TypeScript number as a Go float64 literal.
