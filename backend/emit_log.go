@@ -29,6 +29,38 @@ func (e *emitter) consoleLog(x *ir.ConsoleLog) string {
 	return fmt.Sprintf("%s.Log(%s)", rtPkg, strings.Join(args, ", "))
 }
 
+// logFunc names the runtime function that prints a value of type t as
+// console.log does. ok is false for a type it has none for: printing
+// `undefined` instead would build, and print the wrong thing.
+func logFunc(t ir.Type) (string, bool) {
+	switch t {
+	case ir.Number:
+		return "LogNumber", true
+	case ir.String:
+		return "LogString", true
+	case ir.Boolean:
+		return "LogBool", true
+	case ir.Null:
+		return "LogNull", true
+	case ir.Undefined:
+		return "LogUndefined", true
+	case ir.Int32:
+		return "LogInt32", true
+	case ir.Int64:
+		return "LogInt64", true
+	case ir.Uint32:
+		return "LogUint32", true
+	case ir.Uint64:
+		return "LogUint64", true
+	case ir.Float32:
+		return "LogFloat32", true
+	case ir.Base64:
+		return "LogString", true
+	default:
+		return "", false
+	}
+}
+
 // inspectable reports whether the runtime's Inspect can print a value of
 // type t: a primitive, or an object or array of them. It can't print a
 // function, which has no name in Go for Node's `[Function: name]`, nor a

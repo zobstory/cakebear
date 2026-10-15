@@ -54,6 +54,11 @@ type emitter struct {
 	// against its calls, and usesRead once one was (order.go).
 	order    bool
 	usesRead bool
+	// shapeUse holds where the program first uses each shape, and layouts
+	// the key tables declared so far, by shape and key order (emit_object.go).
+	shapeUse    map[*ir.Shape]ir.Span
+	layouts     map[string]string
+	layoutDecls []string
 }
 
 // Emit renders a program as the contents of a Go main package. IR the backend
@@ -185,6 +190,9 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 	case *ir.Continue:
 		fmt.Fprintf(&e.buf, "%scontinue\n", pad)
 
+	case *ir.FieldSet:
+		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.fieldSet(s))
+
 	case *ir.Return:
 		switch {
 		case s.Value == nil && e.asyncVoid:
@@ -280,6 +288,12 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.ConsoleLog:
 		return e.consoleLog(x)
 
+	case *ir.ObjectLit:
+		return e.objectLit(x)
+
+	case *ir.FieldGet:
+		return e.fieldGet(x)
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)
@@ -350,6 +364,8 @@ func goType(t ir.Type) (string, bool) {
 		return goHostType(t.Host)
 	case ir.KindPromise:
 		return goPromiseType(t)
+	case ir.KindObject:
+		return goObjectType(t.Shape)
 	}
 	switch t {
 	case ir.Number:
@@ -401,38 +417,6 @@ func goFuncType(sig *ir.Signature) (string, bool) {
 		s += " " + result
 	}
 	return s, true
-}
-
-// logFunc names the runtime function that prints a value of type t as
-// console.log does. ok is false for a type it has none for: printing
-// `undefined` instead would build, and print the wrong thing.
-func logFunc(t ir.Type) (string, bool) {
-	switch t {
-	case ir.Number:
-		return "LogNumber", true
-	case ir.String:
-		return "LogString", true
-	case ir.Boolean:
-		return "LogBool", true
-	case ir.Null:
-		return "LogNull", true
-	case ir.Undefined:
-		return "LogUndefined", true
-	case ir.Int32:
-		return "LogInt32", true
-	case ir.Int64:
-		return "LogInt64", true
-	case ir.Uint32:
-		return "LogUint32", true
-	case ir.Uint64:
-		return "LogUint64", true
-	case ir.Float32:
-		return "LogFloat32", true
-	case ir.Base64:
-		return "LogString", true
-	default:
-		return "", false
-	}
 }
 
 // goBinaryOp spells op in Go. ok is false for an operator it doesn't know.

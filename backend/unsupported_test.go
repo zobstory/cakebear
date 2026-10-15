@@ -55,7 +55,7 @@ func TestBuildRefusesIRItCannotEmit(t *testing.T) {
 // backend has no Go for is reported at its span, never emitted as a stand-in
 // (`any`, LogUndefined, `!`) that would build and quietly do the wrong
 // thing. unknown stands in for a kind the IR gains before the backend learns
-// it, as KindObject will.
+// it, as KindArray has.
 func TestUnspellableIsUnsupported(t *testing.T) {
 	t.Parallel()
 

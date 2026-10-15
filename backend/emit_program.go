@@ -86,8 +86,18 @@ func (e *emitter) program(p *ir.Program) string {
 	if mainDomain {
 		e.usesRuntime = true
 	}
+	// Last, once every use of a shape has been seen (emit_object.go). Each
+	// struct holds a *cakebearrt.Layout, so any shape needs the runtime.
+	shapes := e.shapeDecls(p.Shapes, ir.Span{File: entry.File})
+	if len(p.Shapes) > 0 {
+		e.usesRuntime = true
+	}
 
 	var out strings.Builder
+	out.WriteString(shapes)
+	if len(e.layoutDecls) > 0 {
+		out.WriteString(strings.Join(e.layoutDecls, "") + "\n")
+	}
 	if globals.Len() > 0 {
 		out.WriteString(globals.String() + "\n")
 	}

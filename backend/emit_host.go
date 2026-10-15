@@ -39,9 +39,10 @@ func goHostType(h ir.HostType) (string, bool) {
 }
 
 // typ spells a type for a declaration, noting when that needs the runtime: a
-// host type, a promise, or any function type (which takes a *Domain) is a
-// reference to the runtime package even in code that never calls it, and Go
-// rejects the import's absence as surely as an unused one.
+// host type, a promise, any function type (which takes a *Domain) or an
+// object (whose struct holds a *Layout) is a reference to the runtime
+// package even in code that never calls it, and Go rejects the import's
+// absence as surely as an unused one.
 //
 // A type with no Go spelling is reported at at, the declaration or
 // expression that needs it.
@@ -49,6 +50,7 @@ func (e *emitter) typ(t ir.Type, at ir.Span) string {
 	if mentionsRuntime(t) {
 		e.usesRuntime = true
 	}
+	e.noteShapes(t, at)
 	s, ok := goType(t)
 	if !ok {
 		return e.cannot(at, "the backend cannot emit a value of type "+t.String()+" yet")
@@ -58,7 +60,7 @@ func (e *emitter) typ(t ir.Type, at ir.Span) string {
 
 func mentionsRuntime(t ir.Type) bool {
 	switch t.Kind {
-	case ir.KindHost, ir.KindFunc, ir.KindPromise:
+	case ir.KindHost, ir.KindFunc, ir.KindPromise, ir.KindObject:
 		return true
 	}
 	return false
