@@ -196,7 +196,7 @@ func TestHostRefusals(t *testing.T) {
 		{"log a function", "const f = (): number => 1;\nconsole.log(f);", "console.log cannot print a function yet"},
 		{"=== on functions", "const f = (): number => 1;\nconst g = (): number => 2;\nconst b: boolean = f === g;", "=== is not supported on () => number"},
 		{"=== on host values", imp + `createServer((req, res) => { const b: boolean = res === res; });`, "=== is not supported on ServerResponse"},
-		{"other property", `const n: number = "abc".length;`, "property access expression is not supported yet"},
+		{"other property", `const n: number = Number.MAX_SAFE_INTEGER;`, "property access expression is not supported yet"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

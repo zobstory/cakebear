@@ -101,7 +101,7 @@ func TestRefusesUnsupportedConstructs(t *testing.T) {
 		{"tuple type", "const a: [number] = [1];\n", "cannot represent yet"},
 		{"var", "var x: number = 1;\n", "`var` is not supported"},
 		{"loose equality", "const b: boolean = 1 == 1;\n", "loose equality"},
-		{"mixed concat", "const s: string = \"a\" + 1;\n", "same type"},
+		{"mixed concat", "const s: string = \"a\" + 1;\n", "write a template literal"},
 		{"null", "const n: null = null;\n", "null is not supported yet"},
 		{"a format string", "const s: string = \"%s\";\nconsole.log(s, 2);\n", "a string before console.log's other arguments is a format to Node"},
 		{"a literal with a %", "console.log(\"%d items\", 2);\n", "make it a string literal with no %"},

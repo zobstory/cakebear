@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // Join is xs.join(sep), each element converted as ToString converts it: a
@@ -17,6 +16,10 @@ import (
 // recurse until the stack ran out. V8 keeps a stack of the arrays being
 // joined, and one already on it contributes "", so cakebear does the same:
 // `c = [1, 2]; c.push(c); c.join("-")` is "1-2-".
+//
+// The pieces are joined as StrConcat joins them: a high half at the end of
+// one, an element or the separator, and a low half at the start of the next
+// make their character, so `["\uD83D", "\uDE00"].join("")` is "😀".
 func (a *Array[T]) Join(sep string) string {
 	return a.join(sep, nil)
 }
@@ -39,7 +42,7 @@ func (a *Array[T]) join(sep string, stack []any) string {
 	// allocate for each number.
 	switch items := any(a.items).(type) {
 	case []string:
-		return strings.Join(items, sep)
+		return joinStrings(items, sep)
 	case []float64:
 		return joinEach(items, sep, NumberToString)
 	}
@@ -48,14 +51,14 @@ func (a *Array[T]) join(sep string, stack []any) string {
 }
 
 func joinEach[T any](items []T, sep string, str func(T) string) string {
-	var b strings.Builder
+	var b strBuilder
 	for i, v := range items {
 		if i > 0 {
-			b.WriteString(sep)
+			b.str(sep)
 		}
-		b.WriteString(str(v))
+		b.str(str(v))
 	}
-	return b.String()
+	return b.string()
 }
 
 // joinString is ToString of an element, for join. The backend refuses to

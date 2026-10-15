@@ -63,7 +63,45 @@ func TestJoin(t *testing.T) {
 			t.Errorf("join of %s = %q, want %q", tt.name, tt.got, tt.want)
 		}
 	}
+	testJoinSeams(t)
 	if got := panicOf(func() { NewArray[any](func() {}).Join(",") }); !strings.Contains(got, "no way to convert a func()") {
 		t.Errorf("joining a function panicked with %q", got)
+	}
+}
+
+// testJoinSeams: a pair split between two pieces, elements or the
+// separator, is joined into its character, as Node's code units pair. The
+// wants are Node 24.18's, by code units (H is D83D, L DE00):
+//
+//	[H, L].join("")          // d83d de00, === "😀"
+//	[H, L].join("-")         // d83d 2d de00
+//	[H, H].join(L)           // d83d de00 d83d
+//	[L, L].join(H)           // de00 d83d de00
+//	["a" + H, L + "b"].join("")  // 61 d83d de00 62
+//	[H, "", L].join("")      // d83d de00
+//	[[H], [L]].join("")      // d83d de00, the inner joins' halves meeting
+//	[[H, L]].join("")        // d83d 2c de00
+func testJoinSeams(t *testing.T) {
+	t.Helper()
+	h, l := highHalf, lowHalf
+	for _, tt := range []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"two halves", NewArray(h, l).Join(""), "😀"},
+		{"two halves apart", NewArray(h, l).Join("-"), h + "-" + l},
+		{"a low separator", NewArray(h, h).Join(l), "😀" + h},
+		{"a high separator", NewArray(l, l).Join(h), l + "😀"},
+		{"halves inside elements", NewArray("a"+h, l+"b").Join(""), "a😀b"},
+		{"an empty element between", NewArray(h, "", l).Join(""), "😀"},
+		{"inner arrays", NewArray(NewArray(h), NewArray(l)).Join(""), "😀"},
+		{"an inner array's comma", NewArray(NewArray(h, l)).Join(""), h + "," + l},
+		{"a low separator, not as string[]", NewArray[any](h, h).Join(l), "😀" + h},
+		{"ASCII", NewArray("a", "b").Join(h), "a" + h + "b"},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("join of %s = % x, want % x", tt.name, tt.got, tt.want)
+		}
 	}
 }

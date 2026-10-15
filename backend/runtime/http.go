@@ -171,9 +171,19 @@ type ServerResponse struct {
 // SetHeader is res.setHeader, replacing any value already set. Go canonicalises
 // the name's case on the wire (content-type is sent as Content-Type), where
 // Node sends it as written; header names are case-insensitive in HTTP.
+//
+// Node throws for a name that isn't an HTTP token and for a value holding a
+// character it can't send, a lone surrogate or anything past U+00FF among
+// them; net/http would drop the first silently and send the second's bytes.
 func (r *ServerResponse) SetHeader(name, value string) *ServerResponse {
 	if r.headersSent {
 		panic("Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client")
+	}
+	if !isHTTPToken(name) {
+		panic(`TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token ["` + wellFormed(name) + `"]`)
+	}
+	if !validHeaderValue(value) {
+		panic(`TypeError [ERR_INVALID_CHAR]: Invalid character in header content ["` + name + `"]`)
 	}
 	r.w.Header().Set(name, value)
 	return r
@@ -196,6 +206,8 @@ func (r *ServerResponse) WriteHead(status float64) *ServerResponse {
 // End is res.end(chunk?): it sends the headers if they have not gone, then the
 // chunk if there is one, and finishes the response. A second End with nothing
 // to write does nothing, as in Node; one with a chunk is a write after the end.
+// The chunk goes out as Node encodes it, in UTF-8 with a lone surrogate as
+// U+FFFD.
 func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	if r.ended {
 		if len(chunk) > 0 {
@@ -205,7 +217,7 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	}
 	r.sendHeaders()
 	for _, c := range chunk {
-		_, _ = io.WriteString(r.w, c)
+		_, _ = io.WriteString(r.w, wellFormed(c))
 	}
 	r.ended = true
 	return r

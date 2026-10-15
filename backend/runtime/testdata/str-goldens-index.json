@@ -1,0 +1,137 @@
+{
+  "node": "v24.18.0",
+  "icu": "78.3",
+  "unicode": "17.0",
+  "seed": 539365397,
+  "whitespace": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    32,
+    160,
+    5760,
+    8192,
+    8193,
+    8194,
+    8195,
+    8196,
+    8197,
+    8198,
+    8199,
+    8200,
+    8201,
+    8202,
+    8232,
+    8233,
+    8239,
+    8287,
+    12288,
+    65279
+  ],
+  "sections": {
+    "LENGTH": {
+      "first": 1,
+      "last": 2365,
+      "count": 2365,
+      "throws": 0
+    },
+    "SEARCH": {
+      "first": 2366,
+      "last": 11440,
+      "count": 9075,
+      "throws": 0
+    },
+    "SLICE": {
+      "first": 11441,
+      "last": 16648,
+      "count": 5208,
+      "throws": 0
+    },
+    "SPLIT": {
+      "first": 16649,
+      "last": 17856,
+      "count": 1208,
+      "throws": 0
+    },
+    "REPLACE": {
+      "first": 17857,
+      "last": 22104,
+      "count": 4248,
+      "throws": 0
+    },
+    "PAD": {
+      "first": 22105,
+      "last": 24984,
+      "count": 2880,
+      "throws": 704
+    },
+    "REPEAT": {
+      "first": 24985,
+      "last": 25308,
+      "count": 324,
+      "throws": 133
+    },
+    "CASE_UPPER": {
+      "first": 25309,
+      "last": 26888,
+      "count": 1580,
+      "throws": 0
+    },
+    "CASE_LOWER": {
+      "first": 26889,
+      "last": 28376,
+      "count": 1488,
+      "throws": 0
+    },
+    "SIGMA": {
+      "first": 28377,
+      "last": 29379,
+      "count": 1003,
+      "throws": 0
+    },
+    "TRIM": {
+      "first": 29380,
+      "last": 30225,
+      "count": 846,
+      "throws": 0
+    },
+    "COMPARE": {
+      "first": 30226,
+      "last": 31314,
+      "count": 1089,
+      "throws": 0
+    },
+    "CONCAT": {
+      "first": 31315,
+      "last": 31577,
+      "count": 263,
+      "throws": 0
+    },
+    "INT": {
+      "first": 31578,
+      "last": 31675,
+      "count": 98,
+      "throws": 0
+    },
+    "JOIN": {
+      "first": 31676,
+      "last": 32347,
+      "count": 672,
+      "throws": 0
+    },
+    "LOG": {
+      "first": 32348,
+      "last": 32443,
+      "count": 96,
+      "throws": 0
+    },
+    "RANDOM": {
+      "first": 32444,
+      "last": 44443,
+      "count": 12000,
+      "throws": 67
+    }
+  }
+}

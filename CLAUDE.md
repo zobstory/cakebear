@@ -394,6 +394,21 @@ Two fixes came with it:
 - `TestSpawnsRunInParallel` timed two sleeps against a limit a loaded machine
   could miss. It now waits at a barrier instead.
 
+The strings step, between steps 10 and 11, is done (`m4-strings-plan.md`,
+its scope ranked by a measurement of wx-next). Lowering (`lower/strings.go`,
+`lower/numbers.go`) makes `ir.BuiltinCall` and `ir.Concat`, and the runtime
+gives them JavaScript's semantics in UTF-16 units: the string methods, the
+case table generated from Node and comparison (`runtime/str*.go`), and
+`toFixed`, the parsers and the URI functions (`num*.go`, `uri.go`).
+`TestStrGoldens`, `TestNumGoldens` and `TestURIGoldens` hold them to about
+110,000 outputs recorded from Node, and `TestStringsMatchNode` holds a
+program to it end to end. Silent bugs found and fixed:
+- string `<` compared UTF-8 bytes, so `"\uFFFF" < "😀"` was true (since P4);
+- a surrogate pair joined by `+` didn't equal the literal, and printed raw;
+- printing a lone surrogate wrote raw bytes, where Node writes U+FFFD;
+- `setHeader` silently dropped a header name Node throws for, and sent a
+  value Node throws for; both panic with Node's message now.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -688,8 +703,7 @@ objects in their literal's key order, `-0` as `0`, NaN and the infinities as
 10 characters. V8 has a quirk of its own, matched too: a number strictly
 between 0 and 1 gives lines and `": "` with no indent, where the
 specification says compact. `JSON` is recognised as the global TypeScript's libs declare,
-so a program's own `JSON` is an ordinary binding. It is also the one way the
-subset has to turn a number into a string.
+so a program's own `JSON` is an ordinary binding.
 
 Refused by name: a replacer (`null` or `undefined` in its place is how a call
 reaches the space), `JSON.parse` (it returns `any`, and decoding into a type
@@ -713,6 +727,42 @@ variable, an argument, a result, a field, an element, or a callback's
 parameter. It is the one way a mutable alias of a frozen const could be
 made. The other way round, mutable into readonly, is fine.
 
+Since the M4 strings step (`lower/strings.go`, `lower/numbers.go`; plan
+`m4-strings-plan.md`, its scope ranked by a measurement of wx-next):
+- template literals, `` `a${x}b` ``, whose substitutions are strings,
+  numbers, booleans or extension types, converted as JavaScript's ToString
+  converts them;
+- `String(x)`, `x.toString()` and `n.toFixed(digits)`, with JavaScript's
+  rounding, a tie up (`(2.5).toFixed(0)` is `"3"`, where Go's `FormatFloat`
+  gives `"2"`);
+- a string's `length`, `charAt`, `charCodeAt`, `includes`, `startsWith`,
+  `endsWith`, `indexOf`, `lastIndexOf`, `slice`, `substring`, `split` with
+  a string separator, `replace` and `replaceAll` with a string pattern and
+  replacement (`$&` and the rest expanded), `toLowerCase` and `toUpperCase`
+  (full case mapping: `"ß"` → `"SS"`), `trim`, `trimStart`, `trimEnd`
+  (JavaScript's whitespace, not Go's), `padStart`, `padEnd` and `repeat`.
+  Every index and length is in UTF-16 code units, through the runtime;
+- `Number(s)`, `parseInt`, `parseFloat`, `Number.isFinite`, `Number.isNaN`,
+  `Number.isInteger`, `isNaN` and `isFinite` of a number, and
+  `encodeURIComponent` and `decodeURIComponent`;
+- `<`, `>`, `<=` and `>=` on strings compare in UTF-16 order, and `+` on two
+  strings joins a surrogate pair split between them, as JavaScript's UTF-16
+  strings do. Both are through the runtime (`StrCompare`, `StrConcat`).
+
+The globals are recognised by where their value is declared, in TypeScript's
+libs, so a program's own `String` or `parseInt` is an ordinary binding. Every
+member the libs give a string is lowered or refused by name, and a test
+fails when they gain one.
+
+Refused by name: anything taking a RegExp, and `match`, `matchAll` and
+`search` (RegExp is a step of its own: in 12% of wx-next's files, and
+`match` returns `null`, M5's); a function replacement; `localeCompare`
+(ICU collation) and the `toLocale*` forms; `normalize`; `at` and
+`codePointAt` (`undefined` past the end, M5); `s[i]` (the same; use
+`charAt`); `toString(radix)`; `toPrecision`; a template, `String()` or
+`Number()` of anything but a primitive; and `+` between a string and
+anything else (measured at 10 uses in wx-next: write a template literal).
+
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
 and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
@@ -722,13 +772,13 @@ The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, `var`, loose equality, classes, generics, imports from anything but
-`node:http` and the program's own modules, `for…in`, `do…while`, `switch`,
-bitwise operators;
+`+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+generics, imports from anything but `node:http` and the program's own
+modules, `for…in`, `do…while`, `switch`, bitwise operators;
 calling anything but a name or a `node:http` member (`f()()`); named function
 expressions; optional, default or rest parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
-a promise; the standard library's other globals (`parseInt`, `NaN`, `isNaN`,
+a promise; the standard library's other globals (`NaN`, `Math`,
 `setInterval`, …), which lowering refuses by name because only TypeScript's
 libs declare them. A program's own function of the same name is unaffected.
 
@@ -812,6 +862,14 @@ of strings are ASCII, where the two agree exactly.
 
 *Live in Phase 1:* only that string literals emit as Go string literals. The
 helpers land with `.length`.
+
+*Live since the M4 strings step:* the helpers (`backend/runtime/str*.go`),
+with an ASCII fast path: 2% of wx-next's string literals hold anything else,
+and that is mostly dashes, arrows and emoji. A lone surrogate is WTF-8, as the
+scanner stores `"\uD800"`, and printing one writes U+FFFD, as Node's stdout
+does. Comparison is in UTF-16 order, which differs from Go's byte order only
+where a character outside the BMP meets one from U+E000 up: `"\uFFFF" < "😀"`
+is false, as in JavaScript.
 
 **2. Numbers are `float64`, printed by JS rules.** TS `number` is IEEE-754
 double, so it lowers to Go `float64` directly. Bitwise operators will need
@@ -960,7 +1018,9 @@ not listed here that behaves differently is a bug.
 | A CPU-heavy request handler | blocks every other request | the others are still served (8 `fib(38)` requests: ~1.3× one, vs Node's ~7.7×) |
 | `console.log` order across requests | one at a time, per event-loop turn | interleaved, nondeterministic (each line whole) |
 | A handler returns without `res.end()` | the request hangs until it times out | an empty 200, plus a one-line warning on stderr |
-| A handler does what Node throws for (headers after they were sent, a bad status code, writing after `end`) | the uncaught exception kills the process | a panic with Node's message; `net/http` drops only that connection |
+| A handler does what Node throws for (headers after they were sent, a bad status code, writing after `end`, a header name that isn't a token, a header value with a character past U+00FF or a control) | the uncaught exception kills the process | a panic with Node's message; `net/http` drops only that connection |
+| A header value with spaces at either end | sent as written | trimmed, as `net/http` writes every header |
+| A request line holding raw bytes from 0x80 up | a 400 | served: each such byte is one U+FFFD in `req.url` |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
 | `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
@@ -979,6 +1039,7 @@ not listed here that behaves differently is a bug.
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 | `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
 | Reading past an array's end, or a negative or fractional index (M4 D8) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2 |
+| A string or number builtin given what Node throws for (`"ab".repeat(-1)`, `(1).toFixed(101)`, a string past V8's length limit, `decodeURIComponent("%")`, `encodeURIComponent` of a lone surrogate) | a `RangeError` or `URIError`, exit 1 | a panic with Node's message, e.g. `cakebear: repeat can't repeat a string -1 times (Node throws RangeError: Invalid count value: -1)`, exit 2 |
 | `JSON.stringify` of a value that refers to itself | a `TypeError` naming the path around the circle, exit 1 | a panic with the same message: `cakebear: JSON.stringify met a cycle (Node throws TypeError: Converting circular structure to JSON …)`, exit 2 |
 | Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |

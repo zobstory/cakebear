@@ -35,6 +35,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	case ast.KindStringLiteral:
 		return &ir.StringLit{Value: n.Text(), Span: l.span(n)}
 
+	case ast.KindNoSubstitutionTemplateLiteral, ast.KindTemplateExpression:
+		return l.template(n)
+
 	case ast.KindTrueKeyword:
 		return &ir.BoolLit{Value: true, Span: l.span(n)}
 
@@ -193,9 +196,13 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 	lt, rt := left.ExprType(), right.ExprType()
 	// Equal, not ==: two function types built separately differ as pointers.
 	if !lt.Equal(rt) {
-		// Mixed-type `+` is legal TypeScript (`"a" + 1` is a string) but needs
-		// a conversion node the IR does not have yet. Refusing beats emitting
-		// Go that would not compile.
+		// Mixed-type `+` is legal TypeScript (`"a" + 1` is a string). Real
+		// code converts with a template literal instead (10 uses of mixed
+		// `+` in wx-next's 3,756 files), so that is what the refusal offers.
+		if b.OperatorToken.Kind == ast.KindPlusToken && (lt == ir.String || rt == ir.String) {
+			l.failf(n, "+ between %s and %s is not supported yet; write a template literal, `${a}${b}`", lt, rt)
+			return nil
+		}
 		l.failf(n, "%s between %s and %s is not supported yet; both operands must have the same type", op, lt, rt)
 		return nil
 	}
@@ -281,6 +288,15 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return out
 	}
 	if out, handled := l.jsonCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.globalCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.stringCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.primitiveCall(n, c); handled {
 		return out
 	}
 	if out, handled := l.timerCall(n, c); handled {

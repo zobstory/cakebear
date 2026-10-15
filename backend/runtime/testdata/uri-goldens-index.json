@@ -1,0 +1,54 @@
+{
+  "node": "v24.18.0",
+  "seed": 539365397,
+  "sections": {
+    "ENC_ASCII": {
+      "first": 1,
+      "last": 272,
+      "count": 272,
+      "throws": 0
+    },
+    "ENC_UNICODE": {
+      "first": 273,
+      "last": 4136,
+      "count": 3864,
+      "throws": 0
+    },
+    "ENC_LONE": {
+      "first": 4137,
+      "last": 4186,
+      "count": 50,
+      "throws": 50
+    },
+    "DEC_OCTET": {
+      "first": 4187,
+      "last": 4854,
+      "count": 668,
+      "throws": 364
+    },
+    "DEC_SEQ": {
+      "first": 4855,
+      "last": 15606,
+      "count": 10752,
+      "throws": 8556
+    },
+    "DEC_MALFORMED": {
+      "first": 15607,
+      "last": 15648,
+      "count": 42,
+      "throws": 42
+    },
+    "DEC_KEPT": {
+      "first": 15649,
+      "last": 15684,
+      "count": 36,
+      "throws": 0
+    },
+    "ROUNDTRIP": {
+      "first": 15685,
+      "last": 20445,
+      "count": 4761,
+      "throws": 945
+    }
+  }
+}

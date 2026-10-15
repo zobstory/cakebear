@@ -90,7 +90,11 @@ func (l *lowerer) element(n *ast.Node, access *ast.ElementAccessExpression) (arr
 		l.failf(n, "optional chaining (?.) is not supported yet")
 		return nil, nil, false
 	}
-	if t := l.typeOf(access.Expression); t.Kind != ir.KindArray {
+	switch t := l.typeOf(access.Expression); {
+	case t == ir.String || t == ir.Base64:
+		l.failf(n, "indexing a string is not supported yet: s[i] is undefined past the end, which waits for M5; use s.charAt(i)")
+		return nil, nil, false
+	case t.Kind != ir.KindArray:
 		l.failf(n, "an element access on a %s is not supported yet; an object's property is read by its name", t)
 		return nil, nil, false
 	}

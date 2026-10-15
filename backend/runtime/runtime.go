@@ -145,13 +145,15 @@ func LogBool(b bool)     { writeLine(BoolToString(b)) }
 func LogNull()           { writeLine("null") }
 func LogUndefined()      { writeLine("undefined") }
 
-// writeLine writes one line of console output.
+// writeLine writes one line of console output, in UTF-8 as Node writes it: a
+// lone surrogate is U+FFFD (wellFormed).
 //
 // While a server is listening, each line is flushed as it is written. A
 // server's process never reaches the deferred Flush until it exits, so
 // buffering would hold "listening on …" back indefinitely; a batch program
 // keeps the buffer, which is the reason it exists.
 func writeLine(s string) {
+	s = wellFormed(s)
 	outMu.Lock()
 	defer outMu.Unlock()
 	_, _ = out.WriteString(s)

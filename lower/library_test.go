@@ -9,12 +9,12 @@ import (
 
 // A name that only TypeScript's libs declare has no Go behind it, so lowering
 // refuses it by name. It used to lower to a plain Go reference and fail inside
-// go build with "undefined: parseInt".
+// go build with "undefined: encodeURI".
 func TestLibraryGlobalsAreRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct{ name, src, want string }{
-		{"call", "const n: number = parseInt(\"5\");\n", "parseInt is a library function cakebear does not implement yet"},
+		{"call", "const s: string = encodeURI(\"a b\");\n", "encodeURI is a library function cakebear does not implement yet"},
 		// setTimeout itself is lowered since M2 (async.go); setInterval is not.
 		{"call with a callback", "setInterval(() => {\n  console.log(\"t\");\n}, 0);\n",
 			"setInterval is a library function cakebear does not implement yet"},
