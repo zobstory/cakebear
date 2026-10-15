@@ -86,6 +86,11 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExpr(e.Executor, visit)
 	case *ConsoleLog:
 		inspectExprs(e.Args, visit)
+	case *JSONStringify:
+		inspectExpr(e.Value, visit)
+		if e.Space != nil {
+			inspectExpr(e.Space, visit)
+		}
 	case *Convert:
 		inspectExpr(e.Value, visit)
 	case *HostCall:

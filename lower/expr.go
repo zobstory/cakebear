@@ -280,6 +280,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	if out, handled := l.arrayCall(n, c); handled {
 		return out
 	}
+	if out, handled := l.jsonCall(n, c); handled {
+		return out
+	}
 	if out, handled := l.timerCall(n, c); handled {
 		return out
 	}
