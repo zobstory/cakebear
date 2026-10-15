@@ -332,6 +332,14 @@ prints them.
   each. `TestAggregateSharedStateRefused` holds the race rule through
   `cakec`.
 
+Step 6, arrays end to end, is done (`lower/array.go`,
+`backend/emit_array.go`). An array is a `*cakebearrt.Array[T]`, literals take
+their slot's element type, and `for…of` re-reads the length every iteration.
+A spawned function's array or object result is copied on its way to the
+caller when the spawn left work behind (`runtime/spawn.go`, D11). What Node
+answers with `undefined` or a hole panics (D8, D9). `TestArraysMatchNode`
+holds it to Node.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -574,7 +582,26 @@ name: optional properties, index signatures and `Record`, unions and
 intersections, classes, methods and accessors, computed, numeric and
 integer-like keys, `__proto__`, shorthand properties (step 8), spread,
 optional chaining, and `console.log` of a value holding a function (a Go
-func has no name to print). Arrays come in step 6.
+func has no name to print).
+
+Since M4 step 6 (`lower/array.go`), arrays:
+- `T[]` and `readonly T[]` of any type the subset holds, and array literals.
+  A literal's element type is its slot's, so `[]` is typed by where it goes.
+- `xs[i]` read and written, `xs.length`, `xs.length = n` to shrink,
+  `xs.push(a, …)`, and `xs.pop()` as a statement. `++`, `--` and compound
+  assignment on `xs[i]`, with a name or a number for `i`, and on
+  `xs.length`;
+- `for (const x of xs)` and `let`, over an array: evaluated once, its length
+  read every iteration, so it visits what the loop pushes (D13), with a
+  binding per iteration;
+- `===` and `!==`, identity, and arrays in objects, objects in arrays, and
+  arrays of arrays.
+
+Refused by name: tuples, holes, spread, `pop()` as a value (its
+`T | undefined` waits for M5), the iteration methods (step 7), a member a
+program adds to `Array`, an element access on anything but an array, an
+index that isn't a number, and `for…of` over a string, with `await`, with
+destructuring, or over an existing variable.
 
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
@@ -824,6 +851,10 @@ not listed here that behaves differently is a bug.
 | A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 | `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
+| Reading past an array's end, or a negative or fractional index (M4 D8) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2 |
+| Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
+| Growing `length` (D9) | holes | a panic; shrinking is allowed |
+| A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

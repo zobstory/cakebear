@@ -196,6 +196,11 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		case flags&checker.TypeFlagsIntersection != 0:
 			l.because("intersection types are not supported yet")
 			return ir.Invalid
+		case l.checker.IsArrayType(t):
+			return l.arrayType(t)
+		case checker.IsTupleType(t):
+			l.because("tuples are not supported yet")
+			return ir.Invalid
 		case l.isObjectType(t):
 			return l.objectType(t)
 		}
@@ -332,6 +337,9 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 	case ast.KindForStatement:
 		return l.forStmt(n)
 
+	case ast.KindForOfStatement:
+		return l.forOf(n)
+
 	case ast.KindBreakStatement, ast.KindContinueStatement:
 		return l.jump(n)
 
@@ -445,6 +453,9 @@ func (l *lowerer) explainInitializer(init *ast.Node) bool {
 
 func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stmt {
 	if out, ok := l.fieldSet(stmt, bin.Left, bin.Right); ok {
+		return out
+	}
+	if out, ok := l.arrayAssign(stmt, bin.Left, bin.Right); ok {
 		return out
 	}
 	if bin.Left.Kind != ast.KindIdentifier {

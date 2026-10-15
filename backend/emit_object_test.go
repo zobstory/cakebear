@@ -171,7 +171,7 @@ func TestUnspellableFieldIsUnsupported(t *testing.T) {
 		{"unused", false, ir.Span{File: "t.ts"}},
 	} {
 		var shapes ir.Shapes
-		list := shapes.Intern("List", []ir.Field{{Name: "items", Type: ir.ArrayOf(ir.Number)}})
+		list := shapes.Intern("List", []ir.Field{{Name: "items", Type: ir.HostOf(ir.HostNone)}})
 		// The shape reached through a field is a use of it too.
 		box := shapes.Intern("Box", []ir.Field{{Name: "list", Type: ir.ObjectOf(list)}})
 		m := &ir.Module{Name: "t", File: "t.ts"}
@@ -182,7 +182,7 @@ func TestUnspellableFieldIsUnsupported(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: emit: %v", tt.name, err)
 		}
-		if len(unsupported) != 1 || unsupported[0].Span != tt.want || !strings.Contains(unsupported[0].What, "List yet: its items is a number[]") {
+		if len(unsupported) != 1 || unsupported[0].Span != tt.want || !strings.Contains(unsupported[0].What, "List yet: its items is a host") {
 			t.Errorf("%s: unsupported = %+v, want one at %v naming List's items\n%s", tt.name, unsupported, tt.want, src)
 		}
 	}

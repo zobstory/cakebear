@@ -65,7 +65,7 @@ func innerCall(x ir.Expr) bool {
 // a call of any kind, including the runtime's.
 func isCall(x ir.Expr) bool {
 	switch x.(type) {
-	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog:
+	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog, *ir.ArrayOp:
 		return true
 	}
 	return false
@@ -103,6 +103,12 @@ func operands(x ir.Expr) []ir.Expr {
 		return values
 	case *ir.FieldGet:
 		return []ir.Expr{x.Object}
+	case *ir.ArrayLit:
+		return x.Elems
+	case *ir.IndexGet:
+		return []ir.Expr{x.Array, x.Index}
+	case *ir.ArrayOp:
+		return append([]ir.Expr{x.Array}, x.Args...)
 	default:
 		panic(fmt.Sprintf("backend: evaluation order has no case for %T", x))
 	}

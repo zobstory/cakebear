@@ -179,7 +179,7 @@ func TestUnsupportedConstructsAreNamed(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "unsupported.ts")
-	src := "class Cake { }\nconst nums: number[] = [1];\nconst s: string = \"n=\" + 1;\n"
+	src := "class Cake { }\nconst pair: [number, number] = [1, 2];\nconst s: string = \"n=\" + 1;\n"
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatalf("writing source: %v", err)
 	}

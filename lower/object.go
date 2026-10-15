@@ -79,8 +79,6 @@ func (l *lowerer) objectType(t *checker.Type) ir.Type {
 func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 	c := l.checker
 	switch {
-	case c.IsArrayType(t) || checker.IsTupleType(t):
-		return ir.Invalid, "arrays are not supported yet"
 	case t.ObjectFlags()&checker.ObjectFlagsClass != 0:
 		return ir.Invalid, "classes are not supported yet"
 	case len(c.GetIndexInfosOfType(t)) > 0:

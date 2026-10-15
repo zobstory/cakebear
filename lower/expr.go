@@ -101,6 +101,12 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	case ast.KindObjectLiteralExpression:
 		return l.objectLit(n)
 
+	case ast.KindArrayLiteralExpression:
+		return l.arrayLit(n)
+
+	case ast.KindElementAccessExpression:
+		return l.elementGet(n)
+
 	default:
 		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
@@ -259,6 +265,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	}
 
 	if out, handled := l.hostCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.arrayCall(n, c); handled {
 		return out
 	}
 	if out, handled := l.timerCall(n, c); handled {
