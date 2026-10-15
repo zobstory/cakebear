@@ -3,6 +3,7 @@ package runtime
 import (
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -24,20 +25,39 @@ func finishWithin(t *testing.T, d *Domain, limit time.Duration) {
 }
 
 // Two spawns run at once, not one after the other under the caller's token:
-// each blocks its goroutine for 100 ms, and together they take about that.
+// each waits for the other to start. Run one after the other, the first
+// would wait in vain. It used to time two 100 ms sleeps against a 180 ms
+// limit, which a loaded machine could miss with the spawns in parallel.
 func TestSpawnsRunInParallel(t *testing.T) {
 	t.Parallel()
 
 	d := newDomain()
-	start := time.Now()
+	var started sync.WaitGroup
+	started.Add(2)
+	both := make(chan struct{})
+	go func() {
+		started.Wait()
+		close(both)
+	}()
+	met := make(chan bool, 2)
 	d.runTask(func() {
 		for range 2 {
-			SpawnVoid(d, func(*Domain) { time.Sleep(100 * time.Millisecond) })
+			SpawnVoid(d, func(*Domain) {
+				started.Done()
+				select {
+				case <-both:
+					met <- true
+				case <-time.After(5 * time.Second):
+					met <- false
+				}
+			})
 		}
 	})
 	d.finish()
-	if elapsed := time.Since(start); elapsed > 180*time.Millisecond {
-		t.Errorf("two 100 ms spawns took %v; they ran one after the other", elapsed)
+	for range 2 {
+		if !<-met {
+			t.Fatal("a spawn waited 5 s for the other to start; they ran one after the other")
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +121,34 @@ func TestServerResponseOverHTTP(t *testing.T) { //nolint:paralleltest // isolate
 			warned := strings.Contains(stderr.String(), "returned without calling res.end()")
 			if warned != tt.warns {
 				t.Errorf("warned = %v, want %v; stderr = %q", warned, tt.warns, stderr.String())
+			}
+		})
+	}
+}
+
+// TestContentTypeOnlyWhenSet: a response the program gave no Content-Type
+// goes out with none, as Node sends it, rather than with one net/http sniffed
+// from the body; one it set is kept.
+func TestContentTypeOnlyWhenSet(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
+	for _, tt := range []struct { //nolint:paralleltest // isolate swaps process-wide runtime state
+		name    string
+		handler func(*IncomingMessage, *ServerResponse)
+		want    []string // the Content-Type values sent, nil for no header
+	}{
+		{"none set, markup body", func(_ *IncomingMessage, res *ServerResponse) { res.End("<html><body>hi</body></html>") }, nil},
+		{"none set, writeHead", func(_ *IncomingMessage, res *ServerResponse) { res.WriteHead(404).End("not found\n") }, nil},
+		{"set", func(_ *IncomingMessage, res *ServerResponse) {
+			res.SetHeader("content-type", "application/json").End("{}")
+		}, []string{"application/json"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			isolate(t)
+			r := fetch(http.DefaultClient, "GET", serveWith(t, tt.handler)+"/")
+			if r.err != nil {
+				t.Fatalf("request failed: %v", r.err)
+			}
+			if got := r.header["Content-Type"]; !slices.Equal(got, tt.want) {
+				t.Errorf("Content-Type = %q, want %q", got, tt.want)
 			}
 		})
 	}

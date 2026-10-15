@@ -73,7 +73,7 @@ func TestArrayRefusals(t *testing.T) {
 		{"an update with a call for its index", xs + "function i(): number {\n  return 0;\n}\nxs[i()]++;\n", "an element indexed by a name or a number"},
 		{"a member a program adds to Array", "interface Array<T> {\n  total(): number;\n}\n" + xs + "console.log(xs.total());\n", "total is added to Array outside TypeScript's libs, which is not supported"},
 		{"an array shared with a handler", "import { createServer } from \"node:http\";\nconst routes: string[] = [\"/\"];\ncreateServer((req, res) => {\n  res.end(routes[0]);\n}).listen(3000);\n",
-			"can't use `routes`, an array created outside it; an array can't be shared between requests yet"},
+			"can't use `routes`, an array created outside it; an array can be shared between requests only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: its type isn't readonly all the way down: a string[] is mutable; write `readonly string[]`"},
 	} {
 		_, errs := lowerProgram(t, tt.src)
 		if msgs := joinMsgs(errs); !strings.Contains(msgs, tt.want) {

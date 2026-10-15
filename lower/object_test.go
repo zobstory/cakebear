@@ -157,13 +157,13 @@ func TestAggregateSharedStateRefused(t *testing.T) {
 		name, src, want string
 	}{
 		{"a const object read in a handler", server + "const home: Route = { path: \"/\", body: \"hi\" };\ncreateServer((req, res) => {\n  res.end(home.body);\n}).listen(3000);\n",
-			"this handler runs on many requests at once, so it can't use `home`, an object created outside it; an object can't be shared between requests yet: create it inside the handler, or in a function that returns a new one"},
+			"this handler runs on many requests at once, so it can't use `home`, an object created outside it; an object can be shared between requests only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: its type isn't readonly all the way down: property `path` isn't readonly. Freeze it, or create it inside the handler, or in a function that returns a new one"},
 		{"through a function the handler calls", server + "const home: Route = { path: \"/\", body: \"hi\" };\nfunction body(): string {\n  return home.body;\n}\ncreateServer((req, res) => {\n  res.end(body());\n}).listen(3000);\n",
-			"can't call `body()`, which uses `home`, an object created outside the handler"},
+			"can't call `body()`, which uses `home`, an object created outside the handler, which isn't frozen: its type isn't readonly all the way down"},
 		{"a let object", server + "let current: Route = { path: \"/\", body: \"hi\" };\ncreateServer((req, res) => {\n  res.end(current.path);\n}).listen(3000);\n",
-			"can't use `current`, an object created outside it"},
+			"can't use `current`, an object created outside it; an object can be shared between requests only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: it is a let"},
 		{"captured by a spawned function", "export {};\nconst cfg: { n: number } = { n: 1 };\nconst r: number = await spawn((): number => cfg.n);\n",
-			"this spawned function runs in parallel with its caller, so it can't use `cfg`, an object created outside it; an object can't be shared with a spawned function yet: create it inside the spawned function"},
+			"this spawned function runs in parallel with its caller, so it can't use `cfg`, an object created outside it; an object can be shared with a spawned function only if it is frozen (a const, readonly all the way down, built from literals), and this one isn't: its type isn't readonly all the way down: property `n` isn't readonly. Freeze it, or create it inside the spawned function"},
 	} {
 		_, errs := lowerProgram(t, tt.src)
 		if msgs := joinMsgs(errs); !strings.Contains(msgs, tt.want) {
