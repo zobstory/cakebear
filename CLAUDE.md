@@ -280,6 +280,22 @@ reported as `cannot compile yet` at its span. Before, `goType` fell back to
 to `!`, so the IR could gain a kind (as it will with objects) and build into
 a program that quietly did the wrong thing.
 
+Step 3, the IR for objects and arrays, is done too, with nothing lowered to
+it yet:
+- `ir.KindObject` and `ir.KindArray`. An object type is of a **shape**
+  (`ir/shape.go`): its fields sorted by name, interned program-wide by
+  `ir.Shapes`, so one structure is one `*Shape` and `Equal` is pointer
+  identity (D3). `Program.Shapes` lists them by ID. A type that refers to
+  itself is reserved first, then defined, and is never merged with another.
+- The nodes (`ir/aggregate.go`): `ObjectLit`, whose fields stay in source
+  order (the order Node prints and evaluates them in), `ArrayLit`,
+  `FieldGet`, `IndexGet`, `ArrayOp` (the D16 methods), and the statements
+  `FieldSet`, `IndexSet` and `ForOf`.
+- `Program.Validate` (`ir/check.go`) holds them to their shapes and element
+  types: every field set exactly once, each field index in range, values of
+  the field's type, each method's arguments and result, and every object
+  type of one of the program's own shapes.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;

@@ -20,6 +20,9 @@ type Program struct {
 	// Entry is the index in Modules of the module the binary runs. A native
 	// binary has one entry point, where tsc needs none.
 	Entry int
+	// Shapes is every object shape the program's types use, each at its own
+	// ID: Shapes.All of the interner lowering used, shared by all modules.
+	Shapes []*Shape
 }
 
 // ProgramOf is the program of one module, which is its entry.
@@ -72,8 +75,11 @@ func (p *Program) Module(file string) *Module {
 // Validate checks the invariants lowering keeps: the modules are in order
 // with an entry among them, each imports only modules of the program, and
 // every module-qualified reference names a top-level declaration of a module
-// in the program, assigned only if it is a let. A failure is a bug in lowering, not in the TypeScript, so a backend
-// calls this rather than emit Go from a program that breaks it.
+// in the program, assigned only if it is a let. Every object type is of one
+// of the program's shapes, interned, and each object and array node fits
+// the shape or element type it names (check.go). A failure is a bug in
+// lowering, not in the TypeScript, so a backend calls this rather than emit
+// Go from a program that breaks it.
 func (p *Program) Validate() error {
 	if len(p.Modules) == 0 {
 		return errors.New("the program has no modules")
@@ -93,7 +99,7 @@ func (p *Program) Validate() error {
 		}
 	}
 
-	var errs []error
+	errs := p.validateShapes()
 	for _, m := range p.Modules {
 		for _, file := range m.Imports {
 			if p.Module(file) == nil {
@@ -107,7 +113,18 @@ func (p *Program) Validate() error {
 		}
 	}
 	for _, m := range p.Modules {
+		for _, fn := range m.Funcs {
+			if err := p.checkParams(fn.Params); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %s: %w", fn.Span, fn.Name, err))
+			}
+			if err := p.checkType(fn.Result); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %s's result: %w", fn.Span, fn.Name, err))
+			}
+		}
 		Inspect(m, func(node any) {
+			if err := p.checkNode(node); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", nodeSpan(node), err))
+			}
 			switch n := node.(type) {
 			case *Ident:
 				check(n.Module, n.Name, false, n.Span)

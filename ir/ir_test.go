@@ -68,6 +68,9 @@ func TestExpressionsCarryTypeAndSpan(t *testing.T) {
 	span := Span{File: "t.ts", Line: 1, Col: 1}
 	// One value for both sides: == on a promise type compares Elem pointers.
 	promise := PromiseOf(Number)
+	nums := ArrayOf(Number)
+	_, point := pointShapes()
+	pt := ObjectOf(point)
 
 	cases := []struct {
 		name string
@@ -86,6 +89,11 @@ func TestExpressionsCarryTypeAndSpan(t *testing.T) {
 		{"console.log", &ConsoleLog{Span: span}, Void},
 		{"await", &Await{Value: &Ident{Name: "p", Typ: promise}, Typ: Number, Span: span}, Number},
 		{"new Promise", &NewPromise{Typ: promise, Span: span}, promise},
+		{"object literal", &ObjectLit{Typ: pt, Span: span}, pt},
+		{"array literal", &ArrayLit{Typ: nums, Span: span}, nums},
+		{"field read", &FieldGet{Typ: Number, Span: span}, Number},
+		{"index read", &IndexGet{Typ: String, Span: span}, String},
+		{"array method", &ArrayOp{Typ: nums, Span: span}, nums},
 	}
 
 	for _, tt := range cases {
@@ -110,6 +118,8 @@ func TestStatementsCarrySpan(t *testing.T) {
 	stmts := []Stmt{
 		&VarDecl{Span: span}, &Assign{Span: span}, &If{Span: span},
 		&While{Span: span}, &Return{Span: span}, &ExprStmt{Span: span},
+		&For{Span: span}, &Break{Span: span}, &Continue{Span: span},
+		&FieldSet{Span: span}, &IndexSet{Span: span}, &ForOf{Span: span},
 	}
 	for _, s := range stmts {
 		if got := s.StmtSpan(); got != span {
