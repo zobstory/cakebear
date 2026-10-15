@@ -65,7 +65,7 @@ func innerCall(x ir.Expr) bool {
 // a call of any kind, including the runtime's.
 func isCall(x ir.Expr) bool {
 	switch x.(type) {
-	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog, *ir.ArrayOp, *ir.JSONStringify:
+	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog, *ir.ArrayOp, *ir.JSONStringify, *ir.BuiltinCall:
 		return true
 	}
 	return false
@@ -91,6 +91,10 @@ func operands(x ir.Expr) []ir.Expr {
 		return []ir.Expr{x.Executor}
 	case *ir.ConsoleLog:
 		return x.Args
+	case *ir.BuiltinCall:
+		return x.Args
+	case *ir.Concat:
+		return x.Parts
 	case *ir.JSONStringify:
 		if x.Space == nil {
 			return []ir.Expr{x.Value}

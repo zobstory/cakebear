@@ -191,7 +191,7 @@ func TestUnsupportedConstructsAreNamed(t *testing.T) {
 		t.Errorf("exit code = %d, want %d", code, exitErrors)
 	}
 	out := stderr.String()
-	for _, want := range []string{"class declaration", "cannot represent yet", "both operands must have the same type"} {
+	for _, want := range []string{"class declaration", "cannot represent yet", "write a template literal"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("diagnostics missing %q:\n%s", want, out)
 		}

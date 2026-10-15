@@ -297,6 +297,12 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.JSONStringify:
 		return e.jsonStringify(x)
 
+	case *ir.BuiltinCall:
+		return e.builtinCall(x)
+
+	case *ir.Concat:
+		return e.concat(x)
+
 	case *ir.ObjectLit:
 		return e.objectLit(x)
 
@@ -355,6 +361,9 @@ func (e *emitter) binary(x *ir.Binary) string {
 		return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
 	}
 	left, right := e.expr(x.Left), e.expr(x.Right)
+	if s, ok := e.stringBinary(x, left, right); ok {
+		return s
+	}
 	// Go evaluates an expression of constants exactly, at compile time, where
 	// JavaScript rounds every step as a double: `0.1 + 0.2` would be 0.3,
 	// not 0.30000000000000004, and `1e308 * 10` and `0 / 0` compile errors
@@ -447,47 +456,4 @@ func goFuncType(sig *ir.Signature) (string, bool) {
 		s += " " + result
 	}
 	return s, true
-}
-
-// goBinaryOp spells op in Go. ok is false for an operator it doesn't know.
-func goBinaryOp(op ir.BinaryOp) (string, bool) {
-	switch op {
-	case ir.OpAdd:
-		return "+", true
-	case ir.OpSub:
-		return "-", true
-	case ir.OpMul:
-		return "*", true
-	case ir.OpDiv:
-		return "/", true
-	case ir.OpLess:
-		return "<", true
-	case ir.OpLessEq:
-		return "<=", true
-	case ir.OpGreater:
-		return ">", true
-	case ir.OpGreaterEq:
-		return ">=", true
-	case ir.OpEqual:
-		return "==", true
-	case ir.OpNotEqual:
-		return "!=", true
-	case ir.OpAnd:
-		return "&&", true
-	case ir.OpOr:
-		return "||", true
-	default:
-		return "", false
-	}
-}
-
-// goUnaryOp spells op in Go. ok is false for an operator it doesn't know.
-func goUnaryOp(op ir.UnaryOp) (string, bool) {
-	switch op {
-	case ir.OpNeg:
-		return "-", true
-	case ir.OpNot:
-		return "!", true
-	}
-	return "", false
 }

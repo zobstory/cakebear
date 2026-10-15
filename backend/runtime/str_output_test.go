@@ -57,7 +57,7 @@ func TestResponseBodyIsWellFormed(t *testing.T) { //nolint:paralleltest // isola
 		t.Errorf("body % x, length %d; want % x, length 8", r.body, r.length, "a\uFFFDb\uFFFD")
 	}
 	// Node sends U+0080 to U+00FF in a header as UTF-8, as net/http does.
-	if got := r.header.Get("x-latin1"); got != "caf\u00E9\u00FF\u0080" {
+	if got := r.header.Get("X-Latin1"); got != "caf\u00E9\u00FF\u0080" {
 		t.Errorf("x-latin1 = % x", got)
 	}
 }
