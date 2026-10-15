@@ -1,0 +1,83 @@
+{
+  "node": "v24.18.0",
+  "icu": "78.3",
+  "unicode": "17.0",
+  "seed": 539365396,
+  "sections": {
+    "R1": {
+      "first": 1,
+      "last": 68,
+      "count": 68
+    },
+    "R2": {
+      "first": 69,
+      "last": 216,
+      "count": 148
+    },
+    "R3": {
+      "first": 217,
+      "last": 450,
+      "count": 234
+    },
+    "R4": {
+      "first": 451,
+      "last": 637,
+      "count": 187
+    },
+    "R5": {
+      "first": 638,
+      "last": 892,
+      "count": 255
+    },
+    "R6": {
+      "first": 893,
+      "last": 917,
+      "count": 25
+    },
+    "R7": {
+      "first": 918,
+      "last": 950,
+      "count": 33
+    },
+    "R8": {
+      "first": 951,
+      "last": 1008,
+      "count": 58
+    },
+    "R9": {
+      "first": 1009,
+      "last": 1691,
+      "count": 683
+    },
+    "R10": {
+      "first": 1692,
+      "last": 2218,
+      "count": 527
+    },
+    "R11": {
+      "first": 2219,
+      "last": 2268,
+      "count": 50
+    },
+    "R12": {
+      "first": 2269,
+      "last": 2565,
+      "count": 297
+    },
+    "R13": {
+      "first": 2566,
+      "last": 2583,
+      "count": 18
+    },
+    "CIRC": {
+      "first": 2584,
+      "last": 2617,
+      "count": 34
+    },
+    "RANDOM": {
+      "first": 2618,
+      "last": 20000,
+      "count": 17383
+    }
+  }
+}

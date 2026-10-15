@@ -296,6 +296,28 @@ it yet:
   the field's type, each method's arguments and result, and every object
   type of one of the program's own shapes.
 
+Step 4, the runtime for them (`backend/runtime/`), is done, again with
+nothing lowered to it yet:
+- `Array[T]` (`array.go`): a reference to its elements, so every alias sees
+  a push. `Get`, `Set` and `SetLength` panic where Node would read
+  `undefined` or leave a hole (D8, D9), each message saying what Node does.
+- `Object` (`object.go`), the interface each generated struct will
+  implement: `Layout`, the key table its literal chose, so `{ y, x }` prints
+  `y` first, and `Field`. `Clone` copies a graph of them, sharing and cycles
+  kept, for a spawn's result (D11).
+- `inspect.go` and `inspect_string.go`: a port of Node 24.18's
+  `util.inspect`, function by function, for what the subset builds, and
+  `Log(args...)`. `TestInspectGoldens` holds it to 20,000 outputs recorded
+  from Node (`testdata/`, made and checked by `gen-inspect-goldens.mjs`,
+  deterministic). A function can't be printed: a Go func carries no name for
+  `[Function: name]`, so lowering must refuse `console.log` of a value
+  holding one.
+- `width.go`: display width, which grouping measures. The table is Node's
+  own, every code point through `getStringWidth`
+  (`scripts/gen-width-table.mjs`). Node measures a string's NFC form, and
+  only Hangul jamo and 94 other pairs compose into another width, so
+  `displayWidth` composes those rather than carry NFC.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
