@@ -260,16 +260,21 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M4**, objects and arrays
+## Current phase: **open**, with M5 to plan
 
-P0–P5, M1, M2 and M3 are done. Nothing is blocked. M4, decided 2026-10-14, is
-objects and arrays, since a real program is several files of them: exact
-object types with required properties, arrays, `for…of`, the common array
-methods, printing both as Node does, and `JSON.stringify` (M4 plan D1). They
-must extend the race rule before they land, since a `const` array is still
-mutable. Then **M5**, `null` and `undefined`, and **M6**, errors: `throw`,
-`try`/`catch`/`finally`, `reject`. Neither is planned in detail yet, per the
-per-phase rule below.
+P0–P5 and M1–M4 are done. Nothing is blocked. Next is **M5**, `null` and
+`undefined`: optional properties, `T | undefined`, and the members that
+return it (`find`, `at`, `pop()` as a value, `match`). Then **M6**, errors:
+`throw`, `try`/`catch`/`finally`, `reject`. Neither is planned in detail yet,
+per the per-phase rule below. M4's re-measurement of wx-next (check 9, below)
+is the first input to M5's plan.
+
+M4, decided 2026-10-14 and done 2026-10-15, was objects and arrays, since a
+real program is several files of them: exact object types with required
+properties, arrays, `for…of`, the common array methods, printing both as Node
+does, and `JSON.stringify` (M4 plan D1), then frozen consts and strings. They
+extended the race rule before they landed, since a `const` array is still
+mutable.
 
 M4's step 1, the prerequisites, is done: `for (;;)`, `break` and `continue`,
 `++`, `--` and compound assignment, boolean conditions, and type declarations
@@ -409,6 +414,15 @@ program to it end to end. Silent bugs found and fixed:
 - `setHeader` silently dropped a header name Node throws for, and sent a
   value Node throws for; both panic with Node's message now.
 
+Step 11, M4's end to end, is done. `examples/route-server` is a JSON API in
+four modules, a frozen menu, query parsing with the string methods and
+`JSON.stringify` replies, built from its `tsconfig.json`. It is check 8,
+zob's live test. `TestRouteServerServes` holds its answers to 14 requests to
+Node's (status, `Content-Type` and body), and `TestRouteServerUnderRace`
+serves 200 requests, 8 at a time, from a race-detector build, which it checks
+is one, with no race found. Check 9 re-measured wx-next with the real lowering:
+`spikes/m4-remeasure/` (see M4 plan, step 11 results).
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -479,7 +493,10 @@ cakebear was rebased onto `microsoft/TypeScript`'s `tsc/` with snapshot syncs.
 **M3** real projects: `cakec` is `tsc` for everything but `cakec build`,
 native builds from `tsconfig.json`, cakebear's declarations in `tsc` mode and
 the language server, and programs of several modules, lowered under a
-program-wide race rule and run in ES order.
+program-wide race rule and run in ES order. **M4** objects and arrays: exact
+shapes, arrays and their methods, destructuring, printing and
+`JSON.stringify` as Node does, frozen consts a handler may share, and the
+strings step's template literals, string methods and number parsers.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
 nothing. The only workflows in the tree are cakebear's own:
