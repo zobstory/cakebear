@@ -106,7 +106,8 @@ const add = (section, x, space) => addD(section, v(x), space);
 // a string's gap ends at a NUL.
 const SPACES = [
   undefined, N(0), N(1), N(2), N(3), N(4), N(8), N(10), N(11), N(100),
-  N(1.5), N(9.99), N(0.5), N(0.9999), N(-1), N(-0), N(-11), N(NaN), N(Infinity),
+  N(1.5), N(9.99), N(0.5), N(0.999), N(0.9999), N(1e-9), N(-1), N(-0), N(-0.5),
+  N(-11), N(NaN), N(Infinity),
   N(-Infinity), S(''), S(' '), S('\t'), S('--'), S('\n'), S('\r\n'), S('\x00'),
   S('abcdefghijklmn'), S('0123456789'), S('0123456789x'), S('123456789😀'),
   S('12345678😀'), S('1234567890😀'), S('😀'.repeat(6)), S('日本語'),

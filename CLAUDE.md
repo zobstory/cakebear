@@ -375,7 +375,7 @@ an `ir.JSONStringify`, and the runtime (`runtime/json.go`, `json_string.go`)
 writes it as ECMA-262 does, with V8's two departures matched: a number space
 between 0 and 1 breaks lines but indents by nothing, and a string space ends
 at its first NUL. That is why the gap is a `JSONGap` value rather than a
-string. `TestJSONGoldens` holds the runtime to 10,567 outputs recorded from
+string. `TestJSONGoldens` holds the runtime to 10,600 outputs recorded from
 Node (`testdata/gen-json-goldens.mjs`, deterministic), cycles included, and
 `TestJSONStringifyMatchesNode` holds a program to it end to end. A cycle
 panics with V8's `TypeError` message, verbatim.

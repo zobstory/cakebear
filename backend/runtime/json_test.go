@@ -141,7 +141,7 @@ func TestJSONGapNumber(t *testing.T) {
 		{1, 1, true}, {2, 2, true}, {10, 10, true}, {11, 10, true}, {1e9, 10, true},
 		{1.5, 1, true}, {1.9, 1, true}, {9.99, 9, true}, {math.Inf(1), 10, true},
 		// V8's gap of no spaces, which still breaks lines.
-		{0.9, 0, true}, {0.5, 0, true}, {5e-324, 0, true},
+		{0.999, 0, true}, {0.5, 0, true}, {1e-9, 0, true}, {5e-324, 0, true},
 		{0, 0, false}, {NegZero, 0, false}, {-0.5, 0, false}, {-1, 0, false},
 		{math.NaN(), 0, false}, {math.Inf(-1), 0, false},
 	} {

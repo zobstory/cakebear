@@ -34,25 +34,25 @@
     },
     "SPACE": {
       "first": 1240,
-      "last": 1745,
-      "count": 506,
+      "last": 1778,
+      "count": 539,
       "throws": 0
     },
     "SHARED": {
-      "first": 1746,
-      "last": 1757,
+      "first": 1779,
+      "last": 1790,
       "count": 12,
       "throws": 0
     },
     "CIRC": {
-      "first": 1758,
-      "last": 1872,
+      "first": 1791,
+      "last": 1905,
       "count": 115,
       "throws": 115
     },
     "INSPECT": {
-      "first": 1873,
-      "last": 10567,
+      "first": 1906,
+      "last": 10600,
       "count": 8695,
       "throws": 175
     }
