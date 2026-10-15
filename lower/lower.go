@@ -71,6 +71,9 @@ type lowerer struct {
 	// starts it afresh, from those it makes of the type's parts.
 	why       string
 	typeDepth int
+	// temps counts the names lowering makes up, such as for the object a
+	// pattern destructures (destructure.go).
+	temps int
 }
 
 // module lowers the lowerer's file into a module of the program.
@@ -241,24 +244,34 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 	}
 
 	fn := &ir.Func{Name: decl.Name().Text(), Span: l.span(n)}
+	var prologue []ir.Stmt // what binds destructured parameters
 
 	if decl.Parameters != nil {
 		for _, p := range decl.Parameters.Nodes {
 			param := p.AsParameterDeclaration()
-			if param.Name() == nil || param.Name().Kind != ast.KindIdentifier {
-				l.failf(p, "destructured parameters are not supported yet")
+			switch {
+			case param.Name() == nil:
+				l.invalidf(p, "a parameter with no name")
+				continue
+			case param.Name().Kind == ast.KindArrayBindingPattern:
+				l.failf(p, "array destructuring is not supported yet")
 				continue
 			}
 			t := l.typeOf(p)
 			if t == ir.Invalid {
-				l.failf(p, "parameter %s has a type the backend cannot represent yet%s", param.Name().Text(), l.reason())
+				l.failf(p, "parameter %s has a type the backend cannot represent yet%s", bindingText(param.Name()), l.reason())
 				continue
 			}
-			fn.Params = append(fn.Params, ir.Param{
-				Name: param.Name().Text(),
-				Type: t,
-				Span: l.span(p),
-			})
+			name := bindingText(param.Name())
+			if param.Name().Kind == ast.KindObjectBindingPattern {
+				var bound []ir.Stmt
+				var ok bool
+				if name, bound, ok = l.paramPattern(p, t); !ok {
+					continue
+				}
+				prologue = append(prologue, bound...)
+			}
+			fn.Params = append(fn.Params, ir.Param{Name: name, Type: t, Span: l.span(p)})
 		}
 	}
 
@@ -273,7 +286,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 		l.asyncResult(n, fn)
 	}
 
-	l.inBody(fn.Async, func() { fn.Body = l.block(decl.Body) })
+	l.inBody(fn.Async, func() { fn.Body = append(prologue, l.block(decl.Body)...) })
 	return fn
 }
 
@@ -396,8 +409,19 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 	var out []ir.Stmt
 	for _, d := range declList.Declarations.Nodes {
 		decl := d.AsVariableDeclaration()
-		if decl.Name() == nil || decl.Name().Kind != ast.KindIdentifier {
-			l.failf(d, "destructuring is not supported yet")
+		if decl.Name() == nil {
+			l.invalidf(d, "a declaration with no name")
+			continue
+		}
+		if decl.Name().Kind != ast.KindIdentifier {
+			if decl.Initializer == nil {
+				l.invalidf(d, "a destructuring declaration with no initialiser")
+				continue
+			}
+			if init := l.expr(decl.Initializer); init != nil {
+				topLevel := at.Parent != nil && at.Parent.Kind == ast.KindSourceFile
+				out = append(out, l.destructure(d, decl.Name(), init, mutable, topLevel)...)
+			}
 			continue
 		}
 		name := decl.Name().Text()

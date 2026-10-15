@@ -137,3 +137,57 @@ func TestLoopsAndUpdatesMatchNode(t *testing.T) {
 	t.Parallel()
 	matchesNode(t, buildProgram(t, "loops", loopsProgram), nodeLoops, 20)
 }
+
+// loopDeclarationsProgram: a for loop declaring several variables evaluates
+// each initialiser after the one before it, so `j = i + 1` reads the loop's
+// own i, not the outer one (a Go short declaration evaluates every value
+// first, which printed 11 here until M4 step 8). Each iteration still has its
+// own copies, which the closures show; one made in the initialiser itself
+// sees the first i, as under Node. The same holds when the first clause is a
+// destructuring pattern, which declares a held value and then the names.
+// Node 24.18 ran this same file and printed nodeLoopDeclarations, the same in
+// 5 of 5 runs.
+const loopDeclarationsProgram = `export {};
+let i: number = 10;
+for (let i: number = 0, j: number = i + 1; i < 2; i++) {
+  console.log(i, j);
+}
+console.log(i);
+const fs: (() => number)[] = [];
+for (let i: number = 0, k: number = 10; i < 3; i++) {
+  fs.push((): number => i + k);
+}
+for (const f of fs) {
+  console.log(f());
+}
+for (let i: number = 0, g: () => number = (): number => i; i < 3; i++) {
+  console.log(i, g());
+}
+interface R { lo: number; hi: number }
+const r: R = { lo: 1, hi: 4 };
+for (let { lo, hi } = r; lo < hi; lo++) {
+  console.log(lo, hi);
+}
+const later: (() => number)[] = [];
+for (let { lo, hi } = r; lo <= 2; lo++) {
+  later.push((): number => lo * hi);
+}
+for (const f of later) {
+  console.log(f());
+}
+function sum({ lo, hi }: R): number {
+  let t: number = 0;
+  for (const { lo: a } = r; t < hi; t++) {
+    console.log(a + t);
+  }
+  return t;
+}
+console.log(sum(r));
+`
+
+const nodeLoopDeclarations = "0 1\n1 1\n10\n10\n11\n12\n0 0\n1 0\n2 0\n1 4\n2 4\n3 4\n4\n8\n1\n2\n3\n4\n4\n"
+
+func TestLoopDeclarationsMatchNode(t *testing.T) {
+	t.Parallel()
+	matchesNode(t, buildProgram(t, "loop_declarations", loopDeclarationsProgram), nodeLoopDeclarations, 20)
+}

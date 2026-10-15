@@ -84,6 +84,14 @@ var multiModulePrograms = []struct {
 		},
 		"{ name: 'Anne', id: 1 } { id: 2, name: 'Bob' }\nfalse\n",
 	},
+	{
+		"destructured exports, and a pattern's held value in each module",
+		map[string]string{
+			"conf.ts": "export interface Conf { port: number; host: string; limits: { max: number } }\nconst conf: Conf = { port: 8080, host: \"localhost\", limits: { max: 3 } };\nexport const { port, host: hostname } = conf;\nexport const { limits: { max } } = conf;\nconst { port: base } = conf;\nexport function next(): number {\n  return base + 1;\n}\nconsole.log(\"conf\", port);\n",
+			"main.ts": "import type { Conf } from \"./conf.ts\";\nimport { port, hostname, max, next } from \"./conf.ts\";\n\nconst local: Conf = { port: 1, host: \"h\", limits: { max: 9 } };\nconst { port: base, limits } = local;\nconsole.log(port, hostname, max, next(), base, limits);\nfunction show({ host, port }: Conf): string {\n  return host;\n}\nconsole.log(show(local));\n",
+		},
+		"conf 8080\n8080 localhost 3 8081 1 { max: 9 }\nh\n",
+	},
 }
 
 // TestMultiFileMatchesNode (checks 4, 5 and 6): each program prints what Node

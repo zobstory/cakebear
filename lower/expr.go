@@ -161,6 +161,17 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 
 func (l *lowerer) binary(n *ast.Node) ir.Expr {
 	b := n.AsBinaryExpression()
+	if b.OperatorToken.Kind == ast.KindEqualsToken {
+		// An assignment statement is recognised before it gets here
+		// (exprStatement), so this one is a value, or in parentheses.
+		switch ast.SkipParentheses(b.Left).Kind {
+		case ast.KindObjectLiteralExpression, ast.KindArrayLiteralExpression:
+			l.failf(n, "destructuring assignment is not supported yet; declare the names with const or let")
+		default:
+			l.failf(n, "an assignment used as a value is not supported yet; write it as a statement of its own")
+		}
+		return nil
+	}
 
 	left := l.expr(b.Left)
 	right := l.expr(b.Right)

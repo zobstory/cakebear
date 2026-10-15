@@ -101,15 +101,26 @@ func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir
 	async := isAsync(n)
 	lit := &ir.FuncLit{Result: sig.Result, Async: async, Typ: ir.FuncType(sig.Params, sig.Result), Span: l.span(n)}
 	declared := n.Parameters()
+	var prologue []ir.Stmt
 	for i, pt := range sig.Params {
 		param := ir.Param{Type: pt, Span: lit.Span}
 		if i < len(declared) {
-			param.Name = declared[i].Name().Text()
+			param.Name = bindingText(declared[i].Name())
 			param.Span = l.span(declared[i])
+			if declared[i].Name().Kind == ast.KindObjectBindingPattern {
+				name, bound, ok := l.paramPattern(declared[i], pt)
+				if !ok {
+					return nil
+				}
+				param.Name = name
+				prologue = append(prologue, bound...)
+			}
 		}
 		lit.Params = append(lit.Params, param)
 	}
-	l.inBody(async, func() { lit.Body = l.closureBody(n.Body(), bodyResult(sig.Result, async), discard) })
+	l.inBody(async, func() {
+		lit.Body = append(prologue, l.closureBody(n.Body(), bodyResult(sig.Result, async), discard)...)
+	})
 	lit.Captures = l.captures(n)
 	return lit
 }
@@ -133,10 +144,13 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 	for _, p := range n.Parameters() {
 		param := p.AsParameterDeclaration()
 		switch {
-		case param.Name() == nil || param.Name().Kind != ast.KindIdentifier:
-			l.failf(p, "destructured parameters are not supported yet")
+		case param.Name() == nil:
+			l.invalidf(p, "a parameter with no name")
 			ok = false
-		case param.Name().Text() == "this":
+		case param.Name().Kind == ast.KindArrayBindingPattern:
+			l.failf(p, "array destructuring is not supported yet")
+			ok = false
+		case param.Name().Kind == ast.KindIdentifier && param.Name().Text() == "this":
 			l.failf(p, "a this parameter is not supported yet")
 			ok = false
 		case param.DotDotDotToken != nil:
@@ -154,7 +168,7 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 func (l *lowerer) failClosureType(n *ast.Node) {
 	for _, p := range n.Parameters() {
 		if !storable(l.typeOf(p)) {
-			l.failf(p, "parameter %s has a type the backend cannot represent yet%s", p.Name().Text(), l.reason())
+			l.failf(p, "parameter %s has a type the backend cannot represent yet%s", bindingText(p.Name()), l.reason())
 			return
 		}
 	}
@@ -177,7 +191,7 @@ func (l *lowerer) fitsSlot(n *ast.Node, own, slot *ir.Signature) bool {
 	for i, pt := range own.Params {
 		if !pt.Equal(slot.Params[i]) {
 			l.failf(declared[i], "parameter %s is %s here but the caller passes %s; converting between them is not supported yet",
-				declared[i].Name().Text(), pt, slot.Params[i])
+				bindingText(declared[i].Name()), pt, slot.Params[i])
 			return false
 		}
 	}
@@ -222,7 +236,7 @@ func (l *lowerer) captures(fn *ast.Node) []ir.Capture {
 	var visit func(n *ast.Node) bool
 	visit = func(n *ast.Node) bool {
 		if n.Kind == ast.KindIdentifier && !isMemberName(n) {
-			if sym := l.checker.GetSymbolAtLocation(n); sym != nil && !seen[sym] {
+			if sym := l.valueSymbol(n); sym != nil && !seen[sym] {
 				if c, ok := l.capture(fn, n, sym); ok {
 					seen[sym] = true
 					out = append(out, c)
@@ -244,11 +258,17 @@ func (l *lowerer) capture(fn, id *ast.Node, sym *ast.Symbol) (ir.Capture, bool) 
 	if within(decl, fn) {
 		return ir.Capture{}, false // declared inside the literal
 	}
-	mutable := true
-	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
-		mutable = false
+	return ir.Capture{Name: id.Text(), Module: topLevelModule(sym), Type: l.typeOf(id), Mutable: !isConstDecl(decl)}, true
+}
+
+// valueSymbol is the symbol of what the identifier n reads. That is the one
+// GetSymbolAtLocation gives, but for the name of a shorthand property, `{ x }`,
+// which it resolves to the property: the value read is the variable x.
+func (l *lowerer) valueSymbol(n *ast.Node) *ast.Symbol {
+	if p := n.Parent; p != nil && p.Kind == ast.KindShorthandPropertyAssignment && p.Name() == n {
+		return l.checker.GetShorthandAssignmentValueSymbol(p)
 	}
-	return ir.Capture{Name: id.Text(), Module: topLevelModule(sym), Type: l.typeOf(id), Mutable: mutable}, true
+	return l.checker.GetSymbolAtLocation(n)
 }
 
 // isMemberName reports whether id is the `name` in `x.name`, which names a

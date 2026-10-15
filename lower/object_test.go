@@ -117,7 +117,6 @@ func TestObjectRefusals(t *testing.T) {
 		{"Record", "const r: Record<string, number> = { a: 1 };\n", "index signatures, and Record, are not supported yet"},
 		{"a method in an interface", "interface M { f(): number }\nconst m: M = { f: (): number => 1 };\n", "method `f` is not supported yet"},
 		{"a method in a literal", "interface F { f: () => number }\nconst o: F = { f(): number { return 1; } };\n", "a method in an object literal is not supported yet"},
-		{"a shorthand property", "const x: number = 1;\nconst o: { x: number } = { x };\n", "a shorthand property is not supported yet; write `x: x`"},
 		{"a spread", "const a: { x: number } = { x: 1 };\nconst b: { x: number } = { ...a };\n", "spreading into an object literal is not supported yet"},
 		{"a computed key", "const o: { x: number } = { [\"x\"]: 1 };\n", "a computed property name is not supported yet"},
 		{"an integer-like key", "const o: { 1: number } = { 1: 2 };\n", "an integer-like property name (`1`) is not supported yet"},

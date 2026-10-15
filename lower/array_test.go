@@ -63,7 +63,7 @@ func TestArrayRefusals(t *testing.T) {
 		{"an empty literal with no slot", "console.log([]);\n", "an empty array literal needs its type from its slot"},
 		{"for…of over a string", "for (const c of \"abc\") {\n}\n", "for…of over a string is not supported yet; only over an array"},
 		{"for await", "async function f(ys: number[]): Promise<void> {\n  for await (const y of ys) {\n  }\n}\n", "for await is not supported yet"},
-		{"for…of destructuring", "const ps: { a: number }[] = [{ a: 1 }];\nfor (const { a } of ps) {\n}\n", "destructuring is not supported yet"},
+		{"for…of array destructuring", "const ps: number[][] = [[1]];\nfor (const [a] of ps) {\n}\n", "array destructuring is not supported yet"},
 		{"for…of over an existing variable", xs + "let x: number = 0;\nfor (x of xs) {\n}\n", "a for…of loop needs its own const or let"},
 		{"pop as a value", xs + "console.log(xs.pop());\n", "pop's value is an element or undefined, which waits for M5"},
 		{"a method refused by name", xs + "const ys: number[] = xs.concat(xs);\n", "the array method concat is not supported yet"},

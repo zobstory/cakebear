@@ -170,7 +170,7 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 	var visit func(n *ast.Node) bool
 	visit = func(n *ast.Node) bool {
 		if n.Kind == ast.KindIdentifier && !isMemberName(n) {
-			if sym := rc.l.p.resolve(rc.l.checker.GetSymbolAtLocation(n)); sym != nil {
+			if sym := rc.l.p.resolve(rc.l.valueSymbol(n)); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
 					kind := rc.l.typeOf(n).Kind
 					uses = append(uses, sharedUse{
@@ -235,7 +235,7 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 	if sym.Flags()&ast.SymbolFlagsVariable == 0 || !rc.l.p.inProgram(decl) {
 		return nil, false
 	}
-	if decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil && decl.Parent.Flags&ast.NodeFlagsConst != 0 {
+	if isConstDecl(decl) {
 		// A const is shared state unless what it holds can't change.
 		if name := decl.Name(); name != nil && shareableConst(rc.l.typeOf(name).Kind) {
 			return nil, false

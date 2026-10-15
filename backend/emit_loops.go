@@ -14,7 +14,38 @@ import (
 // for loop exactly. The generated go.mod follows the running toolchain
 // (backend.go), and a test holds the semantics.
 func (e *emitter) forStmt(s *ir.For, pad string, depth int) {
-	init := e.forInit(s.Init)
+	if names := loopNames(s.Init); len(names) > 1 {
+		// Go evaluates every value of a short declaration before it declares
+		// any of the names, so `i, j := 0, i + 1` would read an outer i where
+		// JavaScript reads the loop's own. The declarations run first, in
+		// order, in a block of their own, and the clause redeclares the names
+		// from them, which still gives each iteration its own copies.
+		fmt.Fprintf(&e.buf, "%s{\n", pad)
+		e.stmts(s.Init, depth+1)
+		list := strings.Join(names, ", ")
+		e.loop(s, list+" := "+list, pad+"\t", depth+1)
+		fmt.Fprintf(&e.buf, "%s}\n", pad)
+		return
+	}
+	e.loop(s, e.forInit(s.Init), pad, depth)
+}
+
+// loopNames returns the Go names of the variables a for loop's first clause
+// declares, or nil when the clause is not declarations.
+func loopNames(init []ir.Stmt) []string {
+	var names []string
+	for _, s := range init {
+		d, ok := s.(*ir.VarDecl)
+		if !ok {
+			return nil
+		}
+		names = append(names, mangle(d.Name))
+	}
+	return names
+}
+
+// loop writes the for statement itself, with init as its first clause.
+func (e *emitter) loop(s *ir.For, init, pad string, depth int) {
 	cond := ""
 	if s.Cond != nil {
 		cond = e.full(s.Cond)
@@ -35,39 +66,22 @@ func (e *emitter) forStmt(s *ir.For, pad string, depth int) {
 }
 
 // forInit renders a for loop's first clause as one Go simple statement: its
-// variables as one short declaration, or an assignment.
+// one variable as a short declaration, or an assignment. forStmt declares two
+// or more before the loop.
 func (e *emitter) forInit(init []ir.Stmt) string {
-	var decls []*ir.VarDecl
-	for _, s := range init {
-		d, ok := s.(*ir.VarDecl)
-		if !ok {
-			return e.simple(s) // an assignment or a call, which lowering allows only one of
-		}
-		decls = append(decls, d)
-	}
-	if len(decls) == 0 {
+	if len(init) == 0 {
 		return ""
 	}
-	// The initialisers are evaluated as one list, left to right. A call in
-	// any of them is one the others' reads must be ordered against
-	// (order.go), and with one, a call below its root is.
-	ordered := innerCall(decls[0].Init)
-	if len(decls) > 1 {
-		for _, d := range decls {
-			ordered = ordered || isCall(d.Init) || innerCall(d.Init)
-		}
+	d, ok := init[0].(*ir.VarDecl)
+	if !ok {
+		return e.simple(init[0]) // an assignment or a call, which lowering allows only one of
 	}
+	// A call below the initialiser's root is one its reads must be ordered
+	// against (order.go).
 	saved := e.order
-	e.order = ordered
+	e.order = innerCall(d.Init)
 	defer func() { e.order = saved }()
-
-	names := make([]string, len(decls))
-	values := make([]string, len(decls))
-	for i, d := range decls {
-		names[i] = mangle(d.Name)
-		values[i] = conversion(e.typ(d.Type, d.Span), e.expr(d.Init))
-	}
-	return strings.Join(names, ", ") + " := " + strings.Join(values, ", ")
+	return mangle(d.Name) + " := " + conversion(e.typ(d.Type, d.Span), e.expr(d.Init))
 }
 
 // simple renders an assignment or an expression statement as a Go simple

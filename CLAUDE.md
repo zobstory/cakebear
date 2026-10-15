@@ -353,6 +353,23 @@ holds it to Node. Two silent bugs from before turned up and are fixed:
 - arithmetic on two literals ran at Go's compile time, exactly, so
   `0.1 + 0.2` printed 0.3 (`backend/emit_const.go`).
 
+Step 8, shorthand properties and object destructuring, is done (D14,
+`lower/destructure.go`). `{ x }` is `{ x: x }`. A pattern holds the value it
+destructures in a binding of lowering's own, whose name has a space in it so
+it meets none of the program's, and reads each name's field from that, so
+the value is evaluated once. Patterns work wherever a name is declared:
+`const` and `let`, at the top level (exported too) or not, the parameters of
+functions and closures, `for…of`, and a `for` loop's first clause. A
+destructured `const` is a const to the race rule, and a shorthand reads its
+variable there as the bare name does, though the checker resolves the
+shorthand's name to the property (`valueSymbol`, `lower/closure.go`). `TestDestructuringMatchesNode`,
+its edge cases and a multi-module case hold it to Node. One silent bug from
+step 1 turned up and is fixed: a `for` loop declaring two variables emitted
+one Go short declaration, which evaluates every value before it declares any
+name, so in `for (let i = 0, j = i + 1; …)` the `i` that `j` read was an
+outer one. `backend/emit_loops.go` now declares them in order, before the
+loop.
+
 M3 made `cakec` a superset of `tsc` that builds real projects:
 - the `tsc` passthrough;
 - native builds from `tsconfig.json`;
@@ -593,7 +610,7 @@ Flows are exact (M4 plan D5): a value of one shape can't fill a slot of
 another, even where TypeScript allows an object with more fields. Refused by
 name: optional properties, index signatures and `Record`, unions and
 intersections, classes, methods and accessors, computed, numeric and
-integer-like keys, `__proto__`, shorthand properties (step 8), spread,
+integer-like keys, `__proto__`, spread,
 optional chaining, and `console.log` of a value holding a function (a Go
 func has no name to print).
 
@@ -613,7 +630,7 @@ Since M4 step 6 (`lower/array.go`), arrays:
 Refused by name: tuples, holes, spread, `pop()` as a value (its
 `T | undefined` waits for M5), a member a program adds to `Array`, an
 element access on anything but an array, an index that isn't a number, and
-`for…of` over a string, with `await`, with destructuring, or over an
+`for…of` over a string, with `await`, with an array pattern, or over an
 existing variable.
 
 Since M4 step 7 (`lower/array_methods.go`), the array methods: `map`,
@@ -628,6 +645,18 @@ callback testing truthiness, `map` returning nothing, `includes` or
 `indexOf` over functions, and `join` over functions, promises, host values
 or objects with their own `toString` or `valueOf`.
 
+Since M4 step 8 (`lower/destructure.go`):
+- shorthand properties, `{ x }`;
+- object destructuring: `const { a, b: renamed, c: { d } } = value`, and
+  `let`, in a declaration, a parameter (`({ x, y }: Point) => …`), a
+  `for…of` loop's variable, and a `for` loop's first clause. The value is
+  evaluated once, and each name reads its field from it.
+
+Refused by name: array destructuring, rest elements, defaults, computed
+keys, destructuring assignment (`({ a } = o)`), and destructuring anything
+but an object (a string, an array, a `node:http` value: read `req.url`
+instead).
+
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
 and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
@@ -637,11 +666,11 @@ The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, `var`, loose equality, arrays, objects, classes, generics, imports from
-anything but `node:http` and the program's own modules, `for…of`, `for…in`,
-`do…while`, `switch`, bitwise operators;
+`+`, `var`, loose equality, classes, generics, imports from anything but
+`node:http` and the program's own modules, `for…in`, `do…while`, `switch`,
+bitwise operators;
 calling anything but a name or a `node:http` member (`f()()`); named function
-expressions; optional, default, rest or destructured parameters; overloaded or
+expressions; optional, default or rest parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
 a promise; the standard library's other globals (`parseInt`, `NaN`, `isNaN`,
 `setInterval`, …), which lowering refuses by name because only TypeScript's
