@@ -93,8 +93,8 @@ func (l *lowerer) stable(n *ast.Node) bool {
 
 // collect adds f and, in turn, every module of the program's own it imports.
 // A visited module is not followed again, which is what lets two modules
-// import each other. An `import type` is erased, so it brings in nothing: the
-// program is what runs.
+// import each other. An erased import brings in nothing: the program is what
+// runs.
 func (p *program) collect(f *ast.SourceFile) {
 	if p.modules[f] {
 		return
@@ -103,7 +103,7 @@ func (p *program) collect(f *ast.SourceFile) {
 	for _, stmt := range f.AsNode().Statements() {
 		if stmt.Kind == ast.KindImportDeclaration {
 			decl := stmt.AsImportDeclaration()
-			if clause := decl.ImportClause; clause != nil && clause.IsTypeOnly() {
+			if p.erased(decl) {
 				continue
 			}
 			if target := p.imported(decl); target != nil {
@@ -111,6 +111,36 @@ func (p *program) collect(f *ast.SourceFile) {
 			}
 		}
 	}
+}
+
+// erased reports whether an import evaluates nothing: an `import type`, or
+// an import naming only types, `import { Count } from "./types"`.
+// TypeScript's emit drops both, so the module runs only if a value is
+// imported from it somewhere. Node refuses the second outright, since a type
+// has no runtime export to bind, which leaves TypeScript's as the behaviour
+// to match. An import naming a value evaluates its module, used or not.
+func (p *program) erased(decl *ast.ImportDeclaration) bool {
+	clause := decl.ImportClause
+	if clause == nil {
+		return false // `import "./x"`, for its effects alone
+	}
+	if clause.IsTypeOnly() {
+		return true
+	}
+	bindings := clause.AsImportClause().NamedBindings
+	if clause.Name() != nil || bindings == nil || bindings.Kind != ast.KindNamedImports {
+		return false
+	}
+	elements := bindings.AsNamedImports().Elements.Nodes
+	for _, el := range elements {
+		if el.IsTypeOnly() {
+			continue
+		}
+		if sym := p.resolve(p.checker.GetSymbolAtLocation(el.Name())); sym == nil || sym.Flags()&ast.SymbolFlagsValue != 0 {
+			return false
+		}
+	}
+	return len(elements) > 0
 }
 
 // imported returns the module an import declaration names, when it is one of

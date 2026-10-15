@@ -122,7 +122,7 @@ func (e *emitter) function(fn *ir.Func) {
 	if fn.Async {
 		e.asyncBody(fn.Result, fn.Body, 1)
 	} else {
-		e.stmts(fn.Body, 1)
+		e.body(fn.Body, 1, fn.Result != ir.Void)
 	}
 	e.buf.WriteString("}\n")
 }
@@ -175,6 +175,15 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		fmt.Fprintf(&e.buf, "%sfor %s {\n", pad, e.full(s.Cond))
 		e.stmts(s.Body, depth+1)
 		fmt.Fprintf(&e.buf, "%s}\n", pad)
+
+	case *ir.For:
+		e.forStmt(s, pad, depth)
+
+	case *ir.Break:
+		fmt.Fprintf(&e.buf, "%sbreak\n", pad)
+
+	case *ir.Continue:
+		fmt.Fprintf(&e.buf, "%scontinue\n", pad)
 
 	case *ir.Return:
 		switch {
@@ -292,7 +301,7 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 		if x.Async {
 			e.asyncBody(x.Result, x.Body, depth+1)
 		} else {
-			e.stmts(x.Body, depth+1)
+			e.body(x.Body, depth+1, x.Result != ir.Void)
 		}
 	})
 	e.asyncVoid, e.usesDomain = savedVoid, savedDomain

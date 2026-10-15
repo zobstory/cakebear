@@ -42,6 +42,25 @@ type While struct {
 	Span Span
 }
 
+// For is `for (init; cond; post) body`. Init holds the first clause: the
+// loop's own variables, each a binding per iteration as in JavaScript, or
+// assignments. Cond is nil when the clause is empty, and the loop runs until
+// a break. Post holds the third clause.
+type For struct {
+	Init []Stmt
+	Cond Expr
+	Post []Stmt
+	Body []Stmt
+	Span Span
+}
+
+// Break is an unlabelled `break`, out of the innermost loop.
+type Break struct{ Span Span }
+
+// Continue is an unlabelled `continue`, to the innermost loop's next
+// iteration.
+type Continue struct{ Span Span }
+
 // Return carries a nil Value for a bare `return`.
 type Return struct {
 	Value Expr
@@ -60,6 +79,9 @@ func (*If) isStmt()       {}
 func (*While) isStmt()    {}
 func (*Return) isStmt()   {}
 func (*ExprStmt) isStmt() {}
+func (*For) isStmt()      {}
+func (*Break) isStmt()    {}
+func (*Continue) isStmt() {}
 
 func (s *VarDecl) StmtSpan() Span  { return s.Span }
 func (s *Assign) StmtSpan() Span   { return s.Span }
@@ -67,3 +89,6 @@ func (s *If) StmtSpan() Span       { return s.Span }
 func (s *While) StmtSpan() Span    { return s.Span }
 func (s *Return) StmtSpan() Span   { return s.Span }
 func (s *ExprStmt) StmtSpan() Span { return s.Span }
+func (s *For) StmtSpan() Span      { return s.Span }
+func (s *Break) StmtSpan() Span    { return s.Span }
+func (s *Continue) StmtSpan() Span { return s.Span }

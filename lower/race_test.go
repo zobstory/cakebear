@@ -128,7 +128,7 @@ createServer((req, res) => { twice(bump); res.end(); });`,
 		{"an enclosing parameter", `function start(port: number): void {
   createServer((req, res) => { const p: number = port; res.end(); }).listen(port);
 }`, "can't read `port`, which can change while it runs"},
-		// ++ is refused by lowering too; the race rule must still call it a write.
+		// ++ and -- lower to assignments, so the race rule must call them writes.
 		{"postfix increment", `let hits: number = 0;
 createServer((req, res) => { hits++; res.end(); });`, "can't change `hits`, which they all share"},
 		{"prefix decrement", `let hits: number = 0;

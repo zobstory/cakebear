@@ -41,6 +41,12 @@ func inspectStmt(s Stmt, visit func(node any)) {
 		inspectExpr(s.Value, visit)
 	case *ExprStmt:
 		inspectExpr(s.Expr, visit)
+	case *For:
+		inspectStmts(s.Init, visit)
+		inspectExpr(s.Cond, visit)
+		inspectStmts(s.Post, visit)
+		inspectStmts(s.Body, visit)
+	case *Break, *Continue:
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for statement %T", s))
 	}

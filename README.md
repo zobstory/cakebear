@@ -220,7 +220,9 @@ plain `tsc` reports it as an unknown name.
 Supported today: `number`, `string`, `boolean` and the extension types above;
 `const`/`let` with explicit annotations; function declarations with typed
 parameters and return; arithmetic; string concatenation; comparisons; `===` and
-`!==`; `&&`, `||`, `!`; unary minus; `if`/`else`; `while`; `return`;
+`!==`; `&&`, `||`, `!`; unary minus; `if`/`else`; `while`; `for (;;)`,
+`break` and `continue`; `++`, `--`, `+=`, `-=`, `*=` and `/=` as statements;
+`return`; `interface` and `type` declarations;
 `console.log` of one primitive; calls to a function by name; arrow functions
 and function expressions as values (closures); `import` from `node:http`, and
 the members its bundled declarations list; `async` functions and arrows,
@@ -232,9 +234,8 @@ functions and `const`s, renamed or not, and import cycles.
 Not yet: `null` and `undefined` as values, mixed-type `+`, `var`, loose
 equality, arrays, objects, classes, generics, imports from anything but
 `node:http` and the program's own modules, default exports, `import * as` a
-module of your own, re-exports, exporting a `let`, type aliases and
-interfaces (erased at runtime, but refused for now), `for`, bitwise
-operators, `reject` and errors, `.then` and `Promise.all`, and the standard
+module of your own, re-exports, exporting a `let`, `for…of`, testing a
+non-boolean for truthiness, bitwise operators, `reject` and errors, `.then` and `Promise.all`, and the standard
 library's other globals (`parseInt`, `NaN`, `isNaN`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
