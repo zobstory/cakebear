@@ -68,7 +68,18 @@ func spawn[T any](d *Domain, start func(s *Domain, done func(T))) *Promise[T] {
 			}
 		}()
 
-		s.runTask(func() { start(s, func(v T) { deliver(func() { p.resolve(v) }) }) })
+		s.runTask(func() {
+			start(s, func(v T) {
+				if s.pending() {
+					// Work s still has to do, a timer say, can reach v and
+					// change it in parallel with the caller: hand the caller
+					// a copy, aliasing kept (M4 plan D11). With nothing left,
+					// nothing can, and v goes as it is.
+					v = Clone(v)
+				}
+				deliver(func() { p.resolve(v) })
+			})
+		})
 		for !delivered && s.pending() {
 			s.waitNext()
 		}

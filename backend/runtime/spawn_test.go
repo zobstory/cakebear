@@ -78,6 +78,9 @@ func TestSpawnAsyncWaitsForItsPromise(t *testing.T) {
 
 	d := newDomain()
 	var result float64
+	// Before runTask, which starts the spawn and so its 20 ms timer: timing
+	// from after it lets the timer look early.
+	start := time.Now()
 	d.runTask(func() {
 		p := SpawnAsync(d, func(s *Domain) *Promise[float64] {
 			return Async(s, func(co *Co) float64 {
@@ -90,7 +93,6 @@ func TestSpawnAsyncWaitsForItsPromise(t *testing.T) {
 			return struct{}{}
 		})
 	})
-	start := time.Now()
 	d.finish()
 	if result != 7 {
 		t.Errorf("result = %v, want 7", result)
@@ -214,5 +216,56 @@ func TestManySpawnsUnderRace(t *testing.T) {
 		if got != want {
 			t.Fatalf("spawn %d returned %q, want %q", i, got, want)
 		}
+	}
+}
+
+// TestSpawnResultIsCopiedWhileWorkRemains (M4 plan D11): a spawned function
+// that returns an array and leaves a timer that changes it hands its caller
+// a copy, so the timer, running in parallel, can't change what the caller
+// holds. One that leaves nothing behind hands over the array itself. Run
+// with -race too: without the copy, the timer's push races the caller's
+// read.
+func TestSpawnResultIsCopiedWhileWorkRemains(t *testing.T) {
+	t.Parallel()
+
+	d := newDomain()
+	var original, got, settled, settledGot *Array[float64]
+	var lengthLater int
+	// The spawned timer runs on its own goroutine after the caller's domain
+	// may have finished, so it reports the original's length this way.
+	pushed := make(chan int, 1)
+	d.runTask(func() {
+		busy := Spawn(d, func(s *Domain) *Array[float64] {
+			xs := NewArray(1.0, 2.0)
+			original = xs
+			SetTimeout(s, func(*Domain) { pushed <- int(xs.Push(3)) }, 5)
+			return xs
+		})
+		idle := Spawn(d, func(*Domain) *Array[float64] {
+			settled = NewArray(7.0)
+			return settled
+		})
+		Async(d, func(co *Co) struct{} {
+			got = Await(co, busy)
+			settledGot = Await(co, idle)
+			SetTimeout(d, func(*Domain) { lengthLater = got.Len() }, 30)
+			return struct{}{}
+		})
+	})
+	finishWithin(t, d, 5*time.Second)
+	if got == original {
+		t.Fatal("the caller got the array its spawned timer still changes, not a copy")
+	}
+	var originalLength int
+	select {
+	case originalLength = <-pushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the spawned timer never ran")
+	}
+	if lengthLater != 2 || originalLength != 3 {
+		t.Errorf("after the spawned timer, the caller's copy has %d elements and the original %d; want 2 and 3", lengthLater, originalLength)
+	}
+	if settledGot != settled {
+		t.Error("a spawn with nothing left to do copied its result anyway")
 	}
 }

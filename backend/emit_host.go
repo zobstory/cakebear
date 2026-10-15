@@ -60,7 +60,7 @@ func (e *emitter) typ(t ir.Type, at ir.Span) string {
 
 func mentionsRuntime(t ir.Type) bool {
 	switch t.Kind {
-	case ir.KindHost, ir.KindFunc, ir.KindPromise, ir.KindObject:
+	case ir.KindHost, ir.KindFunc, ir.KindPromise, ir.KindObject, ir.KindArray:
 		return true
 	}
 	return false

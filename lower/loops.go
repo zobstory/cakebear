@@ -17,6 +17,9 @@ func (l *lowerer) exprStatement(stmt, expr *ast.Node) []ir.Stmt {
 	if out, ok := l.update(stmt, expr); ok {
 		return out
 	}
+	if out, ok := l.popStatement(stmt, expr); ok {
+		return out
+	}
 	if expr.Kind == ast.KindBinaryExpression {
 		if bin := expr.AsBinaryExpression(); bin.OperatorToken.Kind == ast.KindEqualsToken {
 			return l.assignment(stmt, bin)
@@ -69,15 +72,16 @@ func updateOf(expr *ast.Node) (target, value *ast.Node, op ir.BinaryOp, text str
 
 // update lowers an update as a statement, to the assignment `x = x op v`,
 // and reports whether expr was one. x is read once and written once, so the
-// two spellings mean the same: the target is a variable, or a field of one,
-// `name.f` (D13), never an expression a second evaluation could change.
+// two spellings mean the same: the target is a variable, a field of one,
+// `name.f`, or an element `name[i]` with a name or a number for i (D13),
+// never an expression a second evaluation could change.
 func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	target, value, op, text, ok := updateOf(expr)
 	if !ok {
 		return nil, false
 	}
 	if !updatable(target) {
-		l.failf(stmt, "%s on anything but a variable's name, or a field of one, is not supported yet", text)
+		l.failf(stmt, "%s on anything but a variable's name, a field of one, or an element indexed by a name or a number, is not supported yet", text)
 		return nil, true
 	}
 	left := l.expr(target)
@@ -103,18 +107,31 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		return nil, true
 	}
 	sum := &ir.Binary{Op: op, Left: left, Right: right, Typ: t, Span: l.span(expr)}
-	if get, ok := left.(*ir.FieldGet); ok {
+	switch get := left.(type) {
+	case *ir.FieldGet:
 		return []ir.Stmt{&ir.FieldSet{Object: get.Object, Field: get.Field, Value: sum, Span: l.span(stmt)}}, true
+	case *ir.IndexGet:
+		return []ir.Stmt{&ir.IndexSet{Array: get.Array, Index: get.Index, Value: sum, Span: l.span(stmt)}}, true
+	case *ir.ArrayOp: // xs.length
+		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: get.Array, Args: []ir.Expr{sum}, Typ: ir.Void, Span: l.span(stmt)}
+		return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
 	}
 	name, module := l.ref(target)
 	return []ir.Stmt{&ir.Assign{Name: name, Module: module, Value: sum, Span: l.span(stmt)}}, true
 }
 
-// updatable reports whether an update may target n: a name, or a field of a
-// name, whose receiver a second read finds unchanged.
+// updatable reports whether an update may target n: a name, a field of a
+// name, or an element of a name indexed by a name or a number, whose
+// receiver and index a second read finds unchanged.
 func updatable(n *ast.Node) bool {
 	if n.Kind == ast.KindIdentifier {
 		return true
+	}
+	if n.Kind == ast.KindElementAccessExpression {
+		access := n.AsElementAccessExpression()
+		index := access.ArgumentExpression.Kind
+		return access.QuestionDotToken == nil && access.Expression.Kind == ast.KindIdentifier &&
+			(index == ast.KindIdentifier || index == ast.KindNumericLiteral)
 	}
 	if n.Kind != ast.KindPropertyAccessExpression {
 		return false
@@ -125,9 +142,13 @@ func updatable(n *ast.Node) bool {
 
 // nodeText is n as written, for a message.
 func nodeText(n *ast.Node) string {
-	if n.Kind == ast.KindPropertyAccessExpression {
+	switch n.Kind {
+	case ast.KindPropertyAccessExpression:
 		access := n.AsPropertyAccessExpression()
 		return nodeText(access.Expression) + "." + access.Name().Text()
+	case ast.KindElementAccessExpression:
+		access := n.AsElementAccessExpression()
+		return nodeText(access.Expression) + "[" + nodeText(access.ArgumentExpression) + "]"
 	}
 	return n.Text()
 }

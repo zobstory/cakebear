@@ -193,6 +193,12 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 	case *ir.FieldSet:
 		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.fieldSet(s))
 
+	case *ir.IndexSet:
+		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.indexSet(s))
+
+	case *ir.ForOf:
+		e.forOf(s, pad, depth)
+
 	case *ir.Return:
 		switch {
 		case s.Value == nil && e.asyncVoid:
@@ -205,7 +211,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
-		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise:
+		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise, *ir.ArrayOp:
 			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.full(s.Expr))
 		default:
 			// Go accepts only calls as expression statements, TypeScript any
@@ -294,6 +300,15 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.FieldGet:
 		return e.fieldGet(x)
 
+	case *ir.ArrayLit:
+		return e.arrayLit(x)
+
+	case *ir.IndexGet:
+		return e.indexGet(x)
+
+	case *ir.ArrayOp:
+		return e.arrayOp(x)
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)
@@ -366,6 +381,8 @@ func goType(t ir.Type) (string, bool) {
 		return goPromiseType(t)
 	case ir.KindObject:
 		return goObjectType(t.Shape)
+	case ir.KindArray:
+		return goArrayType(t)
 	}
 	switch t {
 	case ir.Number:

@@ -98,14 +98,14 @@ func TestRefusesUnsupportedConstructs(t *testing.T) {
 		want string
 	}{
 		{"class", "class C { }\n", "class declaration"},
-		{"array type", "const a: number[] = [1];\n", "cannot represent yet"},
+		{"tuple type", "const a: [number] = [1];\n", "cannot represent yet"},
 		{"var", "var x: number = 1;\n", "`var` is not supported"},
 		{"loose equality", "const b: boolean = 1 == 1;\n", "loose equality"},
 		{"mixed concat", "const s: string = \"a\" + 1;\n", "same type"},
 		{"null", "const n: null = null;\n", "null is not supported yet"},
 		{"a format string", "const s: string = \"%s\";\nconsole.log(s, 2);\n", "a string before console.log's other arguments is a format to Node"},
 		{"a literal with a %", "console.log(\"%d items\", 2);\n", "make it a string literal with no %"},
-		{"for-of", "for (const x of [1]) { }\n", "not supported yet"},
+		{"for-in", "const o: { a: number } = { a: 1 };\nfor (const k in o) { }\n", "not supported yet"},
 	}
 
 	for _, tt := range tests {
