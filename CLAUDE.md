@@ -160,6 +160,16 @@ golangci-lint run --config .golangci.cakebear.yml \
 instead. `.gitignore` covers `/cakec` and `/tsc` as a backstop, but `-o bin/`
 keeps the root clean.
 
+**Go's build cache keys a package on the directory it was built from**, unless
+the build is `-trimpath`. Measured 2026-10-16:
+- `cakec build` uses `-trimpath` (`backend/backend.go`). Before, each build
+  stored the runtime package again, 2.1 MB a build even for the same
+  program, so one run of the owned tests added 253 MB, and 9 MB after.
+- Building the fork itself from a new directory still adds about 2.1 GB:
+  every worktree, and every `git archive` export an agent builds in, is a new
+  copy. A cache of 194 GB came from a few days of that. Go deletes entries
+  unused for five days; `go clean -cache` clears it at once.
+
 `testdata/tests/cases/` is upstream's conformance corpus: about 12,400 `.ts`
 cases across `compiler/` and `conformance/`. It arrives with every sync now.
 Under typescript-go it was a submodule that nobody cloned.
