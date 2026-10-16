@@ -114,6 +114,7 @@ func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir
 		if i < len(declared) {
 			param.Name = bindingText(declared[i].Name())
 			param.Span = l.span(declared[i])
+			param.Appended = declared[i].Name().Kind == ast.KindIdentifier && l.appended(declared[i].Name())
 			if declared[i].Name().Kind == ast.KindObjectBindingPattern {
 				name, bound, ok := l.paramPattern(declared[i], pt)
 				if !ok {

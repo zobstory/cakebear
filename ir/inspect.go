@@ -30,6 +30,9 @@ func inspectStmt(s Stmt, visit func(node any)) {
 		inspectExpr(s.Init, visit)
 	case *Assign:
 		inspectExpr(s.Value, visit)
+	case *Append:
+		inspectExpr(s.Target, visit)
+		inspectExprs(s.Parts, visit)
 	case *If:
 		inspectExpr(s.Cond, visit)
 		inspectStmts(s.Then, visit)

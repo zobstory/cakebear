@@ -90,6 +90,8 @@ func (e *emitter) simple(s ir.Stmt) string {
 	switch s := s.(type) {
 	case *ir.Assign:
 		return e.top(s.Module, s.Name) + " = " + e.full(s.Value)
+	case *ir.Append:
+		return e.appendStmt(s)
 	case *ir.FieldSet:
 		return e.fieldSet(s)
 	case *ir.ExprStmt:

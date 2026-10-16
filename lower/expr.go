@@ -67,7 +67,7 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 			return nil
 		}
 		name, module := l.ref(n)
-		return &ir.Ident{Name: name, Module: module, Stable: l.stable(n), Typ: t, Span: l.span(n)}
+		return &ir.Ident{Name: name, Module: module, Stable: l.stable(n), Appended: l.appended(n), Typ: t, Span: l.span(n)}
 
 	case ast.KindParenthesizedExpression:
 		// Parentheses carry no meaning past parsing; the emitter parenthesises

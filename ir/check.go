@@ -113,6 +113,8 @@ func (p *Program) checkNode(node any) error {
 		return checkBuiltin(n)
 	case *Concat:
 		return checkConcat(n)
+	case *Append:
+		return checkAppend(n)
 	case *ForOf:
 		elem, err := elemOf(n.Array.ExprType())
 		if err == nil && !n.Type.Equal(elem) {

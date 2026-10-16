@@ -43,8 +43,11 @@ type Ident struct {
 	// in, as JavaScript orders it (backend/order.go). The zero value is the
 	// safe one: a read not known to be stable is ordered.
 	Stable bool
-	Typ    Type
-	Span   Span
+	// Appended marks a reference to a string binding the program appends
+	// to (append.go).
+	Appended bool
+	Typ      Type
+	Span     Span
 }
 
 // BinaryOp is the set of binary operators the Phase-1 subset lowers.

@@ -16,6 +16,10 @@ func TestUpdatesAreAssignments(t *testing.T) {
 	m := lowerClean(t, "type N = number;\ninterface I {\n  x: number;\n}\nlet n: N = 1;\nn++;\n--n;\nn *= 3;\nn /= 2;\nn -= 1;\nlet s: string = \"a\";\ns += \"b\";\n")
 	var got []string
 	for _, st := range m.Main {
+		if ap, ok := st.(*ir.Append); ok { // a string let appended to (D13)
+			got = append(got, fmt.Sprintf("%s = %s + %s", ap.Target.Name, ap.Target.Name, ap.Parts[0].(*ir.StringLit).Value))
+			continue
+		}
 		a, ok := st.(*ir.Assign)
 		if !ok {
 			continue

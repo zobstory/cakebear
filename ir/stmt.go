@@ -17,7 +17,9 @@ type VarDecl struct {
 	Type    Type
 	Init    Expr
 	Mutable bool // let, versus const
-	Span    Span
+	// Appended marks a string let the program appends to (append.go).
+	Appended bool
+	Span     Span
 }
 
 // Assign is assignment to an existing binding.
