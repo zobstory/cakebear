@@ -7,8 +7,8 @@ import (
 
 // The string methods that search one string for another (M4 strings plan
 // S6), each as ECMA-262 writes it, on code units. A search can match half
-// of a pair: "😀".indexOf("\uD83D") is 0. Two ASCII strings are searched as
-// bytes.
+// of a pair: "😀".indexOf("\uD83D") is 0. A search for an ASCII pattern is
+// made on bytes instead (str_search_ascii.go).
 
 // indexOf is StringIndexOf: the first index at or after from where w
 // occurs in v, or -1. An empty w occurs at from, if from is in the string.
@@ -17,12 +17,6 @@ func indexOf(v, w jsStr, from int) int {
 	if m == 0 {
 		if from <= n {
 			return from
-		}
-		return -1
-	}
-	if v.units == nil && w.units == nil {
-		if i := strings.Index(v.s[from:], w.s); i >= 0 {
-			return from + i
 		}
 		return -1
 	}
@@ -36,11 +30,7 @@ func indexOf(v, w jsStr, from int) int {
 
 // equalAt reports whether w occurs in v at i, where it fits.
 func equalAt(v, w jsStr, i int) bool {
-	m := w.len()
-	if v.units == nil && w.units == nil {
-		return v.s[i:i+m] == w.s
-	}
-	for k := range m {
+	for k := range w.len() {
 		if v.at(i+k) != w.at(k) {
 			return false
 		}
@@ -50,11 +40,17 @@ func equalAt(v, w jsStr, i int) bool {
 
 // StrIncludes is `s.includes(search, pos?)`.
 func StrIncludes(s, search string, pos ...float64) bool {
+	if asciiPattern(search) {
+		return includesASCII(s, search, optPosition(pos, len(s)))
+	}
 	return StrIndexOf(s, search, pos...) >= 0
 }
 
 // StrIndexOf is `s.indexOf(search, pos?)`.
 func StrIndexOf(s, search string, pos ...float64) float64 {
+	if asciiPattern(search) {
+		return float64(indexASCII(s, search, optPosition(pos, len(s))))
+	}
 	v, w := newJSStr(s), newJSStr(search)
 	start := 0
 	if len(pos) > 0 {
@@ -66,6 +62,13 @@ func StrIndexOf(s, search string, pos ...float64) float64 {
 // StrLastIndexOf is `s.lastIndexOf(search, pos?)`. A missing pos, or NaN,
 // searches from the end.
 func StrLastIndexOf(s, search string, pos ...float64) float64 {
+	if asciiPattern(search) {
+		start := len(s)
+		if len(pos) > 0 && !math.IsNaN(pos[0]) {
+			start = position(pos[0], len(s))
+		}
+		return float64(lastIndexASCII(s, search, start))
+	}
 	v, w := newJSStr(s), newJSStr(search)
 	n, m := v.len(), w.len()
 	start := n
@@ -82,6 +85,9 @@ func StrLastIndexOf(s, search string, pos ...float64) float64 {
 
 // StrStartsWith is `s.startsWith(search, pos?)`.
 func StrStartsWith(s, search string, pos ...float64) bool {
+	if asciiPattern(search) {
+		return startsWithASCII(s, search, optPosition(pos, len(s)))
+	}
 	v, w := newJSStr(s), newJSStr(search)
 	start := 0
 	if len(pos) > 0 {
@@ -92,6 +98,13 @@ func StrStartsWith(s, search string, pos ...float64) bool {
 
 // StrEndsWith is `s.endsWith(search, end?)`.
 func StrEndsWith(s, search string, end ...float64) bool {
+	if asciiPattern(search) {
+		e := len(s)
+		if len(end) > 0 {
+			e = position(end[0], len(s))
+		}
+		return endsWithASCII(s, search, e)
+	}
 	v, w := newJSStr(s), newJSStr(search)
 	e := v.len()
 	if len(end) > 0 {
@@ -119,6 +132,9 @@ func StrSplit(s, separator string, limit ...float64) *Array[string] {
 	}
 	if lim == 0 {
 		return NewArray[string]()
+	}
+	if asciiPattern(separator) && canonical(s) {
+		return NewArray(splitASCII(s, separator, lim)...)
 	}
 	v, sep := newJSStr(s), newJSStr(separator)
 	n, m := v.len(), sep.len()
@@ -149,7 +165,7 @@ func StrSplit(s, separator string, limit ...float64) *Array[string] {
 // $<name> are text, as is a $ before anything else.
 type template struct {
 	parts                  []templatePart
-	units                  int // the text parts' length, in code units
+	units, bytes           int // the text parts' length, in code units and in bytes
 	matched, before, after int // how many $&, $` and $' it holds
 }
 
@@ -195,6 +211,7 @@ func (t *template) text(s string) {
 	if s != "" {
 		t.parts = append(t.parts, templatePart{text: s})
 		t.units += utf16Len(s)
+		t.bytes += len(s)
 	}
 }
 
@@ -223,6 +240,13 @@ func (t *template) write(b *strBuilder, v jsStr, pos, m int) {
 // StrReplace is `s.replace(pattern, replacement)` with a string pattern: the
 // first match replaced.
 func StrReplace(s, pattern, replacement string) string {
+	if asciiPattern(pattern) && canonical(s) {
+		pos := strings.Index(s, pattern)
+		if pos < 0 {
+			return s
+		}
+		return replaceASCII(s, len(pattern), []int{pos}, parseTemplate(replacement))
+	}
 	v, w := newJSStr(s), newJSStr(pattern)
 	pos := indexOf(v, w, 0)
 	if pos < 0 {
@@ -234,6 +258,9 @@ func StrReplace(s, pattern, replacement string) string {
 // StrReplaceAll is `s.replaceAll(pattern, replacement)` with a string
 // pattern. An empty one matches before every code unit and at the end.
 func StrReplaceAll(s, pattern, replacement string) string {
+	if asciiPattern(pattern) && canonical(s) {
+		return replaceAllASCII(s, pattern, replacement)
+	}
 	v, w := newJSStr(s), newJSStr(pattern)
 	m := w.len()
 	var positions []int

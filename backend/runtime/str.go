@@ -25,7 +25,8 @@ import (
 // which is what a function that rebuilds the string writes for it.
 //
 // Most strings are ASCII, where a byte is a code unit, so each function
-// checks for that first and works on the bytes.
+// checks for that first and works on the bytes. A search for an ASCII
+// pattern works on the bytes whatever the string holds (str_search_ascii.go).
 
 // stringLimit is V8's longest string, in code units (String::kMaxLength).
 // Making a longer one throws RangeError: Invalid string length.
@@ -41,22 +42,24 @@ func checkLength(units float64) {
 	}
 }
 
-// isASCII reports whether every byte of s is below 0x80, eight at a time.
-func isASCII(s string) bool {
+// isASCII reports whether every byte of s is below 0x80.
+func isASCII(s string) bool { return asciiPrefix(s) == len(s) }
+
+// asciiPrefix is how many bytes below 0x80 s starts with, read eight at a
+// time.
+func asciiPrefix(s string) int {
 	i := 0
 	for ; i+8 <= len(s); i += 8 {
 		w := uint64(s[i]) | uint64(s[i+1])<<8 | uint64(s[i+2])<<16 | uint64(s[i+3])<<24 |
 			uint64(s[i+4])<<32 | uint64(s[i+5])<<40 | uint64(s[i+6])<<48 | uint64(s[i+7])<<56
 		if w&0x8080808080808080 != 0 {
-			return false
+			break
 		}
 	}
-	for ; i < len(s); i++ {
-		if s[i] >= utf8.RuneSelf {
-			return false
-		}
+	for i < len(s) && s[i] < utf8.RuneSelf {
+		i++
 	}
-	return true
+	return i
 }
 
 // char decodes the character at s[i]: a code point, or a half's code unit,
@@ -96,12 +99,14 @@ func appendHalf(b []byte, u rune) []byte {
 
 // utf16Len is a string's length as JavaScript counts it: a character
 // outside the BMP is two units, and a half, like any other character, one.
+// A run of ASCII is a unit a byte, and is skipped eight bytes at a time.
 func utf16Len(s string) int {
 	n := 0
 	for i := 0; i < len(s); {
 		if s[i] < utf8.RuneSelf {
-			i++
-			n++
+			k := asciiPrefix(s[i:])
+			i += k
+			n += k
 			continue
 		}
 		r, size := char(s, i)
