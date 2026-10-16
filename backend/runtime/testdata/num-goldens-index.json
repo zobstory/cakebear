@@ -94,6 +94,18 @@
       "last": 46117,
       "count": 678,
       "throws": 0
+    },
+    "MOD": {
+      "first": 46118,
+      "last": 46958,
+      "count": 841,
+      "throws": 0
+    },
+    "MOD_RANDOM": {
+      "first": 46959,
+      "last": 50958,
+      "count": 4000,
+      "throws": 0
     }
   }
 }

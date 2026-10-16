@@ -74,6 +74,9 @@ type lowerer struct {
 	// temps counts the names lowering makes up, such as for the object a
 	// pattern destructures (destructure.go).
 	temps int
+	// native holds, while a conversion's argument is lowered, the
+	// arithmetic in it that is native to the conversion's type (arith.go).
+	native map[*ast.Node]ir.Type
 }
 
 // module lowers the lowerer's file into a module of the program.

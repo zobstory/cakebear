@@ -1,7 +1,8 @@
 // gen-num-goldens.mjs: golden corpora of number formatting and parsing, and
 // of the URI functions, recorded from Node 24.18.0, for cakebear's
 // NumberToFixed, StringToNumber, ParseInt, ParseFloat, NumberIsFinite,
-// NumberIsNaN, NumberIsInteger, EncodeURIComponent and DecodeURIComponent.
+// NumberIsNaN, NumberIsInteger, Mod, EncodeURIComponent and
+// DecodeURIComponent.
 //
 //   node gen-num-goldens.mjs
 //
@@ -20,6 +21,7 @@
 //   parseInt           [s] [s, r]    parseInt(s), parseInt(s, r)
 //   parseFloat         [s]           parseFloat(s)
 //   isFinite isNaN isInteger [x]     Number.isFinite(x) and so on
+//   mod                [x, y]        x % y
 //   encodeURIComponent decodeURIComponent [s]
 //
 // The number index also lists the code points the parsers skip as
@@ -64,6 +66,7 @@ const FNS = {
   isFinite: { call: (x) => Number.isFinite(x), args: ['n'] },
   isNaN: { call: (x) => Number.isNaN(x), args: ['n'] },
   isInteger: { call: (x) => Number.isInteger(x), args: ['n'] },
+  mod: { call: (x, y) => x % y, args: ['n', 'n'] },
   encodeURIComponent: { call: (s) => encodeURIComponent(s), args: ['s'], error: URIError },
   decodeURIComponent: { call: (s) => decodeURIComponent(s), args: ['s'], error: URIError },
 };
@@ -390,6 +393,23 @@ function sectionPREDICATES() {
   }
 }
 
+// MOD: %. Every pair of the edge values, then random pairs: any two
+// doubles, and two of a size, where the remainder takes the fewest steps.
+// It is written last, after the URI sections, so the seeded draws before it,
+// and every earlier line, stay as they were.
+function sectionMOD() {
+  const r = 'MOD';
+  const xs = [0, -0, 1, -1, 2, -2, 0.5, -0.5, 1.5, -1.5, 3, -3, 5.5, -5.5, 7, 0.1, 0.3, 1e-7, 2 ** -52, 2 ** 53 + 2,
+    4503599627370495.5, 1e21, Number.MAX_VALUE, -Number.MAX_VALUE, Number.MIN_VALUE, -Number.MIN_VALUE, NaN, Infinity,
+    -Infinity];
+  for (const x of xs) {
+    for (const y of xs) add(r, 'mod', N(x), N(y));
+  }
+  const t = 'MOD_RANDOM';
+  for (let i = 0; i < 3000; i++) add(t, 'mod', N(randomDouble()), N(randomDouble(int(2047) - 1023)));
+  for (let i = 0; i < 1000; i++) add(t, 'mod', N(randomDouble(int(60))), N(randomDouble(int(60))));
+}
+
 // ---------------------------------------------------------------------------
 // The URI functions.
 
@@ -510,6 +530,8 @@ sectionPREDICATES();
 target = corpora.uri;
 sectionENCODE();
 sectionDECODE();
+target = corpora.num;
+sectionMOD();
 
 function write(name, entries, extra) {
   const out = path.join(HERE, `${name}-goldens.jsonl`);

@@ -55,6 +55,7 @@ const (
 	OpSub
 	OpMul
 	OpDiv
+	OpMod // JavaScript's %: the remainder with the dividend's sign, as math.Mod
 	OpLess
 	OpLessEq
 	OpGreater
@@ -75,6 +76,8 @@ func (o BinaryOp) String() string {
 		return "*"
 	case OpDiv:
 		return "/"
+	case OpMod:
+		return "%"
 	case OpLess:
 		return "<"
 	case OpLessEq:

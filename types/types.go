@@ -166,23 +166,27 @@ func ValidateLiteral(extension string, num float64, str string, isString bool) s
 		}
 		return ""
 	case I32:
-		return checkInteger(extension, num, math.MinInt32, math.MaxInt32)
+		return checkInteger(extension, num, math.MinInt32, 1<<31)
 	case I64:
-		return checkInteger(extension, num, math.MinInt64, math.MaxInt64)
+		return checkInteger(extension, num, math.MinInt64, 1<<63)
 	case U32:
-		return checkInteger(extension, num, 0, math.MaxUint32)
+		return checkInteger(extension, num, 0, 1<<32)
 	case U64:
-		return checkInteger(extension, num, 0, math.MaxUint64)
+		return checkInteger(extension, num, 0, 1<<64)
 	default:
 		return ""
 	}
 }
 
-func checkInteger(extension string, v, low, high float64) string {
+// checkInteger holds v to [low, past): past is the first value beyond the
+// type's range, which a float64 holds exactly. The largest values, MaxInt64
+// and MaxUint64, round up to it as float64s, so comparing against them let
+// 2^63 and 2^64 through to go build.
+func checkInteger(extension string, v, low, past float64) string {
 	if v != math.Trunc(v) {
 		return fmt.Sprintf("%s is not a whole number, so it cannot be %s", showNumber(v), extension)
 	}
-	if v < low || v > high {
+	if v < low || v >= past {
 		return fmt.Sprintf("%s is outside the range of %s", showNumber(v), extension)
 	}
 	return ""
@@ -191,7 +195,12 @@ func checkInteger(extension string, v, low, high float64) string {
 // showNumber renders a value the way the author wrote it rather than the way Go
 // prints a float64: someone who typed 3000000000 should not be told about
 // "3e+09".
+// A whole number is shown exactly: the shortest digits that read back as v,
+// which is what 'f' with -1 gives, show 2^64 as 18446744073709552000.
 func showNumber(v float64) string {
+	if v == math.Trunc(v) {
+		return strconv.FormatFloat(v, 'f', 0, 64)
+	}
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 

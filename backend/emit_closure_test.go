@@ -97,7 +97,7 @@ func TestEmitExprStmtDiscardsNonCalls(t *testing.T) {
 
 	got := Emit(ir.ProgramOf(m))
 	mustParse(t, got)
-	if !strings.Contains(got, "\t_ = (x * x)\n") {
+	if !strings.Contains(got, "\t_ = float64(x * x)\n") {
 		t.Errorf("non-call expression statement not discarded:\n%s", got)
 	}
 	if !strings.Contains(got, "\tg(ts_domain, x)\n") || strings.Contains(got, "_ = g(ts_domain, x)") {

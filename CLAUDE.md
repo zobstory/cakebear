@@ -572,11 +572,34 @@ filling a `number`'s slot (a variable, an argument, a result), TypeScript
 allows, so lowering widens it to a float64; it used to reach `go build`
 unconverted and fail there.
 
+**Arithmetic follows the types TypeScript gives it** (`lower/arith.go`):
+- Outside a conversion, an extension type's arithmetic is a number's, its
+  operands widened: `const x: number = a / b` is 3.5 for 7 and 2, and an
+  `i32` with a `number` is a number's sum.
+- Inside its own conversion, it is native: `i32(a + b)` adds in Go's `int32`
+  and wraps, as JavaScript's `(a + b) | 0` does, and `i32(a * b)` is
+  `Math.imul`'s, exactly. That is the escape hatch's speed.
+  - For an integer type, every `+`, `-` and `*` below the argument is native,
+    and a `/` or `%` only as the argument itself, since truncating
+    mid-expression isn't what a number truncated once gives.
+  - For `f32`, only the argument's own operator is native: `float32` rounds
+    every step, where a number rounds once.
+  - A zero divisor there panics, saying what the number would have been.
+- Until this was decided, the arithmetic was native everywhere, so a sum of
+  two large `i32`s printed wrapped. And from PR 46, every conversion's
+  argument went through a `float64`, so `i64(b + b)` lost what a number
+  can't hold past 2^53.
+
 **Literal arguments are validated at compile time.** `i32(3000000000)`,
-`i32(1.5)`, `u32(-1)` and `base64("!!!")` are all compile errors. This is the
-part a plain `number` or `string` could never do, and the reason the extensions
-earn their place. Non-literal arguments are the machine's problem at runtime,
-under Go's conversion rules.
+`i32(1.5)`, `u32(-1)` and `base64("!!!")` are all compile errors. So is a
+literal no number holds exactly: TypeScript reads the literal in
+`i64(9007199254740993)` as the number 9007199254740992 before the conversion
+sees it. A literal converts as the number it is, from its exact digits.
+This is the part a plain `number` or `string` could never do, and the reason
+the extensions earn their place. A non-literal number converted to an
+integer type, `i32(n)`, is the machine's problem at runtime, under Go's
+conversion rules. A value of another extension type converts as Go converts
+integers, so `u32(i32(-1))` is 4294967295, as `>>> 0` gives.
 
 Two failure kinds, reported separately because they mean opposite things:
 `error:` is a genuine mistake no later phase will make legal, and
@@ -591,7 +614,8 @@ the user made a mistake.
 
 Supported: `number`, `string`, `boolean`, and cakebear's extensions
 (`i32`, `i64`, `u32`, `u64`, `f32`, `base64`); `const`/`let` with explicit type
-annotations; function declarations with typed parameters and return; arithmetic;
+annotations; function declarations with typed parameters and return; arithmetic
+(`+`, `-`, `*`, `/` and `%`, which is `math.Mod`, Node's to the bit);
 string concatenation with `+` when both operands are strings; comparisons;
 `===`/`!==`; `&&`/`||`/`!`; unary minus; `if`/`else`; `while`; `return`;
 `console.log` on one primitive argument; calls to a function by name;
@@ -645,7 +669,7 @@ Since M4 (`lower/loops.go`):
   is a binding per iteration, as in JavaScript, and so is a Go 1.22 loop
   variable, so a closure made in the body keeps its own iteration's value;
 - unlabelled `break` and `continue`;
-- `++`, `--`, `+=`, `-=`, `*=` and `/=` on a `number` variable, and `+=` of a
+- `++`, `--`, `+=`, `-=`, `*=`, `/=` and `%=` on a `number` variable, and `+=` of a
   `string` onto a `string`, as statements. They lower to `x = x op v`. On an
   extension type they are refused, so the narrowing stays visible:
   `n = i32(n + 1)`;
@@ -805,7 +829,8 @@ each reached `go build` and failed there.
 Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
 `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
-modules, `for…in`, `do…while`, `switch`, bitwise operators;
+modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
+for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
 calling anything but a name or a `node:http` member (`f()()`); named function
 expressions; optional, default or rest parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
@@ -917,6 +942,15 @@ exactly, at compile time, so `0.1 + 0.2` emitted as is gives 0.3 and
 `1e308 * 10` won't compile. Arithmetic on two literals passes one through the
 identity function `ts_read`, which makes it a run-time float64 operation,
 rounded as JavaScript rounds it (`backend/emit_const.go`).
+
+*Since M5 step 0:* products. Go may fuse `a * b + c` into one multiply-add
+that rounds once, where JavaScript rounds the product and then the sum, and
+on arm64 it does. Every product was emitted bare from P4 on, so
+`0.6764556596678251 * 0.4613862177205994 - 0.5085473976760264` printed
+`-0.1964400794061956` where Node prints `-0.19644007940619557`. A product is
+now emitted as `float64(a * b)`: an explicit conversion is the one thing the
+Go spec says a fusion can't cross (`unfused`, `backend/emit_arith.go`).
+`TestArithmeticMatchesNode` holds all four fusable forms to Node.
 
 **3. `async`/`await` maps to goroutines: parallel across requests, in Node's
 order within one.** JS async is concurrent but never parallel, so correct
@@ -1077,6 +1111,7 @@ not listed here that behaves differently is a bug.
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce` or `findIndex` (D9) | skips the indices it removed (`findIndex` reads them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
+| `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a
