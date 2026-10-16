@@ -927,6 +927,32 @@ does. Comparison is in UTF-16 order, which differs from Go's byte order only
 where a character outside the BMP meets one from U+E000 up: `"\uFFFF" < "😀"`
 is false, as in JavaScript.
 
+*Since M5 step 0:* appends are linear (M5 plan D13, `lower/append.go`,
+`backend/emit_append.go`, `runtime/str_acc.go`). A Go string is immutable,
+so `s += x` copied the whole string every time, where V8's ropes don't: a
+10k-append page builder took 331 ms against Node's 0.8 ms.
+- A string `let` of its own statement, or a parameter, that the program
+  appends to (`s += x`, `s = s + …`, or a template starting with `${s}`)
+  gets a `cakebearrt.StrAcc` beside it, `ts_acc_s`, in the same Go scope. A
+  closure capturing s captures its accumulator too.
+- An append writes in place while s is still the accumulator's newest
+  string, and copies otherwise: another write to s, `s = ""` say, just
+  leaves the accumulator behind.
+- `s.length` on the binding reads its length from the accumulator while
+  every byte so far is ASCII. Otherwise it scans, as `StrLength` does.
+- The bytes of a string the accumulator handed out are never written again.
+  So any prefix of it held elsewhere keeps its value, even a `const` copied
+  from s and read by a spawn as s grows (`TestAppendedPrefixSharedWithASpawn`,
+  under `-race`).
+- It needs no atomics only because the race rule keeps a `let` in one
+  domain. Shared-state tools would have to revisit it.
+- A field (`o.f += x`), an element, a let in a `for` loop's first clause (a
+  binding per iteration), a destructured one, and a prepend still copy. On
+  wx-next that leaves 1 of 148 append sites
+  (`spikes/m5-measure/reports/append_sites.md`).
+- A chain of string `+` is one `StrConcat` of all its pieces, not one per
+  `+`.
+
 **2. Numbers are `float64`, printed by JS rules.** TS `number` is IEEE-754
 double, so it lowers to Go `float64` directly. Bitwise operators will need
 int32/uint32 coercion (`a | b` becomes `float64(int32(a) | int32(b))`), and

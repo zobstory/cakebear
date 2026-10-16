@@ -50,6 +50,9 @@ func (e *emitter) program(p *ir.Program) string {
 			for _, s := range m.Main {
 				if d, ok := s.(*ir.VarDecl); ok {
 					fmt.Fprintf(&e.buf, "var %s %s\n", e.top(m.File, d.Name), e.typ(d.Type, d.Span))
+					if d.Appended {
+						e.buf.WriteString(e.accDecl("", e.top(m.File, d.Name)))
+					}
 					e.hoisted[d] = true
 				}
 			}

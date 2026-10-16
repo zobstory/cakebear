@@ -121,7 +121,7 @@ func portNumber(f float64) (int, bool) {
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	res := &ServerResponse{w: w, status: http.StatusOK}
 	d := newDomain()
-	d.runTask(func() { s.listener(d, &IncomingMessage{r: r}, res) })
+	d.runTask(func() { s.listener(d, &IncomingMessage{r: r, url: requestURL(r.RequestURI)}, res) })
 	for !res.ended && d.pending() {
 		d.waitNext()
 	}
@@ -151,11 +151,35 @@ func finishDetached(d *Domain) {
 }
 
 // IncomingMessage is node:http's IncomingMessage, as a server sees it.
-type IncomingMessage struct{ r *http.Request }
+type IncomingMessage struct {
+	r   *http.Request
+	url string // requestURL's
+}
 
-// URL is req.url: the request target exactly as the client sent it, path and
-// query together.
-func (m *IncomingMessage) URL() string { return m.r.RequestURI }
+// URL is req.url: the request target as the client sent it, path and query
+// together.
+func (m *IncomingMessage) URL() string { return m.url }
+
+// requestURL is req.url for a request target. Node refuses a request line
+// holding a raw byte from 0x80 up with a 400; cakebear serves it, each such
+// byte read as one U+FFFD (CLAUDE.md, the accepted differences), so req.url is
+// always a well-formed string. It was the raw bytes: `ED A0 BD` read as a lone
+// surrogate, one code unit where the table promised three, and a stray byte
+// was never === to "\uFFFD".
+func requestURL(target string) string {
+	if isASCII(target) {
+		return target
+	}
+	b := make([]byte, 0, 3*len(target))
+	for i := range len(target) {
+		if c := target[i]; c < 0x80 {
+			b = append(b, c)
+		} else {
+			b = append(b, "\uFFFD"...)
+		}
+	}
+	return string(b)
+}
 
 // Method is req.method.
 func (m *IncomingMessage) Method() string { return m.r.Method }

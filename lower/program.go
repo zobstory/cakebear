@@ -27,6 +27,8 @@ type program struct {
 	// assigned is every binding some code in the program writes to after
 	// its declaration. A read of any other is stable (ir.Ident.Stable).
 	assigned map[*ast.Symbol]bool
+	// appended is every string binding an append targets (append.go).
+	appended map[*ast.Symbol]bool
 	// shapes interns the program's object shapes (object.go); objects keeps
 	// what each object type was classified as, objectLog the order they were
 	// classified in, and pending the types being classified, with the shape
@@ -61,6 +63,7 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 	slices.SortFunc(files, func(a, b *ast.SourceFile) int { return strings.Compare(string(a.FileName()), string(b.FileName())) })
 	p.files = files
 	p.findAssigned()
+	p.findAppended()
 
 	out := &ir.Program{}
 	var errs []*Error

@@ -77,5 +77,8 @@ type Func struct {
 type Param struct {
 	Name string
 	Type Type
-	Span Span
+	// Appended marks a string parameter the function appends to
+	// (append.go).
+	Appended bool
+	Span     Span
 }

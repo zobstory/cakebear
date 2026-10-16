@@ -132,6 +132,12 @@
       "last": 44443,
       "count": 12000,
       "throws": 67
+    },
+    "ASCII": {
+      "first": 44444,
+      "last": 62194,
+      "count": 17751,
+      "throws": 0
     }
   }
 }

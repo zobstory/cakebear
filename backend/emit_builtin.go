@@ -30,6 +30,9 @@ var builtinFuncs = map[ir.Builtin]string{
 
 func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	e.usesRuntime = true
+	if s, ok := e.accLength(x); ok {
+		return s
+	}
 	if x.Fn == ir.ToString && len(x.Args) == 1 {
 		return e.toString(x.Args[0])
 	}
@@ -80,20 +83,16 @@ func (e *emitter) concat(x *ir.Concat) string {
 	return fmt.Sprintf("%s.StrConcat(%s)", rtPkg, strings.Join(parts, ", "))
 }
 
-// stringBinary emits a binary operation on two strings, when x is one:
-// `+` through StrConcat, which joins a split surrogate pair, and the ordering
-// comparisons in UTF-16 code unit order, where Go compares UTF-8 bytes, which
-// puts a character outside the BMP above U+E000–U+FFFF rather than below.
-// Equality is Go's: two strings joined as JavaScript joins them are equal
-// exactly when their bytes are.
+// stringBinary emits a binary operation on two strings, when x is one: the
+// ordering comparisons in UTF-16 code unit order, where Go compares UTF-8
+// bytes, which puts a character outside the BMP above U+E000–U+FFFF rather
+// than below. Equality is Go's: two strings joined as JavaScript joins them
+// are equal exactly when their bytes are. `+` is stringSum (emit_append.go).
 func (e *emitter) stringBinary(x *ir.Binary, left, right string) (string, bool) {
 	if !stringish(x.Left.ExprType()) || !stringish(x.Right.ExprType()) {
 		return "", false
 	}
 	switch x.Op {
-	case ir.OpAdd:
-		e.usesRuntime = true
-		return fmt.Sprintf("%s.StrConcat(%s, %s)", rtPkg, left, right), true
 	case ir.OpLess, ir.OpLessEq, ir.OpGreater, ir.OpGreaterEq:
 		op, _ := goBinaryOp(x.Op)
 		e.usesRuntime = true

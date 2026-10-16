@@ -124,6 +124,7 @@ func (e *emitter) function(fn *ir.Func) {
 		fmt.Fprintf(&e.buf, " %s", e.typ(fn.Result, fn.Span))
 	}
 	e.buf.WriteString(" {\n")
+	e.buf.WriteString(e.paramAccs(fn.Params, "\t"))
 	if fn.Async {
 		e.asyncBody(fn.Result, fn.Body, 1)
 	} else {
@@ -163,9 +164,15 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 		// Go rejects unused locals; TypeScript does not. Referencing the
 		// variable keeps a legal TypeScript program from failing to build.
 		fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, mangle(s.Name))
+		if s.Appended {
+			e.buf.WriteString(e.accDecl(pad, mangle(s.Name)))
+		}
 
 	case *ir.Assign:
 		fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(s.Module, s.Name), e.full(s.Value))
+
+	case *ir.Append:
+		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.appendStmt(s))
 
 	case *ir.If:
 		fmt.Fprintf(&e.buf, "%sif %s {\n", pad, e.full(s.Cond))
@@ -336,6 +343,7 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 	savedVoid, savedDomain := e.asyncVoid, e.usesDomain
 	e.asyncVoid = false
 	body := e.capture(func() {
+		e.buf.WriteString(e.paramAccs(x.Params, strings.Repeat("\t", depth+1)))
 		if x.Async {
 			e.asyncBody(x.Result, x.Body, depth+1)
 		} else {
@@ -355,6 +363,9 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 func (e *emitter) binary(x *ir.Binary) string {
 	if s, ok := e.arith(x); ok {
 		return s
+	}
+	if x.Op == ir.OpAdd && stringish(x.Left.ExprType()) && stringish(x.Right.ExprType()) {
+		return e.stringSum(x)
 	}
 	op, ok := goBinaryOp(x.Op)
 	if !ok {

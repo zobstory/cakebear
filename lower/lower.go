@@ -274,7 +274,8 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 				}
 				prologue = append(prologue, bound...)
 			}
-			fn.Params = append(fn.Params, ir.Param{Name: name, Type: t, Span: l.span(p)})
+			appended := param.Name().Kind == ast.KindIdentifier && l.appended(param.Name())
+			fn.Params = append(fn.Params, ir.Param{Name: name, Type: t, Appended: appended, Span: l.span(p)})
 		}
 	}
 
@@ -434,7 +435,7 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 			continue
 		}
 		out = append(out, &ir.VarDecl{
-			Name: name, Type: t, Init: init, Mutable: mutable, Span: l.span(d),
+			Name: name, Type: t, Init: init, Mutable: mutable, Appended: l.appended(decl.Name()), Span: l.span(d),
 		})
 	}
 	return out
@@ -484,6 +485,9 @@ func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stm
 		return nil
 	}
 	name, module := l.ref(bin.Left)
+	if a := appendStmt(l.span(stmt), name, module, value); a != nil {
+		return []ir.Stmt{a}
+	}
 	return []ir.Stmt{&ir.Assign{
 		Name: name, Module: module, Value: value, Span: l.span(stmt),
 	}}

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -63,26 +64,73 @@ func TestStrHalfIsOneUnit(t *testing.T) {
 	}
 }
 
-// The ASCII paths and the code-unit paths must agree: the same strings,
-// searched and cut once as bytes and once as units.
+// The byte paths and the code-unit paths must agree: an ASCII pattern
+// searched for as bytes, and the same search on code units, from every
+// position, in strings holding characters of every width, halves, stray
+// bytes, and two halves that pair as separate WTF-8, as a request's URL can.
+// The goldens can hold neither of the last two: Node never makes them.
 func TestStrASCIIPathsAgreeWithUnits(t *testing.T) {
 	t.Parallel()
 
 	units := func(s string) jsStr { return jsStr{s: s, units: toUnits(s)} }
-	strs := []string{"", "a", "ab", "abcabc", "aaa", "hello world", "a,b,,c,"}
+	strs := []string{
+		"", "a", "ab", "abcabc", "aaa", "hello world", "a,b,,c,", "é,x", "日本,x,", "😀x😀", "x" + highHalf + "x",
+		lowHalf + "x" + highHalf, highHalf + "," + lowHalf, "\xffx\xff", "\xed\xa0x", "x\xf0\x9f", "aaaaaaaé,aaaaaaaaa😀,x",
+		"x," + highHalf + lowHalf + ",x",
+	}
 	for _, s := range strs {
-		for _, w := range strs {
-			for from := 0; from <= len(s); from++ {
-				for _, pair := range [][2]jsStr{{units(s), newJSStr(w)}, {newJSStr(s), units(w)}, {units(s), units(w)}} {
-					if got, want := indexOf(pair[0], pair[1], from), indexOf(newJSStr(s), newJSStr(w), from); got != want {
-						t.Errorf("indexOf(%q, %q, %d) = %d as units, %d as bytes", s, w, from, got, want)
+		v := units(s)
+		n := v.len()
+		for _, w := range []string{"a", "x", ",", "ab", "aaaa", ",x", "x,"} {
+			u := units(w)
+			m := u.len()
+			for from := 0; from <= len(s)+1; from++ {
+				i := min(from, n)
+				if got, want := indexASCII(s, w, from), indexOf(v, u, i); got != want {
+					t.Errorf("indexOf(%q, %q, %d) = %d as bytes, %d as units", s, w, from, got, want)
+				}
+				if got, want := includesASCII(s, w, from), indexOf(v, u, i) >= 0; got != want {
+					t.Errorf("includes(%q, %q, %d) = %v as bytes, %v as units", s, w, from, got, want)
+				}
+				last := -1
+				for j := min(i, n-m); j >= 0 && last < 0; j-- {
+					if equalAt(v, u, j) {
+						last = j
 					}
 				}
-				for to := from; to <= len(s); to++ {
-					if got := units(s).sub(from, to); got != s[from:to] {
-						t.Errorf("%q.sub(%d, %d) = %q as units", s, from, to, got)
-					}
+				if got := lastIndexASCII(s, w, from); got != last {
+					t.Errorf("lastIndexOf(%q, %q, %d) = %d as bytes, %d as units", s, w, from, got, last)
 				}
+				if got, want := startsWithASCII(s, w, from), i+m <= n && equalAt(v, u, i); got != want {
+					t.Errorf("startsWith(%q, %q, %d) = %v as bytes, %v as units", s, w, from, got, want)
+				}
+				if got, want := endsWithASCII(s, w, from), i >= m && equalAt(v, u, i-m); got != want {
+					t.Errorf("endsWith(%q, %q, %d) = %v as bytes, %v as units", s, w, from, got, want)
+				}
+			}
+			var parts []string
+			var positions []int
+			i := 0
+			for j := indexOf(v, u, 0); j >= 0; j = indexOf(v, u, i) {
+				parts, positions = append(parts, v.sub(i, j)), append(positions, j)
+				i = j + m
+			}
+			if parts = append(parts, v.sub(i, n)); !slices.Equal(StrSplit(s, w).items, parts) {
+				t.Errorf("split(%q, %q) = %q, want %q, as by units", s, w, StrSplit(s, w).items, parts)
+			}
+			for _, r := range []string{"-", "$&$`$'", lowHalf + "$`" + highHalf} {
+				want := s
+				if positions != nil {
+					want = replaceAt(v, m, positions, parseTemplate(r))
+				}
+				if got := StrReplaceAll(s, w, r); got != want {
+					t.Errorf("replaceAll(%q, %q, %q) = %q, want %q, as by units", s, w, r, got, want)
+				}
+			}
+		}
+		for to := 0; to <= n; to++ {
+			if b, at := unitOffset(s, to); utf16Len(s[:b]) != at || at < to || at > to+1 {
+				t.Errorf("unitOffset(%q, %d) = %d, %d", s, to, b, at)
 			}
 		}
 	}
@@ -138,6 +186,12 @@ func TestStrPanicsMatchNode(t *testing.T) {
 		{"padStart Infinity, no fill", func() { StrPadStart("a", math.Inf(1), "") }, ""},
 		{"replaceAll too long", func() { StrReplaceAll(strings.Repeat("a", 1<<20), "a", strings.Repeat("$&", 600)) },
 			"cakebear: the string would be 629145600 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
+		// Counted in code units once the bytes, 577765376 and 805355520, say
+		// it could be too long; $` is as long as the units before each match.
+		{"replaceAll too long, not ASCII", func() { StrReplaceAll(strings.Repeat("éa", 1<<19), "a", strings.Repeat("$&", 1100)) },
+			"cakebear: the string would be 577241088 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
+		{"replaceAll of $` too long, not ASCII", func() { StrReplaceAll(strings.Repeat("éa", 1<<13), "a", strings.Repeat("$`", 8)) },
+			"cakebear: the string would be 536879104 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
 		{"at the limit", func() { checkLength(stringLimit) }, ""},
 		{"past the limit", func() { checkLength(stringLimit + 1) }, "(Node throws RangeError: Invalid string length)"},
 	} {

@@ -482,6 +482,86 @@ function sectionRANDOM() {
 }
 
 // ---------------------------------------------------------------------------
+// ASCII: an ASCII pattern in a string that isn't ASCII, which the runtime
+// searches as bytes (str_search_ascii.go). Matches after characters of every
+// width, from every position, a pair's low half included; halves beside a
+// match, meeting halves in the replacement; split's limits; and strings long
+// enough to hold runs of eight ASCII bytes and more. It comes after RANDOM,
+// on a seed of its own, so every line before it stays as it was.
+
+function sectionASCII() {
+  const H = '\uD83D';
+  const L = '\uDE00';
+  const WIDE = ['é', '日', '😀', '𝒳', H, L, '\uDBFF', '\uDFFF', '￿', '\u0080'];
+  const HALVES = [H, L, '\uDBFF', '\uDFFF'];
+  const SEARCH = ['includes', 'startsWith', 'endsWith', 'indexOf', 'lastIndexOf'];
+  const short = [];
+  const placed = [];
+  for (const a of WIDE) {
+    const at = [`${a}x${a}`, `x${a}y,x${a}xy`, `${a}${a}xy${a}`];
+    placed.push(...at);
+    short.push(...at, `${a}x`, `x${a}`, `${a},x,${a},`);
+    for (const b of WIDE) if (a !== b) short.push(`${a}xy${b}`);
+  }
+  for (const s of short) {
+    for (const fn of SEARCH) for (const w of ['x', 'xy', 'y', ',', 'x,', 'q']) add('ASCII', fn, s, w);
+    for (const sep of [',', 'x', 'xy']) {
+      add('ASCII', 'split', s, sep);
+      add('ASCII', 'split', s, sep, 1);
+      add('ASCII', 'split', s, sep, 2);
+    }
+    const seams = HALVES.some((h) => s.includes(h));
+    const templates = seams
+      ? ['-', "[$`|$&|$']", '', H, L, `${L}$&${H}`, `${L}$\`${H}`, '😀']
+      : ['-', "[$`|$&|$']", L];
+    for (const p of ['x', ',', 'xy']) {
+      for (const r of templates) {
+        add('ASCII', 'replace', s, p, r);
+        add('ASCII', 'replaceAll', s, p, r);
+      }
+    }
+  }
+  // Every position, in code units: before, inside and after each character.
+  for (const s of placed) {
+    for (const fn of SEARCH) {
+      for (const w of ['x', 'xy']) {
+        for (let p = 0; p <= s.length + 1; p++) add('ASCII', fn, s, w, p);
+        for (const p of [-1, 1.5, NaN, Infinity]) add('ASCII', fn, s, w, p);
+      }
+    }
+  }
+  for (const s of ['x😀,x😀,x😀,', '😀,,😀,,', 'é,é,é,é']) {
+    for (const lim of [0, 1, 2, 3, 4, 5, 100, -1, NaN, 2 ** 32 + 2]) add('ASCII', 'split', s, ',', lim);
+  }
+  // Longer strings: ASCII runs of up to 24 bytes between wide characters,
+  // to 220 bytes, and four to 1,200, searched from random positions.
+  const rnd = mulberry32(SEED ^ 0xa5c11);
+  const pick = (xs) => xs[Math.floor(rnd() * xs.length)];
+  for (let k = 0; k < 44; k++) {
+    const long = k >= 40;
+    const bytes = long ? 1000 + Math.floor(rnd() * 200) : 20 + Math.floor(rnd() * 200);
+    let s = '';
+    while (Buffer.byteLength(s) < bytes) {
+      const run = Math.floor(rnd() * 25);
+      for (let i = 0; i < run; i++) s += pick(['a', 'b', 'x', 'y', ',', ' ']);
+      s += pick(WIDE);
+    }
+    s = s.toWellFormed() === s || rnd() < 0.5 ? s : s.toWellFormed();
+    for (const w of long ? ['x', ', '] : ['x', 'ab', ', ', 'xy,']) {
+      for (const fn of SEARCH) {
+        add('ASCII', fn, s, w);
+        add('ASCII', fn, s, w, Math.floor(rnd() * (s.length + 2)));
+        if (!long) add('ASCII', fn, s, w, Math.floor(rnd() * (s.length + 2)));
+      }
+    }
+    add('ASCII', 'split', s, ',');
+    add('ASCII', 'split', s, ' ', 1 + Math.floor(rnd() * 8));
+    add('ASCII', 'replace', s, 'x', '[$&]');
+    add('ASCII', 'replaceAll', s, ', ', pick(['|', '$&$&', "$'", L]));
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 sectionLENGTH();
 sectionSEARCH();
@@ -501,6 +581,7 @@ sectionLOG();
 const deliberate = entries.length;
 const RANDOM_TARGET = deliberate + RANDOM;
 sectionRANDOM();
+sectionASCII();
 
 const lines = [];
 const index = {};
@@ -557,7 +638,7 @@ const want = Buffer.from(logs.map((e) => e.out.s + '\n').join(''), 'utf8');
 const logOK = Buffer.compare(child.stdout, want) === 0;
 
 console.log(`wrote ${OUT}: ${reread.length} lines, ${fs.statSync(OUT).size} bytes`);
-console.log(`deliberate ${deliberate}, random ${reread.length - deliberate}`);
+console.log(`deliberate ${deliberate}, random ${index.RANDOM.count}, then ${reread.length - deliberate - index.RANDOM.count}`);
 for (const [s, { first, last, count, throws }] of Object.entries(index)) {
   console.log(`  ${s}: ${count} (lines ${first}-${last}), ${throws} throw`);
 }
