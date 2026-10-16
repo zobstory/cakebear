@@ -43,6 +43,8 @@ func numCall(t *testing.T, fn string, args []any) (out, panicked any) {
 		return NumberIsNaN(args[0].(float64)), nil
 	case "isInteger":
 		return NumberIsInteger(args[0].(float64)), nil
+	case "mod":
+		return Mod(args[0].(float64), args[1].(float64)), nil
 	case "encodeURIComponent":
 		return EncodeURIComponent(args[0].(string)), nil
 	case "decodeURIComponent":

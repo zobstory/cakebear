@@ -132,6 +132,8 @@ adds machine-width numeric types, plus a validated `base64`:
 ```ts
 const small: i32 = i32(42);              // lowers to Go's int32
 const big: i64 = i64(9007199254740991);  // int64, exact past 2^53
+const sum: i32 = i32(small + small);     // int32 arithmetic, wrapping as `| 0` does
+const half: number = small / i32(4);     // outside a conversion, a number's: 10.5
 const enc: base64 = base64("Y2FrZWJlYXI=");
 
 const bad: i32 = i32(3000000000);        // compile error: outside the range of i32
@@ -264,7 +266,8 @@ plain `tsc` reports it as an unknown name.
 
 Supported today:
 - `number`, `string`, `boolean` and the extension types above; `const` and
-  `let`; function declarations with typed parameters and return; arithmetic,
+  `let`; function declarations with typed parameters and return; arithmetic
+  (`%` included),
   comparisons, `===` and `!==`, `&&`, `||`, `!`, unary minus; `if`/`else`,
   `while`, `for (;;)`, `for…of`, `break` and `continue`; `++`, `--` and the
   compound assignments as statements; `interface` and `type` declarations;

@@ -228,7 +228,7 @@ func TestEmitProducesCompilableShape(t *testing.T) {
 	for _, want := range []string{
 		"package main",
 		"func double(ts_domain *" + rtPkg + ".Domain, n float64) float64",
-		"return (n * 2.0)",
+		"return float64(n * 2.0)", // the conversion keeps Go from fusing it (unfused)
 		"func main()",
 		"LogNumber(double(ts_domain, 21.0))",
 		"defer " + rtPkg + ".Flush()",
@@ -337,8 +337,29 @@ func TestEmitConversion(t *testing.T) {
 	}}
 
 	got := Emit(ir.ProgramOf(m))
-	if !strings.Contains(got, "var n int32\n") || !strings.Contains(got, "\tn = int32(42.0)\n") {
+	if !strings.Contains(got, "var n int32\n") || !strings.Contains(got, "\tn = int32(42)\n") {
 		t.Errorf("conversion did not emit as a Go conversion:\n%s", got)
+	}
+}
+
+// TestEmitLiteralConversionsExactly: a literal converts as the number it is.
+// To an integer type it is written in its exact digits: goFloat's shortest
+// ones are a different Go constant, so 2^62 was 4611686018427388000. To f32
+// it goes by way of a float64, as Math.fround rounds a number: the shortest
+// digits of a float32 midpoint lie just past it, so rounding them straight
+// to float32 went up where Math.fround goes to even.
+func TestEmitLiteralConversionsExactly(t *testing.T) {
+	t.Parallel()
+
+	m := &ir.Module{Name: "t", Main: []ir.Stmt{
+		&ir.VarDecl{Name: "a", Type: ir.Int64, Init: &ir.Convert{Value: num(1 << 62), Typ: ir.Int64, Span: span}, Span: span},
+		&ir.VarDecl{Name: "b", Type: ir.Float32, Init: &ir.Convert{Value: num(1 + 1.0/(1<<24)), Typ: ir.Float32, Span: span}, Span: span},
+	}}
+	got := Emit(ir.ProgramOf(m))
+	for _, want := range []string{"\ta = int64(4611686018427387904)\n", "\tb = float32(float64(1.0000000596046448))\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in\n%s", want, got)
+		}
 	}
 }
 

@@ -260,13 +260,10 @@ func (e *emitter) expr(x ir.Expr) string {
 		if !ok {
 			return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
 		}
-		return fmt.Sprintf("(%s%s)", op, e.expr(x.Operand))
+		return e.unary(op, x)
 
 	case *ir.Convert:
-		// A plain Go conversion. Truncation and wrapping follow Go's rules,
-		// which are the machine's; the compile-time range check in types/
-		// catches the literal cases before they get here.
-		return fmt.Sprintf("%s(%s)", e.typ(x.Typ, x.Span), e.expr(x.Value))
+		return e.convert(x)
 
 	case *ir.Call:
 		// The callee runs in the caller's domain, which goes first.
@@ -356,6 +353,9 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 }
 
 func (e *emitter) binary(x *ir.Binary) string {
+	if s, ok := e.arith(x); ok {
+		return s
+	}
 	op, ok := goBinaryOp(x.Op)
 	if !ok {
 		return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
@@ -367,13 +367,14 @@ func (e *emitter) binary(x *ir.Binary) string {
 	// Go evaluates an expression of constants exactly, at compile time, where
 	// JavaScript rounds every step as a double: `0.1 + 0.2` would be 0.3,
 	// not 0.30000000000000004, and `1e308 * 10` and `0 / 0` compile errors
-	// rather than Infinity and NaN. Passing an operand through readFunc makes
-	// the operation a run-time float64 one; with one operand a variable, it
-	// is one already.
-	if arithmetic(x.Op) && (x.Typ == ir.Number || x.Typ == ir.Float32) && goConstant(x.Left) && goConstant(x.Right) {
+	// rather than Infinity and NaN, as `i32(i32(2147483647) + i32(1))` would
+	// be rather than a wrapped sum. Passing an operand through readFunc makes
+	// the operation a run-time one; with one operand a variable, it is one
+	// already.
+	if arithmetic(x.Op) && x.Typ.IsNumeric() && goConstant(x.Left) && goConstant(x.Right) {
 		left = e.runtimeValue(left)
 	}
-	return fmt.Sprintf("(%s %s %s)", left, op, right)
+	return unfused(x, fmt.Sprintf("(%s %s %s)", left, op, right))
 }
 
 // goFloat renders a TypeScript number as a Go float64 literal.

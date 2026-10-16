@@ -136,6 +136,7 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 		if lit, ok := operand.(*ir.NumberLit); ok {
 			return &ir.NumberLit{Value: -lit.Value, Span: l.span(n)}
 		}
+		operand = l.negOperand(n, operand)
 	case ast.KindExclamationToken:
 		op = ir.OpNot
 		if operand.ExprType() != ir.Boolean {
@@ -186,11 +187,14 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 		switch b.OperatorToken.Kind {
 		case ast.KindEqualsEqualsToken, ast.KindExclamationEqualsToken:
 			l.failf(n, "loose equality is not supported; use === or !==")
+		case ast.KindAsteriskAsteriskToken:
+			l.failf(n, "** is not supported yet: it waits for Math, whose functions must match V8's to the last bit, which Go's math.Pow doesn't")
 		default:
 			l.failf(n, "operator %s is not supported yet", describeKind(b.OperatorToken.Kind))
 		}
 		return nil
 	}
+	left, right = l.numericOperands(n, op, left, right)
 
 	lt, rt := left.ExprType(), right.ExprType()
 	// Equal, not ==: two function types built separately differ as pointers.
@@ -220,6 +224,7 @@ var binaryOps = map[ast.Kind]ir.BinaryOp{
 	ast.KindMinusToken:                   ir.OpSub,
 	ast.KindAsteriskToken:                ir.OpMul,
 	ast.KindSlashToken:                   ir.OpDiv,
+	ast.KindPercentToken:                 ir.OpMod,
 	ast.KindLessThanToken:                ir.OpLess,
 	ast.KindLessThanEqualsToken:          ir.OpLessEq,
 	ast.KindGreaterThanToken:             ir.OpGreater,
@@ -241,7 +246,7 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 		}
 		return ir.Invalid, false
 
-	case ir.OpSub, ir.OpMul, ir.OpDiv:
+	case ir.OpSub, ir.OpMul, ir.OpDiv, ir.OpMod:
 		if operand.IsNumeric() {
 			return operand, true
 		}
@@ -384,14 +389,21 @@ func (l *lowerer) convert(n *ast.Node, c *ast.CallExpression, brand string) ir.E
 	}
 
 	argNode := c.Arguments.Nodes[0]
+	unmark := l.markNative(argNode, target)
 	value := l.expr(argNode)
+	unmark()
 	if value == nil {
 		return nil
 	}
+	value = unwidened(value)
 
 	// Validate a literal argument now rather than letting it wrap silently at
 	// runtime. This is the part a plain number or string could not do, and the
 	// reason these types are worth having at all.
+	if msg := exactLiteral(argNode, target, value); msg != "" {
+		l.invalidf(argNode, "%s", msg)
+		return nil
+	}
 	if msg := l.validateLiteral(brand, value); msg != "" {
 		l.invalidf(argNode, "%s", msg)
 		return nil

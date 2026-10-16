@@ -65,6 +65,8 @@ func updateOf(expr *ast.Node) (target, value *ast.Node, op ir.BinaryOp, text str
 			return b.Left, b.Right, ir.OpMul, "*=", true
 		case ast.KindSlashEqualsToken:
 			return b.Left, b.Right, ir.OpDiv, "/=", true
+		case ast.KindPercentEqualsToken:
+			return b.Left, b.Right, ir.OpMod, "%=", true
 		}
 	}
 	return nil, nil, 0, "", false
