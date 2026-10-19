@@ -40,11 +40,13 @@ func (p *program) findAppended() {
 // one findAppended keeps.
 func (p *program) appendTarget(b *ast.BinaryExpression) *ast.Symbol {
 	left := b.Left
-	if left.Kind != ast.KindIdentifier || p.checker.GetTypeAtLocation(left).Flags()&checker.TypeFlagsString == 0 {
+	if left.Kind != ast.KindIdentifier {
 		return nil
 	}
 	sym := p.resolve(p.checker.GetSymbolAtLocation(left))
-	if sym == nil || !appendable(sym.ValueDeclaration()) {
+	// The binding's declared type, not the one at this use: a string |
+	// undefined narrowed to a string here is still stored as a maybe.
+	if sym == nil || !appendable(sym.ValueDeclaration()) || p.checker.GetTypeOfSymbol(sym).Flags()&checker.TypeFlagsString == 0 {
 		return nil
 	}
 	switch b.OperatorToken.Kind {

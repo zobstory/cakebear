@@ -59,6 +59,9 @@ type sharedUse struct {
 	promise bool // the binding holds a promise
 	host    bool // the binding holds a host value, such as a response
 	opaque  bool // the binding holds a function value the rule can't see into
+	// maybeFunc is a const that may hold a function (M5), which the rule
+	// sees into none of yet.
+	maybeFunc bool
 	// aggregate is "object" or "array" when the binding holds one: shared
 	// state, whether the binding is a const or a let, unless it is frozen.
 	// notFrozen says why it isn't (frozen.go).
@@ -175,9 +178,13 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 			if sym := rc.l.p.resolve(rc.l.valueSymbol(n)); sym != nil {
 				if decl, ok := rc.mutableBinding(sym); ok && !within(decl, fn) {
 					kind := rc.l.typeOf(n).Kind
+					if t, ok := rc.l.storedMaybe(n); ok {
+						kind = t.Elem.Kind // a maybe is what it holds, to the rule
+					}
 					u := sharedUse{
 						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
 						promise: kind == ir.KindPromise, host: kind == ir.KindHost, aggregate: aggregateWord(kind), at: n,
+						maybeFunc: kind == ir.KindFunc && isConstDecl(decl),
 					}
 					if u.aggregate != "" {
 						u.notFrozen = rc.l.frozenWhy(decl)
@@ -245,7 +252,7 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 		// A const is shared state unless what it holds can't change: a
 		// primitive, a function the rule sees into, or a frozen object or
 		// array (frozen.go).
-		if name := decl.Name(); name != nil && shareableConst(rc.l.typeOf(name).Kind) {
+		if name := decl.Name(); name != nil && shareableConstType(rc.l.typeOf(name)) {
 			return nil, false
 		}
 		if rc.l.frozenWhy(decl) == "" {
@@ -253,6 +260,17 @@ func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
 		}
 	}
 	return decl, true
+}
+
+// shareableConstType is shareableConst for a type. A maybe is shareable when
+// what it holds is a primitive or an extension type (M5 plan D11), since a
+// const maybe can't change state. A maybe of a function isn't, for now:
+// scan sees into a function value only where its type is a function's.
+func shareableConstType(t ir.Type) bool {
+	if t.Kind == ir.KindMaybe && t.Elem != nil {
+		return t.Elem.Kind != ir.KindFunc && shareableConst(t.Elem.Kind)
+	}
+	return shareableConst(t.Kind)
 }
 
 // shareableConst reports whether a const of kind k can be shared with a
@@ -432,6 +450,8 @@ func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
 	case u.host:
 		return "use " + name + ", a node:http value created outside it; one can't be shared " + who.across + " yet"
+	case u.maybeFunc:
+		return "use " + name + ", which may hold a function; one that may be null or undefined can't be shared " + who.across + " yet"
 	case u.opaque:
 		return "use " + name + ", a function value cakebear can't see into, which could touch anything; " +
 			"declare it with `function`, or as a const bound to an arrow function"
@@ -450,6 +470,8 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "uses " + name + ", a promise created " + who.outside
 	case u.host:
 		return "uses " + name + ", a node:http value created " + who.outside
+	case u.maybeFunc:
+		return "uses " + name + ", which may hold a function"
 	case u.opaque:
 		return "uses " + name + ", a function value cakebear can't see into"
 	default:

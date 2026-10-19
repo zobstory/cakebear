@@ -85,8 +85,9 @@ func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 		return arr + ".Join(" + args[0] + ")"
 	case ir.ArrayIncludes, ir.ArrayIndexOf:
 		// A function value has no == in Go, and nothing to compare but
-		// identity in JavaScript; lowering refuses searching for one.
-		if elem := *x.Array.ExprType().Elem; elem.Kind == ir.KindFunc {
+		// identity in JavaScript; lowering refuses searching for one, or for
+		// a maybe of one.
+		if elem := *x.Array.ExprType().Elem; uncomparable(elem) {
 			return e.cannot(x.Span, "the backend cannot emit "+x.Method.String()+" on an array of "+elem.String()+": Go can't compare functions")
 		}
 		e.usesRuntime = true

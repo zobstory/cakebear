@@ -20,7 +20,7 @@ func usedShapes(p *ir.Program, all []*ir.Shape) []*ir.Shape {
 			for _, f := range t.Shape.Fields {
 				mark(f.Type)
 			}
-		case ir.KindArray, ir.KindPromise:
+		case ir.KindArray, ir.KindPromise, ir.KindMaybe:
 			if t.Elem != nil {
 				mark(*t.Elem)
 			}

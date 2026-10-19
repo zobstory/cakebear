@@ -273,7 +273,7 @@ func (t Type) String() string {
 		if t.Elem == nil {
 			return "invalid[]"
 		}
-		if t.Elem.Kind == KindFunc {
+		if t.Elem.Kind == KindFunc || t.Elem.Kind == KindMaybe {
 			return "(" + t.Elem.String() + ")[]"
 		}
 		return t.Elem.String() + "[]"

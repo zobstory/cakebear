@@ -182,10 +182,11 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		return ir.Boolean
 	case flags&checker.TypeFlagsVoid != 0:
 		return ir.Void
-	case flags&checker.TypeFlagsNull != 0:
-		return ir.Null
-	case flags&checker.TypeFlagsUndefined != 0:
-		return ir.Undefined
+	case flags&(checker.TypeFlagsNull|checker.TypeFlagsUndefined) != 0:
+		// A binding of null alone has nothing to hold; null and undefined as
+		// values are NullLit and UndefinedLit, and a maybe's states (maybe.go).
+		l.because("a type that is only " + l.checker.TypeToString(t) + " is not supported yet; give it a type it may also be")
+		return ir.Invalid
 	default:
 		// Promises and host types first: both are objects with members, and
 		// funcType would refuse them for having properties.
@@ -197,8 +198,7 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		}
 		switch {
 		case flags&checker.TypeFlagsUnion != 0:
-			l.because("union types are not supported yet")
-			return ir.Invalid
+			return l.unionType(t) // maybe.go
 		case flags&checker.TypeFlagsIntersection != 0:
 			l.because("intersection types are not supported yet")
 			return ir.Invalid
@@ -281,6 +281,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 
 	l.funcResult(n, fn)
 	l.inBody(fn.Async, func() { fn.Body = append(prologue, l.block(decl.Body)...) })
+	fn.Body = undefinedReturns(fn.Body, returnedType(fn.Result, fn.Async), fn.Span)
 	return fn
 }
 
@@ -419,20 +420,23 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 			continue
 		}
 		name := decl.Name().Text()
-		if decl.Initializer == nil {
+		t := l.typeOf(decl.Name())
+		if decl.Initializer == nil && t.Kind != ir.KindMaybe {
 			l.failf(d, "%s needs an initialiser; declarations without one are not supported yet", name)
 			continue
 		}
-		t := l.typeOf(decl.Name())
 		if t == ir.Invalid {
 			if why := l.reason(); !l.explainInitializer(decl.Initializer) {
 				l.failf(d, "%s has a type the backend cannot represent yet%s", name, why)
 			}
 			continue
 		}
-		init := l.expr(decl.Initializer)
-		if init == nil {
-			continue
+		// A maybe declared with no value is undefined until it is given one.
+		var init ir.Expr = &ir.Empty{Typ: t, Span: l.span(d)}
+		if decl.Initializer != nil {
+			if init = l.expr(decl.Initializer); init == nil {
+				continue
+			}
 		}
 		out = append(out, &ir.VarDecl{
 			Name: name, Type: t, Init: init, Mutable: mutable, Appended: l.appended(decl.Name()), Span: l.span(d),

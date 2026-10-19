@@ -96,7 +96,7 @@ func (e *emitter) noteShapes(t ir.Type, at ir.Span) {
 			}
 			e.noteShapes(t.Sig.Result, at)
 		}
-	case ir.KindPromise, ir.KindArray:
+	case ir.KindPromise, ir.KindArray, ir.KindMaybe:
 		if t.Elem != nil {
 			e.noteShapes(*t.Elem, at)
 		}
@@ -154,7 +154,7 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 	fmt.Fprintf(b, "func (o *%s) CloneObject(c *%s.Cloner) %s.Object {\n", name, rtPkg, rtPkg)
 	fmt.Fprintf(b, "\tcopied := new(%s)\n\tc.Remember(o, copied)\n\t*copied = *o\n", name)
 	for _, f := range s.Fields {
-		if f.Type.Kind == ir.KindObject || f.Type.Kind == ir.KindArray {
+		if cloned(f.Type) {
 			fmt.Fprintf(b, "\tcopied.%s = %s.CloneValue(c, o.%[1]s)\n", fieldName(f.Name), rtPkg)
 		}
 	}
@@ -276,6 +276,13 @@ func (e *emitter) path(x ir.Expr) string {
 // only the calls in an assignment, so a call in either side orders the reads
 // of both: `ts_read(p).x = g()` writes to the object p held before g ran.
 func (e *emitter) fieldSet(s *ir.FieldSet) string {
+	if f := s.Object.ExprType().Shape.Fields[s.Field]; f.Optional {
+		// An object that lacks the property gains its key here, last, as
+		// Node orders it (M5 plan D3). A plain write would leave the key out
+		// of the object's table, so the value would never print or
+		// serialise. Moving the object to the table with it is step 5's.
+		return e.cannot(s.Span, "the backend cannot write the optional property "+f.Name+" yet")
+	}
 	saved := e.order
 	e.order = isCall(s.Object) || innerCall(s.Object) || isCall(s.Value) || innerCall(s.Value)
 	defer func() { e.order = saved }()

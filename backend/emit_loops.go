@@ -114,17 +114,23 @@ func conversion(typ, value string) string {
 	return typ + "(" + value + ")"
 }
 
-// body writes a function's statements. One with a result that doesn't end in
-// a return gets a panic to end it, because Go requires a function's last
-// statement to be one Go can see terminates. TypeScript's own analysis is
-// wider: `while (true)`, or an `if (true)` that returns, ends a function for
-// TypeScript, but `for true` and `if true` don't for Go. cakebear builds with
-// strictNullChecks, and no type the subset lowers admits undefined, so
-// TypeScript reports TS2366 for any function whose end it can reach: the
-// panic only runs if that analysis was wrong.
-func (e *emitter) body(stmts []ir.Stmt, depth int, result bool) {
+// body writes a function's statements, whose returns carry result, or
+// nothing for Void. One with a result that doesn't end in a return gets a
+// last statement, because Go requires a function's last statement to be one
+// Go can see terminates:
+//   - For a maybe, a return of undefined, which is what JavaScript returns
+//     from a function whose end is reached. TypeScript allows that when the
+//     result admits undefined: TS2366 is "Function lacks ending return
+//     statement and return type does not include 'undefined'".
+//   - For anything else, a panic. TypeScript's own analysis is wider:
+//     `while (true)`, or an `if (true)` that returns, ends a function for
+//     TypeScript, but `for true` and `if true` don't for Go. cakebear builds
+//     with strictNullChecks, and only a maybe admits undefined, so TypeScript
+//     reports TS2366 for any other function whose end it can reach: the
+//     panic only runs if that analysis was wrong.
+func (e *emitter) body(stmts []ir.Stmt, depth int, result ir.Type) {
 	e.stmts(stmts, depth)
-	if !result {
+	if result == ir.Void {
 		return
 	}
 	if len(stmts) > 0 {
@@ -132,5 +138,12 @@ func (e *emitter) body(stmts []ir.Stmt, depth int, result bool) {
 			return
 		}
 	}
-	fmt.Fprintf(&e.buf, "%spanic(\"cakebear: reached the end of a function TypeScript proved cannot end\")\n", strings.Repeat("\t", depth))
+	pad := strings.Repeat("\t", depth)
+	if result.Kind == ir.KindMaybe {
+		// Spelled already, or reported, in the function's signature.
+		typ, _ := goType(result)
+		fmt.Fprintf(&e.buf, "%sreturn %s{}\n", pad, typ)
+		return
+	}
+	fmt.Fprintf(&e.buf, "%spanic(\"cakebear: reached the end of a function TypeScript proved cannot end\")\n", pad)
 }

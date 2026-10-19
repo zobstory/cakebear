@@ -44,13 +44,11 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 		return &ir.BoolLit{Value: false, Span: l.span(n)}
 
 	case ast.KindNullKeyword:
-		l.failf(n, "null is not supported yet; the backend has no nullable representation")
-		return nil
+		return &ir.NullLit{Span: l.span(n)} // a maybe's slot makes it an Empty (fit)
 
 	case ast.KindIdentifier:
 		if n.Text() == "undefined" {
-			l.failf(n, "undefined is not supported yet; the backend has no nullable representation")
-			return nil
+			return &ir.UndefinedLit{Span: l.span(n)}
 		}
 		// A bundled function such as createServer is not a Go binding.
 		if m, found, _ := l.hostMemberOf(l.checker.GetSymbolAtLocation(n)); found {
@@ -62,11 +60,16 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 			return nil
 		}
 		t := l.typeOf(n)
-		if t == ir.Invalid {
+		stored, isMaybe := l.storedMaybe(n)
+		if t == ir.Invalid && !isMaybe {
 			l.failf(n, "%s has a type the backend cannot represent yet%s", n.Text(), l.reason())
 			return nil
 		}
 		name, module := l.ref(n)
+		if isMaybe {
+			read := &ir.Ident{Name: name, Module: module, Stable: l.stable(n), Typ: stored, Span: l.span(n)}
+			return narrowed(read, t, l.span(n))
+		}
 		return &ir.Ident{Name: name, Module: module, Stable: l.stable(n), Appended: l.appended(n), Typ: t, Span: l.span(n)}
 
 	case ast.KindParenthesizedExpression:
@@ -181,6 +184,9 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 	if left == nil || right == nil {
 		return nil
 	}
+	if out, ok := l.nullishCompare(n, b.OperatorToken.Kind, left, right); ok {
+		return out
+	}
 
 	op, ok := binaryOps[b.OperatorToken.Kind]
 	if !ok {
@@ -195,6 +201,9 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 		return nil
 	}
 	left, right = l.numericOperands(n, op, left, right)
+	if left, right, ok = l.maybeOperands(n, op, left, right); !ok {
+		return nil
+	}
 
 	lt, rt := left.ExprType(), right.ExprType()
 	// Equal, not ==: two function types built separately differ as pointers.
@@ -337,6 +346,10 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return nil
 	}
 
+	if _, maybe := l.storedMaybe(c.Expression); maybe {
+		l.failf(n, "calling a function that may be null or undefined is not supported yet")
+		return nil
+	}
 	callee, module := l.ref(c.Expression)
 	call := &ir.Call{Callee: callee, Module: module, Typ: l.typeOf(n), Span: l.span(n)}
 	if c.Arguments != nil {
@@ -346,6 +359,13 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 				return nil
 			}
 			call.Args = append(call.Args, lowered)
+		}
+	}
+	// A slot the checker types as no maybe, as resolve's `T | PromiseLike<T>`
+	// is, still takes the callee's parameter type.
+	if ft := l.typeOf(c.Expression); ft.Kind == ir.KindFunc && ft.Sig != nil {
+		for i := range min(len(call.Args), len(ft.Sig.Params)) {
+			call.Args[i] = intoMaybe(call.Args[i], ft.Sig.Params[i])
 		}
 	}
 	if l.resolvesWithPromise(n, call) {

@@ -90,7 +90,11 @@ func (e *emitter) asyncBodyAs(lead string, result ir.Type, body []ir.Stmt, depth
 	// for a dropped promise, that is struct{}, which the source never spells.
 	saved := e.asyncVoid
 	e.asyncVoid = elem == "struct{}"
-	e.body(body, depth+1, !e.asyncVoid)
+	returns := ir.Void
+	if !e.asyncVoid {
+		returns = *result.Elem // goElem spelled one: result is a promise of it
+	}
+	e.body(body, depth+1, returns)
 	if e.asyncVoid {
 		fmt.Fprintf(&e.buf, "%s\treturn struct{}{}\n", pad)
 	}

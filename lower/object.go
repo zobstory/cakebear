@@ -165,7 +165,7 @@ func typeName(t *checker.Type) string {
 func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 	t := ir.Invalid
 	if ct := l.checker.GetContextualType(n, checker.ContextFlagsNone); ct != nil {
-		t = l.typeFromType(ct)
+		t = elemOfMaybe(l.typeFromType(ct)) // a maybe's slot takes it wrapped
 	}
 	if t.Kind != ir.KindObject {
 		t = l.typeOf(n)
@@ -267,7 +267,8 @@ func (l *lowerer) fieldGet(n *ast.Node) (ir.Expr, bool) {
 		return nil, true
 	}
 	shape := recv.ExprType().Shape
-	return &ir.FieldGet{Object: recv, Field: i, Typ: shape.Fields[i].Type, Span: l.span(n)}, true
+	get := &ir.FieldGet{Object: recv, Field: i, Typ: shape.Fields[i].Type, Span: l.span(n)}
+	return narrowed(get, l.typeOf(n), l.span(n)), true
 }
 
 // fieldSet lowers `obj.f = v`, and reports whether target was an object's
@@ -337,7 +338,7 @@ func holdsObject(t ir.Type, seen map[*ir.Shape]bool) bool {
 	switch t.Kind {
 	case ir.KindObject:
 		return true
-	case ir.KindArray, ir.KindPromise:
+	case ir.KindArray, ir.KindPromise, ir.KindMaybe:
 		return t.Elem != nil && holdsObject(*t.Elem, seen)
 	case ir.KindFunc:
 		if t.Sig == nil {

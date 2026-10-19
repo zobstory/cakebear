@@ -15,7 +15,7 @@ import (
 // wrapped.
 type Wrap struct {
 	Value Expr
-	Typ   Type // MaybeOf(Value's type)
+	Typ   Type // MaybeOf(Value's type), or of a string for a base64
 	Span  Span
 }
 
@@ -97,8 +97,10 @@ func (p *Program) checkMaybe(t Type) error {
 func checkMaybeNode(node any) error {
 	switch n := node.(type) {
 	case *Wrap:
-		if n.Typ.Kind != KindMaybe || n.Typ.Elem == nil || !n.Value.ExprType().Equal(*n.Typ.Elem) {
-			return fmt.Errorf("a %s wrapped as a %s", n.Value.ExprType(), n.Typ)
+		// A base64 may fill a string's maybe: it is a string.
+		got := n.Value.ExprType()
+		if n.Typ.Kind != KindMaybe || n.Typ.Elem == nil || !got.Equal(*n.Typ.Elem) && !(*n.Typ.Elem == String && got == Base64) {
+			return fmt.Errorf("a %s wrapped as a %s", got, n.Typ)
 		}
 	case *Unwrap:
 		// Inspect visits a node before its operand, so the operand's type

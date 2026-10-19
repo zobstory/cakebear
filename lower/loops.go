@@ -111,8 +111,15 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	if id, ok := left.(*ir.Ident); ok && id.Appended && t == ir.String {
 		return []ir.Stmt{&ir.Append{Target: id, Parts: ir.StringParts(right), Span: l.span(stmt)}}, true
 	}
-	sum := &ir.Binary{Op: op, Left: left, Right: right, Typ: t, Span: l.span(expr)}
-	switch get := left.(type) {
+	var sum ir.Expr = &ir.Binary{Op: op, Left: left, Right: right, Typ: t, Span: l.span(expr)}
+	// A maybe the checker has narrowed is read unwrapped and written back
+	// wrapped: `n += 1` on a number | undefined known to be a number.
+	stored := left
+	if u, ok := left.(*ir.Unwrap); ok {
+		stored = u.Value
+		sum = &ir.Wrap{Value: sum, Typ: stored.ExprType(), Span: l.span(expr)}
+	}
+	switch get := stored.(type) {
 	case *ir.FieldGet:
 		return []ir.Stmt{&ir.FieldSet{Object: get.Object, Field: get.Field, Value: sum, Span: l.span(stmt)}}, true
 	case *ir.IndexGet:

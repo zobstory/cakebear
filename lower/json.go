@@ -57,6 +57,10 @@ func (l *lowerer) jsonStringify(n *ast.Node, c *ast.CallExpression) ir.Expr {
 	if value == nil || !l.serializable(args[0], value.ExprType()) {
 		return nil
 	}
+	if admitsUndefined(l.checker.GetTypeAtLocation(args[0])) {
+		l.failf(args[0], "JSON.stringify of a value that may be undefined is not supported: for undefined it returns undefined, not a string")
+		return nil
+	}
 	out := &ir.JSONStringify{Value: value, Span: l.span(n)}
 	if len(args) > 1 && !isNullish(args[1]) {
 		l.failf(args[1], "a replacer is not supported yet; pass null to give a space")
@@ -67,6 +71,10 @@ func (l *lowerer) jsonStringify(n *ast.Node, c *ast.CallExpression) ir.Expr {
 		// has already been refused, so this is one or the other (Validate
 		// holds it to that).
 		if out.Space = l.expr(args[2]); out.Space == nil {
+			return nil
+		}
+		if out.Space.ExprType().Kind == ir.KindMaybe {
+			l.failf(args[2], "a space that may be null or undefined is not supported yet")
 			return nil
 		}
 	}

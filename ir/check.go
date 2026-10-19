@@ -86,7 +86,10 @@ func (p *Program) checkNode(node any) error {
 	}
 	switch n := node.(type) {
 	case *VarDecl:
-		return p.checkType(n.Type)
+		if err := p.checkType(n.Type); err != nil {
+			return err
+		}
+		return checkDecl(n)
 	case *FuncLit:
 		if err := p.checkParams(n.Params); err != nil {
 			return err

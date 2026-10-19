@@ -18,6 +18,7 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 		return nil
 	}
 	v = l.widened(n, v)
+	v = l.wrapped(n, v)
 	if t := v.ExprType(); t.Kind == ir.KindFunc {
 		if slot := l.slotType(n); slot.Kind == ir.KindFunc && !slot.Equal(t) {
 			return l.adapt(n, v, slot)

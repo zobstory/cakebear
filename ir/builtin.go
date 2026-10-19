@@ -154,8 +154,9 @@ func checkBuiltin(x *BuiltinCall) error {
 		return fmt.Errorf("%s gives a %s, not a %s", sig.Name, sig.Result, x.Typ)
 	}
 	if x.Fn == ToString {
-		if len(x.Args) != 1 || !IsPrimitive(x.Args[0].ExprType()) {
-			return errors.New("String takes one primitive")
+		// A maybe of one is "undefined" or "null" when it is empty (M5 D8).
+		if len(x.Args) != 1 || !IsPrimitive(primitiveOf(x.Args[0].ExprType())) {
+			return errors.New("String takes one primitive, or a maybe of one")
 		}
 		return nil
 	}
@@ -179,4 +180,12 @@ func checkConcat(x *Concat) error {
 		}
 	}
 	return nil
+}
+
+// primitiveOf is t, or a maybe's element: what ToString converts.
+func primitiveOf(t Type) Type {
+	if t.Kind == KindMaybe && t.Elem != nil {
+		return *t.Elem
+	}
+	return t
 }

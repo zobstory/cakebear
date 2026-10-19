@@ -70,6 +70,9 @@ func (l *lowerer) deepReadonly(t *checker.Type, seen map[*checker.Type]bool) str
 	}
 	seen[t] = true
 	switch it := l.typeFromType(t); it.Kind {
+	case ir.KindMaybe:
+		// Frozen when what it may hold is; null and undefined are values.
+		return l.deepReadonly(l.checker.GetNonNullableType(t), seen)
 	case ir.KindArray:
 		if !l.isReadonlyArray(t) {
 			return withArticle(it.String()) + " is mutable; write `readonly " + it.String() + "`"
@@ -112,7 +115,11 @@ func (l *lowerer) isReadonlyArray(t *checker.Type) bool {
 // there, or another frozen const. A primitive can come from anything.
 func (l *lowerer) fresh(n *ast.Node) string {
 	n = ast.SkipParentheses(n)
-	switch l.typeOf(n).Kind {
+	t := l.typeOf(n)
+	if t.Kind == ir.KindMaybe && t.Elem != nil {
+		t = *t.Elem // a maybe object is an object, held elsewhere or not
+	}
+	switch t.Kind {
 	case ir.KindObject, ir.KindArray:
 	default:
 		return ""
@@ -183,6 +190,8 @@ func (l *lowerer) readonlyFlow(src, dst *checker.Type, seen map[[2]*checker.Type
 		return ""
 	}
 	switch kind {
+	case ir.KindMaybe:
+		return l.readonlyFlow(c.GetNonNullableType(src), c.GetNonNullableType(dst), seen)
 	case ir.KindArray:
 		return l.readonlyFlow(c.GetElementTypeOfArrayType(src), c.GetElementTypeOfArrayType(dst), seen)
 	case ir.KindPromise:
