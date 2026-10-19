@@ -85,7 +85,7 @@ func TestValidateRefusesBadAggregates(t *testing.T) {
 
 	a := newAggregates()
 	var elsewhere Shapes
-	foreign := ObjectOf(elsewhere.Intern("", []Field{{"x", Number}}))
+	foreign := ObjectOf(elsewhere.Intern("", []Field{{Name: "x", Type: Number}}))
 	lit := func(fields ...FieldInit) Stmt { return expr(&ObjectLit{Typ: a.pt, Fields: fields}) }
 
 	for _, tt := range []struct {
@@ -150,13 +150,13 @@ func TestValidateRefusesBadShapes(t *testing.T) {
 		shapes []*Shape
 		want   string
 	}{
-		{"a shape at the wrong index", []*Shape{shape(1, Field{"x", Number})}, "shape 0 ({ x: number }) has ID 1"},
-		{"fields out of order", []*Shape{shape(0, Field{"y", Number}, Field{"x", Number})}, `fields "y" and "x" out of order`},
-		{"a field twice", []*Shape{shape(0, Field{"x", Number}, Field{"x", Number})}, `fields "x" and "x" out of order, or one twice`},
-		{"one structure twice", []*Shape{shape(0, Field{"x", Number}), shape(1, Field{"x", Number})}, "shapes 0 and 1 have the same fields"},
+		{"a shape at the wrong index", []*Shape{shape(1, Field{Name: "x", Type: Number})}, "shape 0 ({ x: number }) has ID 1"},
+		{"fields out of order", []*Shape{shape(0, Field{Name: "y", Type: Number}, Field{Name: "x", Type: Number})}, `fields "y" and "x" out of order`},
+		{"a field twice", []*Shape{shape(0, Field{Name: "x", Type: Number}, Field{Name: "x", Type: Number})}, `fields "x" and "x" out of order, or one twice`},
+		{"one structure twice", []*Shape{shape(0, Field{Name: "x", Type: Number}), shape(1, Field{Name: "x", Type: Number})}, "shapes 0 and 1 have the same fields"},
 		{"a reserved shape never defined", []*Shape{{ID: 0, pending: true, Names: []string{"Tree"}}}, "shape 0 (Tree) was reserved and never defined"},
 		{"a nil shape", []*Shape{nil}, "shape 0 is nil"},
-		{"a field of a foreign shape", []*Shape{shape(0, Field{"next", ObjectOf(shape(0))})}, "field next of { next: {} }: an object of {}, which is not one of the program's shapes"},
+		{"a field of a foreign shape", []*Shape{shape(0, Field{Name: "next", Type: ObjectOf(shape(0))})}, "field next of { next: {} }: an object of {}, which is not one of the program's shapes"},
 	} {
 		p := &Program{Modules: []*Module{{Name: "t"}}, Shapes: tt.shapes}
 		if err := p.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {

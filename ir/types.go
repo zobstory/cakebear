@@ -45,6 +45,12 @@ const (
 	// at compile time only (D7). Elem is T. An array is a reference too, so a
 	// push is seen through every alias.
 	KindArray
+	// KindMaybe is `T | undefined`, `T | null` or both (M5 plan D2): a value
+	// that is T, or is undefined, or is null. Elem is T. The value carries
+	// which it is, and TypeScript's checker holds a program to the states its
+	// types admit, so the IR keeps no record of them: `T | null` flows into a
+	// `T | null | undefined` slot unchanged, as TypeScript allows.
+	KindMaybe
 )
 
 // HostType names a value the host runtime owns, such as the object a Node
@@ -103,16 +109,16 @@ func (s *Signature) Equal(o *Signature) bool {
 // and lower/ refuses anything outside it rather than guessing.
 //
 // Only the field that Kind selects is meaningful: Host for KindHost, Sig for
-// KindFunc, Elem for KindPromise and KindArray, Shape for KindObject, none for
-// a primitive. The primitives are package-level values (Number, String, ...),
-// so `t == ir.Number` and `switch t { case ir.Number: }` keep working. Between
-// two function, promise or array types == compares the pointers, so use Equal
-// there.
+// KindFunc, Elem for KindPromise, KindArray and KindMaybe, Shape for
+// KindObject, none for a primitive. The primitives are package-level values
+// (Number, String, ...), so `t == ir.Number` and `switch t { case ir.Number: }`
+// keep working. Between two function, promise, array or maybe types ==
+// compares the pointers, so use Equal there.
 type Type struct {
 	Kind  Kind
 	Host  HostType   // KindHost only
 	Sig   *Signature // KindFunc only
-	Elem  *Type      // KindPromise and KindArray only
+	Elem  *Type      // KindPromise, KindArray and KindMaybe only
 	Shape *Shape     // KindObject only: interned, so == on it is structural
 }
 
@@ -154,6 +160,12 @@ func ArrayOf(elem Type) Type {
 	return Type{Kind: KindArray, Elem: &elem}
 }
 
+// MaybeOf returns `elem | null | undefined` (KindMaybe). elem is never itself
+// a Maybe, void, null or undefined: Validate holds lowering to that.
+func MaybeOf(elem Type) Type {
+	return Type{Kind: KindMaybe, Elem: &elem}
+}
+
 // ObjectOf returns the type of an object of shape s, which must come from the
 // program's Shapes.
 func ObjectOf(s *Shape) Type {
@@ -185,8 +197,8 @@ func ExecutorType(elem Type) Type {
 // Primitives are equal when their kinds are. Host types are equal when they
 // name the same HostType. Function types are equal when their parameters and
 // results are, however the two Signatures were built; == would compare the
-// pointers and call two identical signatures different. Promise and array
-// types are equal when their element types are, for the same reason. Object
+// pointers and call two identical signatures different. Promise, array and
+// maybe types are equal when their element types are, for the same reason. Object
 // types are equal when they have the same shape, which interning makes the
 // same as having the same fields.
 func (t Type) Equal(u Type) bool {
@@ -198,7 +210,7 @@ func (t Type) Equal(u Type) bool {
 		return t.Host == u.Host
 	case KindFunc:
 		return t.Sig.Equal(u.Sig)
-	case KindPromise, KindArray:
+	case KindPromise, KindArray, KindMaybe:
 		if t.Elem == nil || u.Elem == nil {
 			return t.Elem == u.Elem
 		}
@@ -267,6 +279,14 @@ func (t Type) String() string {
 		return t.Elem.String() + "[]"
 	case KindObject:
 		return t.Shape.String()
+	case KindMaybe:
+		if t.Elem == nil {
+			return "invalid | null | undefined"
+		}
+		if t.Elem.Kind == KindFunc {
+			return "(" + t.Elem.String() + ") | null | undefined"
+		}
+		return t.Elem.String() + " | null | undefined"
 	default:
 		return "invalid"
 	}

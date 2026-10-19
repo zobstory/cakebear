@@ -7,7 +7,7 @@ import (
 
 func pointShapes() (*Shapes, *Shape) {
 	var shapes Shapes
-	return &shapes, shapes.Intern("Point", []Field{{"y", Number}, {"x", Number}})
+	return &shapes, shapes.Intern("Point", []Field{{Name: "y", Type: Number}, {Name: "x", Type: Number}})
 }
 
 // TestInterning: one structure is one shape, whatever order its fields come
@@ -16,8 +16,8 @@ func TestInterning(t *testing.T) {
 	t.Parallel()
 
 	shapes, point := pointShapes()
-	vec := shapes.Intern("Vec", []Field{{"x", Number}, {"y", Number}})
-	named := shapes.Intern("", []Field{{"name", String}})
+	vec := shapes.Intern("Vec", []Field{{Name: "x", Type: Number}, {Name: "y", Type: Number}})
+	named := shapes.Intern("", []Field{{Name: "name", Type: String}})
 	if vec != point {
 		t.Fatalf("Point and Vec are two shapes, want one")
 	}
@@ -33,7 +33,7 @@ func TestInterning(t *testing.T) {
 	if got := strings.Join(point.Names, ","); got != "Point,Vec" {
 		t.Errorf("Names = %q, want both declarations", got)
 	}
-	if shapes.Intern("", []Field{{"x", String}, {"y", Number}}) == point {
+	if shapes.Intern("", []Field{{Name: "x", Type: String}, {Name: "y", Type: Number}}) == point {
 		t.Errorf("a field of another type interned as the same shape")
 	}
 	if got := len(shapes.All()); got != 3 {
@@ -45,7 +45,7 @@ func TestObjectAndArrayTypeStrings(t *testing.T) {
 	t.Parallel()
 
 	shapes, point := pointShapes()
-	anon := shapes.Intern("", []Field{{"at", ObjectOf(point)}, {"tags", ArrayOf(String)}})
+	anon := shapes.Intern("", []Field{{Name: "at", Type: ObjectOf(point)}, {Name: "tags", Type: ArrayOf(String)}})
 	for _, tt := range []struct {
 		in   Type
 		want string
@@ -66,7 +66,7 @@ func TestTypeEqualObjectsAndArrays(t *testing.T) {
 	t.Parallel()
 
 	shapes, point := pointShapes()
-	other := shapes.Intern("", []Field{{"x", Number}})
+	other := shapes.Intern("", []Field{{Name: "x", Type: Number}})
 	for _, tt := range []struct {
 		a, b Type
 		want bool
@@ -92,7 +92,7 @@ func TestRecursiveShape(t *testing.T) {
 
 	var shapes Shapes
 	tree := shapes.Reserve("Tree")
-	if same := shapes.Define(tree, []Field{{"label", String}, {"kids", ArrayOf(ObjectOf(tree))}}); same != nil {
+	if same := shapes.Define(tree, []Field{{Name: "label", Type: String}, {Name: "kids", Type: ArrayOf(ObjectOf(tree))}}); same != nil {
 		t.Fatalf("Define returned %s, want nil", same)
 	}
 	if got := tree.Fields[0].Type.String(); got != "Tree[]" {
@@ -119,8 +119,8 @@ func TestDefineReportsTheSameStructure(t *testing.T) {
 
 	var shapes Shapes
 	a := shapes.Reserve("A")
-	c := shapes.Intern("C", []Field{{"n", Number}})
-	if same := shapes.Define(a, []Field{{"n", Number}}); same != c {
+	c := shapes.Intern("C", []Field{{Name: "n", Type: Number}})
+	if same := shapes.Define(a, []Field{{Name: "n", Type: Number}}); same != c {
 		t.Errorf("Define returned %v, want C", same)
 	}
 	p := &Program{Modules: []*Module{{Name: "t"}}, Shapes: shapes.All()}

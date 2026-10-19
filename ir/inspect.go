@@ -93,6 +93,17 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExprs(e.Args, visit)
 	case *Concat:
 		inspectExprs(e.Parts, visit)
+	case *Wrap:
+		inspectExpr(e.Value, visit)
+	case *Unwrap:
+		inspectExpr(e.Value, visit)
+	case *Empty:
+	case *IsEmpty:
+		inspectExpr(e.Value, visit)
+	case *Cond:
+		inspectExpr(e.Test, visit)
+		inspectExpr(e.Then, visit)
+		inspectExpr(e.Else, visit)
 	case *JSONStringify:
 		inspectExpr(e.Value, visit)
 		if e.Space != nil {

@@ -10,6 +10,13 @@ import (
 type Field struct {
 	Name string
 	Type Type
+	// Optional marks `name?: T` (M5 plan D3): an object may leave it out,
+	// and whether one has it is its layout's business, as Node prints and
+	// serialises only the keys an object has. Type is then `T | null |
+	// undefined`, as TypeScript reads an optional property. `{ a?: string }`
+	// and `{ a: string | undefined }` are two shapes: Node prints
+	// `{ a: undefined }` for the second and `{}` for the first.
+	Optional bool
 }
 
 // Shape is the structure of an object type: its fields, sorted by name (M4
@@ -59,6 +66,10 @@ func (s *Shape) String() string {
 	// out here never reaches itself.
 	parts := make([]string, len(s.Fields))
 	for i, f := range s.Fields {
+		if f.Optional && f.Type.Kind == KindMaybe && f.Type.Elem != nil {
+			parts[i] = f.Name + "?: " + f.Type.Elem.String()
+			continue
+		}
 		parts[i] = f.Name + ": " + f.Type.String()
 	}
 	return "{ " + strings.Join(parts, "; ") + " }"
@@ -153,6 +164,9 @@ func shapeKey(fields []Field) string {
 	var b strings.Builder
 	for _, f := range fields {
 		b.WriteString(strconv.Quote(f.Name))
+		if f.Optional {
+			b.WriteByte('?')
+		}
 		b.WriteByte(':')
 		writeTypeKey(&b, f.Type)
 		b.WriteByte(';')
@@ -171,7 +185,7 @@ func writeTypeKey(b *strings.Builder, t Type) {
 			return
 		}
 		b.WriteString("#" + strconv.Itoa(t.Shape.ID))
-	case KindPromise, KindArray:
+	case KindPromise, KindArray, KindMaybe:
 		b.WriteByte('<')
 		if t.Elem != nil {
 			writeTypeKey(b, *t.Elem)

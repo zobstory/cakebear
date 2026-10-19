@@ -49,7 +49,9 @@ func Unserializable(t Type, seen map[*Shape]bool) string {
 		return article(t.String())
 	case KindPromise:
 		return "a promise"
-	case KindArray:
+	case KindArray, KindMaybe:
+		// A Maybe's null is written as null, and its undefined as nothing at
+		// all (a property) or null (an element), as JSON.stringify does.
 		if t.Elem != nil {
 			return Unserializable(*t.Elem, seen)
 		}
