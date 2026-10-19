@@ -121,7 +121,7 @@ func (p *Program) checkNode(node any) error {
 		return checkBuiltin(n)
 	case *Concat:
 		return checkConcat(n)
-	case *Wrap, *Unwrap, *Empty, *IsEmpty, *Cond:
+	case *Wrap, *Unwrap, *Empty, *IsEmpty, *Cond, *Let:
 		return checkMaybeNode(n)
 	case *Append:
 		return checkAppend(n)

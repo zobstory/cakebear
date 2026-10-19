@@ -55,6 +55,9 @@ func TestValidateChecksMaybes(t *testing.T) {
 		// Inspect must look inside each node, or a bad one below it goes unseen.
 		{"a bad node in a branch", &Cond{Test: &BoolLit{Value: true}, Then: &Empty{Typ: Number}, Else: n(1), Typ: Number}, "an empty number"},
 		{"a bad node wrapped", &Wrap{Value: &Unwrap{Value: n(1), Typ: Number}, Typ: maybe}, "a number unwrapped as a number"},
+		{"a let of a name the program could declare", &Let{Name: "x", Value: n(1), Body: n(2)}, "a let of \"x\""},
+		{"a bad node in a let's body", &Let{Name: "ts held1", Value: n(1), Body: &Empty{Typ: Number}}, "an empty number"},
+		{"a bad node held", &Let{Name: "ts held1", Value: &Empty{Typ: Number}, Body: n(1)}, "an empty number"},
 		{"ToString of a maybe of an array", &BuiltinCall{Fn: ToString, Args: []Expr{&Empty{Typ: MaybeOf(ArrayOf(Number))}}, Typ: String}, "String takes one primitive, or a maybe of one"},
 	} {
 		if err := prog(tt.e).Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -67,6 +70,9 @@ func TestValidateChecksMaybes(t *testing.T) {
 		&Unwrap{Value: v, Typ: Number},
 		&Empty{Null: true, Typ: maybe},
 		&IsEmpty{Value: v, Undefined: true, Null: true},
+		&Let{Name: "ts held1", Value: v, Body: &Cond{Test: &IsEmpty{Value: &Ident{Name: "ts held1", Typ: maybe}, Null: true, Undefined: true},
+			Then: n(0), Else: &Unwrap{Value: &Ident{Name: "ts held1", Typ: maybe}, Typ: Number}, Typ: Number}},
+		&Unwrap{Value: v, Typ: Number, Asserted: true},
 		&BuiltinCall{Fn: ToString, Args: []Expr{v}, Typ: String},
 		&Cond{Test: &IsEmpty{Value: v, Undefined: true}, Then: n(0), Else: &Unwrap{Value: v, Typ: Number}, Typ: Number},
 	} {

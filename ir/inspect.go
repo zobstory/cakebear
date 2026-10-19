@@ -104,6 +104,9 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExpr(e.Test, visit)
 		inspectExpr(e.Then, visit)
 		inspectExpr(e.Else, visit)
+	case *Let:
+		inspectExpr(e.Value, visit)
+		inspectExpr(e.Body, visit)
 	case *JSONStringify:
 		inspectExpr(e.Value, visit)
 		if e.Space != nil {

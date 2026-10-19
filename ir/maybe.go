@@ -3,12 +3,13 @@ package ir
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Null, undefined and the values that may be either (M5 plan D2-D6). A value
 // of `T | null | undefined` (KindMaybe) is in one of three states: T, null or
 // undefined. These are the nodes that move between them, and Cond, the
-// conditional that `?:` is, and that `??` and `?.` are made of.
+// conditional that `?:` is, and that `??` and `?.` are made of, with Let.
 
 // Wrap is a T where a `T | null | undefined` is wanted, in T's state (D6): an
 // i32 filling a number's slot is converted, and a T filling a Maybe's is
@@ -20,12 +21,27 @@ type Wrap struct {
 }
 
 // Unwrap is a `T | null | undefined` used as the T TypeScript has narrowed it
-// to (D4). It is checked: TypeScript's narrowing can be unsound, as when a
-// callback empties a property between the check and the use, and where Node
-// would carry on with undefined, an Unwrap of an empty value fails, saying so.
+// to (D4), or that the program asserts it is, with `x!` (Asserted). It is
+// checked: TypeScript's narrowing can be unsound, as when a callback empties
+// a property between the check and the use, and an assertion can be wrong.
+// Where Node would carry on with undefined, or throw reading a property of
+// it, an Unwrap of an empty value fails, saying which.
 type Unwrap struct {
+	Value    Expr
+	Typ      Type // Value's element type
+	Asserted bool
+	Span     Span
+}
+
+// Let is Value, held in a local for Body to read, so that an expression
+// tested and then used is evaluated once (D5): `f() ?? d` holds what f
+// returned, and `f()?.x` its receiver. Name is lowering's own, with a space in
+// it, so it meets none of the program's names, and Body reads it as an Ident
+// of Value's type.
+type Let struct {
+	Name  string
 	Value Expr
-	Typ   Type // Value's element type
+	Body  Expr
 	Span  Span
 }
 
@@ -65,18 +81,21 @@ func (*Unwrap) isExpr()  {}
 func (*Empty) isExpr()   {}
 func (*IsEmpty) isExpr() {}
 func (*Cond) isExpr()    {}
+func (*Let) isExpr()     {}
 
 func (e *Wrap) ExprType() Type    { return e.Typ }
 func (e *Unwrap) ExprType() Type  { return e.Typ }
 func (e *Empty) ExprType() Type   { return e.Typ }
 func (e *IsEmpty) ExprType() Type { return Boolean }
 func (e *Cond) ExprType() Type    { return e.Typ }
+func (e *Let) ExprType() Type     { return e.Body.ExprType() }
 
 func (e *Wrap) ExprSpan() Span    { return e.Span }
 func (e *Unwrap) ExprSpan() Span  { return e.Span }
 func (e *Empty) ExprSpan() Span   { return e.Span }
 func (e *IsEmpty) ExprSpan() Span { return e.Span }
 func (e *Cond) ExprSpan() Span    { return e.Span }
+func (e *Let) ExprSpan() Span     { return e.Span }
 
 // checkMaybe holds a Maybe's element to a type that can be one of its states'
 // values: not void, null or undefined, which a state of their own already is,
@@ -119,6 +138,10 @@ func checkMaybeNode(node any) error {
 		}
 		if !n.Undefined && !n.Null {
 			return errors.New("a test for neither null nor undefined")
+		}
+	case *Let:
+		if !strings.Contains(n.Name, " ") {
+			return fmt.Errorf("a let of %q, a name a program could declare too", n.Name)
 		}
 	case *Cond:
 		switch {
