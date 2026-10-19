@@ -107,6 +107,24 @@ func TestOptionalFields(t *testing.T) {
 		t.Errorf("a literal leaving out a required field: %v", err)
 	}
 
+	// delete takes only an optional field; `in` any field of the shape.
+	o := &Ident{Name: "o", Typ: ObjectOf(opt)}
+	stmts := func(ss ...Stmt) *Program {
+		return &Program{Modules: []*Module{{Name: "t", Main: ss}}, Shapes: shapes.All()}
+	}
+	if err := stmts(&FieldDelete{Object: o, Field: 1}, expr(&HasField{Object: o, Field: 0})).Validate(); err != nil {
+		t.Errorf("delete of an optional field, and in: %v", err)
+	}
+	if err := stmts(&FieldDelete{Object: o, Field: 0}).Validate(); err == nil || !strings.Contains(err.Error(), "delete of a, a required field") {
+		t.Errorf("delete of a required field: %v", err)
+	}
+	if err := stmts(expr(&HasField{Object: o, Field: 2})).Validate(); err == nil || !strings.Contains(err.Error(), "field 2 of") {
+		t.Errorf("in of a field the shape doesn't have: %v", err)
+	}
+	if err := stmts(&FieldDelete{Object: n(1), Field: 0}).Validate(); err == nil || !strings.Contains(err.Error(), "a field of a number") {
+		t.Errorf("delete from a number: %v", err)
+	}
+
 	var bad Shapes
 	bad.Intern("", []Field{{Name: "b", Type: String, Optional: true}})
 	p := &Program{Modules: []*Module{{Name: "t"}}, Shapes: bad.All()}

@@ -43,17 +43,22 @@ func (m Maybe[T]) IsEmpty() bool { return m.state != stateValue }
 // panics, saying so. what names the value, for the message.
 //
 // Assert is the same for a program's own `m!`, which can be wrong too. The
-// Read, Write and Iterate forms of each are for an m the program reads a
-// property of, writes one of, or iterates, where Node throws rather than
-// carry on, so their messages say so. key names the property as Node's
-// TypeError does, quoted, 'x' or '0', or as "an index" for one the program
-// computes, which cakebear fails before evaluating.
+// Read, Write, Delete, In and Iterate forms of each are for an m the program
+// reads a property of, writes one of, deletes one of, looks for one in with
+// `in`, or iterates, where Node throws rather than carry on, so their
+// messages say so. key names the property as Node's TypeError does, quoted,
+// 'x' or '0', or as "an index" for one the program computes, which cakebear
+// fails before evaluating.
 func (m Maybe[T]) Must(what string) T             { return m.unwrap(what, false, useValue, "") }
 func (m Maybe[T]) Assert(what string) T           { return m.unwrap(what, true, useValue, "") }
 func (m Maybe[T]) MustRead(what, key string) T    { return m.unwrap(what, false, useRead, key) }
 func (m Maybe[T]) AssertRead(what, key string) T  { return m.unwrap(what, true, useRead, key) }
 func (m Maybe[T]) MustWrite(what, key string) T   { return m.unwrap(what, false, useWrite, key) }
 func (m Maybe[T]) AssertWrite(what, key string) T { return m.unwrap(what, true, useWrite, key) }
+func (m Maybe[T]) MustDelete(what string) T       { return m.unwrap(what, false, useDelete, "") }
+func (m Maybe[T]) AssertDelete(what string) T     { return m.unwrap(what, true, useDelete, "") }
+func (m Maybe[T]) MustIn(what, key string) T      { return m.unwrap(what, false, useIn, key) }
+func (m Maybe[T]) AssertIn(what, key string) T    { return m.unwrap(what, true, useIn, key) }
 func (m Maybe[T]) MustIterate(what string) T      { return m.unwrap(what, false, useIterate, "") }
 func (m Maybe[T]) AssertIterate(what string) T    { return m.unwrap(what, true, useIterate, "") }
 
@@ -65,6 +70,8 @@ const (
 	useValue   unwrapUse = iota // uses it: Node carries on with it
 	useRead                     // reads a property of it: Node throws
 	useWrite                    // writes a property of it: Node throws
+	useDelete                   // deletes a property of it: Node throws
+	useIn                       // is the right of `in`: Node throws
 	useIterate                  // iterates it, with for…of: Node throws
 )
 
@@ -89,6 +96,10 @@ func unwrapFailure(what, empty string, asserted bool, use unwrapUse, key string)
 		node = fmt.Sprintf("throws TypeError: Cannot read properties of %s (reading %s)", empty, key)
 	case useWrite:
 		node = fmt.Sprintf("throws TypeError: Cannot set properties of %s (setting %s)", empty, key)
+	case useDelete:
+		node = "throws TypeError: Cannot convert undefined or null to object"
+	case useIn:
+		node = fmt.Sprintf("throws TypeError: Cannot use 'in' operator to search for %s in %s", key, empty)
 	case useIterate:
 		node = "throws TypeError: " + what + " is not iterable"
 	}

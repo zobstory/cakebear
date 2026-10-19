@@ -123,7 +123,6 @@ func TestMaybeConstructsGoCantEmitAreRefused(t *testing.T) {
 	at := ir.Span{File: "t.ts", Line: 3, Col: 5}
 	var shapes ir.Shapes
 	opt := shapes.Intern("Opt", []ir.Field{{Name: "a", Type: ir.Number}, {Name: "b", Type: ir.MaybeOf(ir.String), Optional: true}})
-	o := stable("o", ir.ObjectOf(opt))
 	fnM := ir.MaybeOf(ir.FuncType(nil, ir.Void))
 	f := stable("f", fnM)
 	for _, tt := range []struct {
@@ -131,10 +130,6 @@ func TestMaybeConstructsGoCantEmitAreRefused(t *testing.T) {
 		stmt ir.Stmt
 		want string
 	}{
-		// Writing an absent optional property gives the object its key
-		// (step 5); a plain write would leave it unprinted.
-		{"a write to an optional property", &ir.FieldSet{Object: o, Field: opt.Index("b"), Value: some(str("x")), Span: at},
-			"cannot write the optional property b yet"},
 		{"=== on maybes of functions", &ir.ExprStmt{Expr: &ir.Binary{Op: ir.OpEqual, Left: f, Right: f, Typ: ir.Boolean, Span: at}, Span: at},
 			"cannot compare a (() => void) | null | undefined: Go can't compare functions"},
 		{"includes over maybes of functions", do(&ir.ArrayOp{Method: ir.ArrayIncludes, Array: stable("fs", ir.ArrayOf(fnM)), Args: []ir.Expr{f}, Typ: ir.Boolean, Span: at}),

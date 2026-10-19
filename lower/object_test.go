@@ -113,7 +113,6 @@ func TestObjectRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name, src, want string
 	}{
-		{"an optional property", "interface P { x?: number }\nconst p: P = { x: 1 };\n", "optional property `x` is not supported yet"},
 		{"Record", "const r: Record<string, number> = { a: 1 };\n", "index signatures, and Record, are not supported yet"},
 		{"a method in an interface", "interface M { f(): number }\nconst m: M = { f: (): number => 1 };\n", "method `f` is not supported yet"},
 		{"a method in a literal", "interface F { f: () => number }\nconst o: F = { f(): number { return 1; } };\n", "a method in an object literal is not supported yet"},
@@ -130,10 +129,10 @@ func TestObjectRefusals(t *testing.T) {
 		{"a tuple property", "interface Pair { p: [number, string] }\nfunction size(b: Pair): number {\n  return 1;\n}\n", "property `p`: tuples are not supported yet"},
 		{"logging an object holding a function", "const o: { f: () => number } = { f: (): number => 1 };\nconsole.log(o);\n", "console.log cannot print a { f: () => number } yet: it holds a function"},
 		{"=== between two shapes", "const a: { x: number } = { x: 1 };\nconst b: { y: number } = { y: 1 };\nconst t: boolean = (a as unknown) === (b as unknown);\n", "not supported yet"},
-		{"a recursive type failing partway", "interface A { d: D; bad?: number }\ninterface D { a: A }\nfunction f(d: D): number {\n  return 1;\n}\n", "optional property `bad` is not supported yet"},
+		{"a recursive type failing partway", "interface A { d: D; bad: string | number }\ninterface D { a: A }\nfunction f(d: D): number {\n  return 1;\n}\n", "property `bad`: a union of a"},
 		// X fails after Y was classified against X's reserved shape: Y must
 		// fail too when used later, not pass holding a shape never defined.
-		{"a type whose recursive part failed", "interface X { y: Y; bad?: number }\ninterface Y { x: X }\nfunction f(x: X): number {\n  return 1;\n}\nfunction g(y: Y): number {\n  return 2;\n}\n",
+		{"a type whose recursive part failed", "interface X { y: Y; bad: string | number }\ninterface Y { x: X }\nfunction f(x: X): number {\n  return 1;\n}\nfunction g(y: Y): number {\n  return 2;\n}\n",
 			"parameter y has a type the backend cannot represent yet: property `x`"},
 	} {
 		_, errs := lowerProgram(t, tt.src)

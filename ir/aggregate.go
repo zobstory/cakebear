@@ -100,11 +100,29 @@ type ArrayOp struct {
 }
 
 // FieldSet is `obj.f = v`. Object is evaluated before Value, as in
-// JavaScript.
+// JavaScript. When f is optional and obj lacks it, obj gains it, its key
+// last, as Node orders a property assigned after the object was made (M5
+// plan D3).
 type FieldSet struct {
 	Object Expr
 	Field  int
 	Value  Expr
+	Span   Span
+}
+
+// FieldDelete is `delete obj.f`, f an optional field, which TypeScript
+// allows deleting (D3). obj no longer has f, and reads it as undefined.
+type FieldDelete struct {
+	Object Expr
+	Field  int
+	Span   Span
+}
+
+// HasField is `"f" in obj`: whether obj has f. It has a required field
+// always, and an optional one once it is given one, even undefined (D3).
+type HasField struct {
+	Object Expr
+	Field  int
 	Span   Span
 }
 
@@ -135,20 +153,25 @@ func (*ArrayLit) isExpr()           {}
 func (*FieldGet) isExpr()           {}
 func (*IndexGet) isExpr()           {}
 func (*ArrayOp) isExpr()            {}
+func (*HasField) isExpr()           {}
 func (e *ObjectLit) ExprType() Type { return e.Typ }
 func (e *ArrayLit) ExprType() Type  { return e.Typ }
 func (e *FieldGet) ExprType() Type  { return e.Typ }
 func (e *IndexGet) ExprType() Type  { return e.Typ }
 func (e *ArrayOp) ExprType() Type   { return e.Typ }
+func (e *HasField) ExprType() Type  { return Boolean }
 func (e *ObjectLit) ExprSpan() Span { return e.Span }
 func (e *ArrayLit) ExprSpan() Span  { return e.Span }
 func (e *FieldGet) ExprSpan() Span  { return e.Span }
 func (e *IndexGet) ExprSpan() Span  { return e.Span }
 func (e *ArrayOp) ExprSpan() Span   { return e.Span }
+func (e *HasField) ExprSpan() Span  { return e.Span }
 
-func (*FieldSet) isStmt()          {}
-func (*IndexSet) isStmt()          {}
-func (*ForOf) isStmt()             {}
-func (s *FieldSet) StmtSpan() Span { return s.Span }
-func (s *IndexSet) StmtSpan() Span { return s.Span }
-func (s *ForOf) StmtSpan() Span    { return s.Span }
+func (*FieldSet) isStmt()             {}
+func (*IndexSet) isStmt()             {}
+func (*ForOf) isStmt()                {}
+func (*FieldDelete) isStmt()          {}
+func (s *FieldSet) StmtSpan() Span    { return s.Span }
+func (s *IndexSet) StmtSpan() Span    { return s.Span }
+func (s *ForOf) StmtSpan() Span       { return s.Span }
+func (s *FieldDelete) StmtSpan() Span { return s.Span }

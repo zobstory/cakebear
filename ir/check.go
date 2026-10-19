@@ -109,6 +109,15 @@ func (p *Program) checkNode(node any) error {
 		return checkField(n.Object, n.Field, n.Typ)
 	case *FieldSet:
 		return checkField(n.Object, n.Field, n.Value.ExprType())
+	case *FieldDelete:
+		f, err := fieldAt(n.Object, n.Field)
+		if err == nil && !f.Optional {
+			err = fmt.Errorf("delete of %s, a required field", f.Name)
+		}
+		return err
+	case *HasField:
+		_, err := fieldAt(n.Object, n.Field)
+		return err
 	case *IndexGet:
 		return checkIndex(n.Array, n.Index, n.Typ)
 	case *IndexSet:
@@ -174,18 +183,24 @@ func (p *Program) checkObjectLit(x *ObjectLit) error {
 // checkField checks a read or a write of field index of object, whose value
 // is of type t.
 func checkField(object Expr, index int, t Type) error {
+	f, err := fieldAt(object, index)
+	if err == nil && !t.Equal(f.Type) {
+		err = fmt.Errorf("%s of %s is a %s, used as a %s", f.Name, object.ExprType().Shape, f.Type, t)
+	}
+	return err
+}
+
+// fieldAt is field index of object's shape, which must have one.
+func fieldAt(object Expr, index int) (Field, error) {
 	ot := object.ExprType()
 	if ot.Kind != KindObject || ot.Shape == nil {
-		return fmt.Errorf("a field of a %s", ot)
+		return Field{}, fmt.Errorf("a field of a %s", ot)
 	}
 	s := ot.Shape
 	if index < 0 || index >= len(s.Fields) {
-		return fmt.Errorf("field %d of %s, which has %d", index, s, len(s.Fields))
+		return Field{}, fmt.Errorf("field %d of %s, which has %d", index, s, len(s.Fields))
 	}
-	if f := s.Fields[index]; !t.Equal(f.Type) {
-		return fmt.Errorf("%s of %s is a %s, used as a %s", f.Name, s, f.Type, t)
-	}
-	return nil
+	return s.Fields[index], nil
 }
 
 // checkIndex checks a read or a write of array[index], whose value is of
