@@ -278,8 +278,29 @@ the members that return `T | undefined` (`find`, `at`, `pop()` as a value),
 and string- and number-literal unions. Its plan, decided 2026-10-15 at scope
 D, is `~/Desktop/cakebear/m5-nullables-plan.md`, sized by measurements of
 wx-next (`spikes/m5-measure/`) and a hand port of two of its paths. Then
-**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`, not planned yet,
-per the per-phase rule below.
+**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`.
+
+After M6, the roadmap, in a provisional order ranked by how much of wx-next
+each unblocks. The shares are of its clean `.ts` files that check 9 found
+refused for each (`spikes/m4-remeasure/`, 3,195 files), and for unions,
+M5's measurement of their reach (3,372 files):
+- **M7, modules:** `export … from` (11.7%), and non-relative imports of the
+  program's own source, workspace packages and `@/` path aliases (39.7%).
+- **M8, unions of objects:** discriminated (21.4%), untagged (19.6%), and a
+  primitive or an object (26.5%).
+- **M9, RegExp** (16.8%).
+- **M10, `Map` and `Set`** (14.4%).
+- **M11, generics** (6.0%).
+- **M12, classes** (5.6%).
+- **M13, npm packages:** 37.6% import one, and 44.5% use a package's types
+  or values (payload, next, @types/node, mongodb). It starts with a design
+  decision: compile a package's source, or bind to it.
+- **M14, JSX:** none of wx-next's 1,841 `.tsx` files with runtime code
+  lowers. It needs React, so it follows packages.
+
+None is planned yet, per the per-phase rule below: each is planned, and its
+place in the order checked against a fresh measurement, when it becomes the
+active phase.
 
 Step 0, the fixes a port of real code found (D13), is done. `%`, products,
 extension-type arithmetic and literals (PR 47; "Numbers" and the type
@@ -1351,4 +1372,6 @@ rather than an ergonomic one.
 
 cakebear is multi-year and will involve many contributors. Plan only the
 **current** phase in detail; defer later phases until they are the active
-phase. Don't write speculative roadmaps for things that aren't being built yet.
+phase. The roadmap under "Current phase" names them, in order, with the
+measurement that ranks them, and no more: don't write speculative plans for
+things that aren't being built yet.
