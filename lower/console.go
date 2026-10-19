@@ -27,7 +27,7 @@ func (l *lowerer) consoleLog(n *ast.Node, c *ast.CallExpression) ir.Expr {
 		if arg == nil || !l.printable(a, arg.ExprType()) {
 			return nil
 		}
-		if t := arg.ExprType(); i == 0 && len(nodes) > 1 && (t == ir.String || t == ir.Base64) {
+		if t := arg.ExprType(); i == 0 && len(nodes) > 1 && (stringish(t) || t.Kind == ir.KindMaybe && stringish(*t.Elem)) {
 			if lit, ok := arg.(*ir.StringLit); !ok || strings.Contains(lit.Value, "%") {
 				l.failf(a, "a string before console.log's other arguments is a format to Node, which cakebear doesn't implement yet: make it a string literal with no %%, or log it on its own")
 				return nil
@@ -68,7 +68,7 @@ func unprintable(t ir.Type, seen map[*ir.Shape]bool) string {
 		return "a " + t.String()
 	case ir.KindPromise:
 		return "a promise"
-	case ir.KindArray:
+	case ir.KindArray, ir.KindMaybe:
 		if t.Elem != nil {
 			return unprintable(*t.Elem, seen)
 		}

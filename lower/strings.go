@@ -81,7 +81,8 @@ func (l *lowerer) stringOf(n *ast.Node, v ir.Expr, what string) ir.Expr {
 	switch t := v.ExprType(); {
 	case t == ir.String || t == ir.Base64:
 		return v
-	case ir.IsPrimitive(t):
+	case ir.IsPrimitive(t), t.Kind == ir.KindMaybe && ir.IsPrimitive(*t.Elem):
+		// A maybe writes "undefined" or "null" when it is empty (D8).
 		return &ir.BuiltinCall{Fn: ir.ToString, Args: []ir.Expr{v}, Typ: ir.String, Span: l.span(n)}
 	default:
 		l.failf(n, "%s can hold a string, a number or a boolean; a %s is not supported yet (Node writes %s)", what, t, nodeWrites(t))
@@ -98,6 +99,10 @@ func nodeWrites(t ir.Type) string {
 		return "its source text"
 	case ir.KindPromise:
 		return "[object Promise]"
+	case ir.KindMaybe:
+		if t.Elem != nil {
+			return nodeWrites(*t.Elem) + ", or undefined or null"
+		}
 	}
 	return "[object Object]"
 }

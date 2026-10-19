@@ -14,6 +14,9 @@ func TestMaybeType(t *testing.T) {
 	if got := MaybeOf(FuncType(nil, Void)).String(); got != "(() => void) | null | undefined" {
 		t.Errorf("a maybe function is %q", got)
 	}
+	if got := ArrayOf(MaybeOf(Number)).String(); got != "(number | null | undefined)[]" {
+		t.Errorf("an array of maybes is %q", got)
+	}
 	if !MaybeOf(Number).Equal(MaybeOf(Number)) || MaybeOf(Number).Equal(MaybeOf(String)) || MaybeOf(Number).Equal(Number) {
 		t.Errorf("maybe types compare by their element types")
 	}
@@ -52,6 +55,7 @@ func TestValidateChecksMaybes(t *testing.T) {
 		// Inspect must look inside each node, or a bad one below it goes unseen.
 		{"a bad node in a branch", &Cond{Test: &BoolLit{Value: true}, Then: &Empty{Typ: Number}, Else: n(1), Typ: Number}, "an empty number"},
 		{"a bad node wrapped", &Wrap{Value: &Unwrap{Value: n(1), Typ: Number}, Typ: maybe}, "a number unwrapped as a number"},
+		{"ToString of a maybe of an array", &BuiltinCall{Fn: ToString, Args: []Expr{&Empty{Typ: MaybeOf(ArrayOf(Number))}}, Typ: String}, "String takes one primitive, or a maybe of one"},
 	} {
 		if err := prog(tt.e).Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: Validate = %v, want an error containing %q", tt.name, err, tt.want)
@@ -62,6 +66,7 @@ func TestValidateChecksMaybes(t *testing.T) {
 		&Unwrap{Value: v, Typ: Number},
 		&Empty{Null: true, Typ: maybe},
 		&IsEmpty{Value: v, Undefined: true, Null: true},
+		&BuiltinCall{Fn: ToString, Args: []Expr{v}, Typ: String},
 		&Cond{Test: &IsEmpty{Value: v, Undefined: true}, Then: n(0), Else: &Unwrap{Value: v, Typ: Number}, Typ: Number},
 	} {
 		if err := prog(e).Validate(); err != nil {

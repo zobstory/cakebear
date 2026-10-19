@@ -49,3 +49,18 @@ func TestValidateChecksReturns(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateChecksDecls: a declaration's value is of its type, or a base64
+// for a string, so a lowering that gets one wrong is caught here too.
+func TestValidateChecksDecls(t *testing.T) {
+	t.Parallel()
+
+	prog := func(d *VarDecl) *Program { return ProgramOf(&Module{Name: "t", Main: []Stmt{d}}) }
+	err := prog(&VarDecl{Name: "xs", Type: ArrayOf(Number), Init: &ArrayLit{Typ: ArrayOf(MaybeOf(Number))}}).Validate()
+	if want := "xs, a number[], is given a (number | null | undefined)[]"; err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Validate = %v, want an error containing %q", err, want)
+	}
+	if err := prog(&VarDecl{Name: "s", Type: String, Init: &Ident{Name: "b", Typ: Base64}}).Validate(); err != nil && strings.Contains(err.Error(), "is given") {
+		t.Errorf("a base64 as a string: Validate = %v", err)
+	}
+}

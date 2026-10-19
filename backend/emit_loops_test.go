@@ -39,7 +39,7 @@ func TestEmitLoopsCompileAndRun(t *testing.T) {
 	secondType := ir.FuncType(nil, ir.Number)
 	second := &ir.FuncLit{Result: ir.Number, Body: []ir.Stmt{
 		&ir.While{Cond: forever, Body: []ir.Stmt{&ir.Return{Value: num(7), Span: span}}, Span: span},
-	}, Span: span}
+	}, Typ: secondType, Span: span}
 
 	m := &ir.Module{
 		Name:  "t",

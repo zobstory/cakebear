@@ -77,6 +77,11 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 			l.failf(args[0], "%s's callback must return a boolean; testing a %s for truthiness is not supported yet", m, r)
 			return nil
 		}
+		if rt := l.typeOf(n); m == ir.ArrayFilter && rt != ir.Invalid && !rt.Equal(t) {
+			// A callback such as (x) => x !== undefined is a type predicate.
+			l.failf(n, "filter narrowing a %s to a %s is not supported yet", t, rt)
+			return nil
+		}
 		op.Typ = map[ir.ArrayMethod]ir.Type{ir.ArrayFilter: t, ir.ArraySome: ir.Boolean, ir.ArrayEvery: ir.Boolean, ir.ArrayFindIndex: ir.Number}[m]
 		return l.withCallback(op, args[0], visitor(ir.Boolean), false)
 	case ir.ArrayForEach:
@@ -85,6 +90,10 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 	case ir.ArraySort:
 		if len(args) == 0 {
 			l.failf(n, "sort without a comparator compares as strings, which cakebear doesn't do yet; pass one, such as (a, b) => a - b")
+			return nil
+		}
+		if elem.Kind == ir.KindMaybe {
+			l.failf(n, "sort of an array of %s is not supported yet: Node moves undefined to the end without calling the comparator", elem)
 			return nil
 		}
 		op.Typ = t
@@ -178,14 +187,16 @@ func (l *lowerer) callback(n *ast.Node, slot ir.Type, drop bool) ir.Expr {
 // string as Node does, and why, or returns "": a function, whose string is
 // its source text; a promise or a host value; and an object with its own
 // toString or valueOf, which Node's ToString calls rather than print
-// [object Object]. Arrays are joined in turn, so their elements are held to
-// the same.
+// [object Object]; and, for now, a maybe. Arrays are joined in turn, so
+// their elements are held to the same.
 func unjoinable(t ir.Type) (what, why string) {
 	switch t.Kind {
 	case ir.KindFunc:
 		return "functions", ": Node joins their source text"
 	case ir.KindHost, ir.KindPromise:
 		return t.String() + " values", ""
+	case ir.KindMaybe:
+		return "values that may be null or undefined", " yet: Node joins them as empty strings"
 	case ir.KindArray:
 		if t.Elem != nil {
 			return unjoinable(*t.Elem)

@@ -54,3 +54,15 @@ func checkReturn(r *Return, want Type) error {
 	}
 	return nil
 }
+
+// checkDecl holds a declaration's value to its type, as checkReturn holds a
+// return's value to its function's result, and for the same reason.
+func checkDecl(d *VarDecl) error {
+	if d.Init == nil {
+		return nil
+	}
+	if got := d.Init.ExprType(); !got.Equal(d.Type) && !(d.Type == String && got == Base64) {
+		return fmt.Errorf("%s, a %s, is given a %s", d.Name, d.Type, got) // Validate adds d's span
+	}
+	return nil
+}

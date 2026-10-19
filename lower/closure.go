@@ -53,7 +53,8 @@ func (l *lowerer) funcType(t *checker.Type) ir.Type {
 }
 
 // storable reports whether a value of type t can be held in a Go variable.
-// null and undefined have no representation yet, and void is only a result.
+// null and undefined alone have no representation, only a maybe's states,
+// and void is only a result.
 func storable(t ir.Type) bool {
 	switch t {
 	case ir.Invalid, ir.Void, ir.Null, ir.Undefined:
@@ -128,6 +129,7 @@ func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir
 	}
 	l.inBody(async, func() {
 		lit.Body = append(prologue, l.closureBody(n.Body(), bodyResult(sig.Result, async), discard)...)
+		lit.Body = undefinedReturns(lit.Body, returnedType(sig.Result, async), lit.Span)
 	})
 	lit.Captures = l.captures(n)
 	return lit

@@ -59,7 +59,7 @@ func TestArrayRefusals(t *testing.T) {
 		{"a spread", xs + "const b: number[] = [...xs];\n", "spreading into an array literal is not supported yet"},
 		{"a hole", "const a: number[] = [1, , 2];\n", "an array literal with a hole is not supported"},
 		{"a tuple", "const t: [number, string] = [1, \"a\"];\n", "tuples are not supported yet"},
-		{"elements of a union", "const u: (number | string)[] = [1];\n", "its elements: union types are not supported yet"},
+		{"elements of a union", "const u: (number | string)[] = [1];\n", "its elements: a union of a string and a number is not supported yet"},
 		{"an empty literal with no slot", "console.log([]);\n", "an empty array literal needs its type from its slot"},
 		{"for…of over a string", "for (const c of \"abc\") {\n}\n", "for…of over a string is not supported yet; only over an array"},
 		{"for await", "async function f(ys: number[]): Promise<void> {\n  for await (const y of ys) {\n  }\n}\n", "for await is not supported yet"},
