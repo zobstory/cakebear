@@ -132,3 +132,48 @@ func TestOptionalFields(t *testing.T) {
 		t.Errorf("an optional field that isn't a maybe: %v", err)
 	}
 }
+
+// TestUndefinedReads (D9): a read that may be undefined is of OrUndefined of
+// what it reads, an array's elements, a maybe's own type for an array of
+// them: an unchecked index, at, find, findLast, and pop and shift as values.
+func TestUndefinedReads(t *testing.T) {
+	t.Parallel()
+
+	if !OrUndefined(Number).Equal(MaybeOf(Number)) || !OrUndefined(MaybeOf(Number)).Equal(MaybeOf(Number)) {
+		t.Fatalf("OrUndefined is %s and %s", OrUndefined(Number), OrUndefined(MaybeOf(Number)))
+	}
+	nums := &Ident{Name: "xs", Typ: ArrayOf(Number)}
+	maybes := &Ident{Name: "ms", Typ: ArrayOf(MaybeOf(Number))}
+	found := &FuncLit{Typ: FuncType([]Type{Number, Number, ArrayOf(Number)}, Boolean), Result: Boolean}
+	prog := func(e Expr) *Program { return ProgramOf(&Module{Name: "t", Main: []Stmt{expr(e)}}) }
+	for _, e := range []Expr{
+		&IndexGet{Array: nums, Index: n(0), Typ: MaybeOf(Number), OrUndefined: true},
+		&IndexGet{Array: maybes, Index: n(0), Typ: MaybeOf(Number), OrUndefined: true},
+		&ArrayOp{Method: ArrayPop, Array: nums, Typ: MaybeOf(Number)},
+		&ArrayOp{Method: ArrayPop, Array: nums, Typ: Void},
+		&ArrayOp{Method: ArrayShift, Array: maybes, Typ: MaybeOf(Number)},
+		&ArrayOp{Method: ArrayAt, Array: nums, Args: []Expr{n(-1)}, Typ: MaybeOf(Number)},
+		&ArrayOp{Method: ArrayFind, Array: nums, Args: []Expr{found}, Typ: MaybeOf(Number)},
+		&ArrayOp{Method: ArrayFindLast, Array: nums, Args: []Expr{found}, Typ: MaybeOf(Number)},
+		&BuiltinCall{Fn: StrAt, Args: []Expr{str("ab"), n(-1)}, Typ: MaybeOf(String)},
+		&BuiltinCall{Fn: StrIndexOrUndefined, Args: []Expr{str("ab"), n(5)}, Typ: MaybeOf(String)},
+	} {
+		if err := prog(e).Validate(); err != nil {
+			t.Errorf("a well-formed %#v: %v", e, err)
+		}
+	}
+	for _, tt := range []struct {
+		name string
+		e    Expr
+		want string
+	}{
+		{"an unchecked read typed as the element", &IndexGet{Array: nums, Index: n(0), Typ: Number, OrUndefined: true}, "used as a number"},
+		{"a checked read typed as a maybe", &IndexGet{Array: nums, Index: n(0), Typ: MaybeOf(Number)}, "used as a number | null | undefined"},
+		{"pop typed as the element", &ArrayOp{Method: ArrayPop, Array: nums, Typ: Number}, "pop on a number[] gives a number | null | undefined"},
+		{"at with no index", &ArrayOp{Method: ArrayAt, Array: nums, Typ: MaybeOf(Number)}, "at takes 1 argument(s)"},
+	} {
+		if err := prog(tt.e).Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: Validate = %v, want an error containing %q", tt.name, err, tt.want)
+		}
+	}
+}

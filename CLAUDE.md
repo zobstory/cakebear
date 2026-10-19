@@ -401,6 +401,29 @@ Step 5, optional properties, is done (`lower/optional.go`,
   beside the emitter's tests against Node for key order, evaluation order,
   nesting, read-only use and a spawn's copy.
 
+Step 6, the members that may be undefined, is done (D9; `lower/array.go`,
+`backend/emit_array.go`, `runtime/str_at.go`). D10's literal unions came
+with step 3.
+- `find`, `findLast` and `at`, and `pop()` and `shift()` as values, are the
+  element or undefined; a string's `at` and `codePointAt` too. As
+  statements, `pop` and `shift` stay void. Each runtime member returns its
+  value and whether there was one, which `OrUndefined` makes a maybe, or
+  `MaybeOrUndefined` for an array of maybes, so there is never a maybe of a
+  maybe.
+- `xs[i]` follows the checker's type. Under `noUncheckedIndexedAccess` a read
+  is `T | undefined` and is undefined past the end, negative or fractional,
+  as Node reads it (`IndexGet.OrUndefined`), and so is any read of an array
+  of maybes, flag or not. Typed `T`, without the flag or narrowed, it panics
+  there, as since M4. `s[i]` is the same, by `StrIndex` and
+  `StrIndexOrUndefined`.
+- `xs[i] ??= v` tests the element however it is typed: an element is
+  undefined past the end, and Node assigns there.
+- `shift` reslices, so push and shift are each O(1).
+- The string goldens hold `at`, `codePointAt` and `s[i]`, and an array's `at`
+  and index, to 6,984 more outputs recorded from Node, in a section after the
+  old ones. `TestMembersMatchNode` and `TestUncheckedIndexReadsMatchNode`, a
+  project with the flag on, hold programs to Node, 20 runs each.
+
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
 whatever it returned; an extension type in a `number`'s slot reached Go
@@ -853,8 +876,7 @@ Since M4 step 6 (`lower/array.go`), arrays:
 - `===` and `!==`, identity, and arrays in objects, objects in arrays, and
   arrays of arrays.
 
-Refused by name: tuples, holes, spread, `pop()` as a value (its
-`T | undefined` waits for M5), a member a program adds to `Array`, an
+Refused by name: tuples, holes, spread, a member a program adds to `Array`, an
 element access on anything but an array, an index that isn't a number, and
 `for…of` over a string, with `await`, with an array pattern, or over an
 existing variable.
@@ -864,8 +886,9 @@ Since M4 step 7 (`lower/array_methods.go`), the array methods: `map`,
 `every`, `forEach`, `reduce(fn, initial)` and `findIndex`. A callback may be
 written in place or named. A named function taking fewer parameters than its
 slot passes is adapted to it, here and wherever a function flows
-(`lower/adapt.go`). Refused by name: every other `Array` member (`find`,
-`at`, `shift` and `findLast` wait for M5's `T | undefined`), `sort()` with no
+(`lower/adapt.go`). Since M5 step 6, `find`, `findLast`, `at`, and `pop()`
+and `shift()` as values, too. Refused by name: every other `Array` member,
+`sort()` with no
 comparator, `reduce()` with no initial value, a `thisArg`, `fromIndex`, a
 callback testing truthiness, `map` returning nothing, `includes` or
 `indexOf` over functions, and `join` over functions, promises, host values
@@ -944,9 +967,7 @@ fails when they gain one.
 Refused by name: anything taking a RegExp, and `match`, `matchAll` and
 `search` (RegExp is a step of its own: in 12% of wx-next's files, and
 `match` returns `null`, M5's); a function replacement; `localeCompare`
-(ICU collation) and the `toLocale*` forms; `normalize`; `at` and
-`codePointAt` (`undefined` past the end, M5); `s[i]` (the same; use
-`charAt`); `toString(radix)`; `toPrecision`; a template, `String()` or
+(ICU collation) and the `toLocale*` forms; `normalize`; `toString(radix)`; `toPrecision`; a template, `String()` or
 `Number()` of anything but a primitive; and `+` between a string and
 anything else (measured at 10 uses in wx-next: write a template literal).
 
@@ -979,6 +1000,11 @@ Since M5 step 5 (`lower/optional.go`), optional properties: `p?: T` in
 interfaces and type aliases, `Partial<T>`, literals leaving them out, reads,
 writes, `??=` and the compound assignments, `delete o.p` as a statement, and
 `"p" in o` for a key written as a string naming one of o's properties.
+
+Since M5 step 6, the members that may be undefined: `find`, `findLast` and
+`at` on arrays, `pop()` and `shift()` as values and statements, a string's
+`at`, `codePointAt` and `s[i]`, and `xs[i]` undefined past the end where the
+checker types it so (`noUncheckedIndexedAccess`) or the array holds maybes.
 
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
@@ -1299,12 +1325,12 @@ not listed here that behaves differently is a bug.
 | A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 | `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
-| Reading past an array's end, or a negative or fractional index (M4 D8) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2 |
+| Reading past an array's end, or a negative or fractional index, where the read is typed as the element (M4 D8; under `noUncheckedIndexedAccess`, or for an array of maybes, it is undefined, as in Node) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2. A string's `s[i]` typed `string` the same: `cakebear: index 5 is out of range for a string of length 2 (Node reads undefined)` |
 | A string or number builtin given what Node throws for (`"ab".repeat(-1)`, `(1).toFixed(101)`, a string past V8's length limit, `decodeURIComponent("%")`, `encodeURIComponent` of a lone surrogate) | a `RangeError` or `URIError`, exit 1 | a panic with Node's message, e.g. `cakebear: repeat can't repeat a string -1 times (Node throws RangeError: Invalid count value: -1)`, exit 2 |
 | `JSON.stringify` of a value that refers to itself | a `TypeError` naming the path around the circle, exit 1 | a panic with the same message: `cakebear: JSON.stringify met a cycle (Node throws TypeError: Converting circular structure to JSON …)`, exit 2 |
 | Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |
-| A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce` or `findIndex` (D9) | skips the indices it removed (`findIndex` reads them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
+| A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce`, `findIndex`, `find` or `findLast` (D9) | skips the indices it removed (`findIndex`, `find` and `findLast` read them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |

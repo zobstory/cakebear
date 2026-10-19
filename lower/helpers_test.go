@@ -23,6 +23,13 @@ import (
 // and the snippet's file.
 func checkSource(t *testing.T, src string) (*compiler.Program, *ast.SourceFile) {
 	t.Helper()
+	return checkSourceWith(t, src, nil)
+}
+
+// checkSourceWith is checkSource with options of its own: set, when not nil,
+// changes the compiler options before the program is built.
+func checkSourceWith(t *testing.T, src string, set func(*core.CompilerOptions)) (*compiler.Program, *ast.SourceFile) {
+	t.Helper()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "t.ts")
@@ -35,13 +42,17 @@ func checkSource(t *testing.T, src string) (*compiler.Program, *ast.SourceFile) 
 	fs := types.WrapFS(bundled.WrapFS(osvfs.FS()))
 	host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil, nil, nil)
 
+	options := &core.CompilerOptions{
+		Target: core.ScriptTargetESNext,
+		Module: core.ModuleKindESNext,
+		Strict: core.TSTrue,
+		NoEmit: core.TSTrue,
+	}
+	if set != nil {
+		set(options)
+	}
 	config := tsoptions.NewParsedCommandLine(
-		&core.CompilerOptions{
-			Target: core.ScriptTargetESNext,
-			Module: core.ModuleKindESNext,
-			Strict: core.TSTrue,
-			NoEmit: core.TSTrue,
-		},
+		options,
 		append([]tspath.RootedFilePath{tspath.RootedFilePathFromAbsolute(path)}, types.RootFiles()...),
 		nil, // projectReferences
 		tspath.RootedDirectoryPathFromAbsolute(dir),

@@ -123,7 +123,7 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	stored := left
 	if u, ok := left.(*ir.Unwrap); ok {
 		stored = u.Value
-		sum = &ir.Wrap{Value: sum, Typ: stored.ExprType(), Span: l.span(expr)}
+		sum = intoMaybe(sum, writtenAs(stored))
 	}
 	switch get := stored.(type) {
 	case *ir.FieldGet:

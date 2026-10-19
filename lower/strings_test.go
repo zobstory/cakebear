@@ -130,8 +130,6 @@ func TestStringRefusals(t *testing.T) {
 		{"match", "const s: string = \"a\";\nconsole.log(s.match(\"a\"));\n", "a string's match takes a RegExp"},
 		{"a function replacement", "const s: string = \"a\";\nconsole.log(s.replace(\"a\", (m: string): string => m));\n", "replace with a function argument is not supported yet"},
 		{"localeCompare", "const s: string = \"a\";\nconsole.log(s.localeCompare(\"b\"));\n", "a string's localeCompare needs ICU collation"},
-		{"at", "const s: string = \"a\";\nconsole.log(s.at(0));\n", "a string's at gives undefined past the end"},
-		{"indexing", "const s: string = \"a\";\nconst c: string = s[0];\n", "indexing a string is not supported yet"},
 		{"toString with a radix", "const n: number = 255;\nconsole.log(n.toString(16));\n", "toString with a radix is not supported yet"},
 		{"toPrecision", "const n: number = 1;\nconsole.log(n.toPrecision(2));\n", "a number's toPrecision is not supported yet"},
 		{"mixed +", "const n: number = 1;\nconst s: string = \"a\" + n;\n", "write a template literal"},

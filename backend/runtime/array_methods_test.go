@@ -59,6 +59,8 @@ func iterations(d *Domain) map[string]func(xs *Array[float64], fn visitor) {
 		"filter":    func(xs *Array[float64], fn visitor) { xs.Filter(d, fn) },
 		"some":      func(xs *Array[float64], fn visitor) { xs.Some(d, fn) },
 		"findIndex": func(xs *Array[float64], fn visitor) { xs.FindIndex(d, fn) },
+		"find":      func(xs *Array[float64], fn visitor) { xs.Find(d, fn) },
+		"findLast":  func(xs *Array[float64], fn visitor) { xs.FindLast(d, fn) },
 		"every": func(xs *Array[float64], fn visitor) {
 			xs.Every(d, func(d *Domain, x, i float64, a *Array[float64]) bool { return !fn(d, x, i, a) })
 		},
@@ -143,9 +145,13 @@ func TestIterationReadsTheLengthOnce(t *testing.T) {
 }
 
 // TestIterationPanicsWhenTheArrayShrinks (D9): where Node skips an element
-// the callback removed, or reads undefined for findIndex, cakebear panics,
-// saying so. A shrink while the last element is visited leaves nothing to
-// skip, and doesn't.
+// the callback removed, or reads undefined for findIndex, find and
+// findLast, cakebear panics, saying so. A shrink while the last element is
+// visited leaves nothing to skip, and doesn't: for findLast, that is the
+// first.
+//
+//	[0, 0, 0, 0].find((x, i, a) => { if (i === 1) a.length = 2; log(x) })      // 0 0 undefined undefined
+//	[0, 0, 0, 0].findLast((x, i, a) => { if (i === 3) a.length = 2; log(x) })  // 0 undefined 0 0
 func TestIterationPanicsWhenTheArrayShrinks(t *testing.T) {
 	t.Parallel()
 
@@ -167,24 +173,30 @@ func TestIterationPanicsWhenTheArrayShrinks(t *testing.T) {
 		"some":      "while some ran over 4 (Node skips the rest)",
 		"every":     "while every ran over 4 (Node skips the rest)",
 		"findIndex": "cakebear: the array shrank to 2 elements while findIndex ran over 4 (Node reads undefined)",
+		"find":      "cakebear: the array shrank to 2 elements while find ran over 4 (Node reads undefined)",
 		"reduce":    "while reduce ran over 4 (Node skips the rest)",
+		"findLast":  "cakebear: the array shrank to 2 elements while findLast ran over 4 (Node reads undefined)",
 	} {
 		run := iterations(d)[method]
-		xs, fn := shrinkAt(4, 1, 2)
+		at, last := 1, 3 // an index whose next visit is cut off, and the last visited
+		if method == "findLast" {
+			at, last = 3, 0
+		}
+		xs, fn := shrinkAt(4, at, 2)
 		if got := panicOf(func() { run(xs, fn) }); !strings.Contains(got, want) {
 			t.Errorf("%s over a shrinking array panicked with %q, want %q", method, got, want)
 		}
-		xs, fn = shrinkAt(4, 3, 0)
+		xs, fn = shrinkAt(4, last, 0)
 		if got := panicOf(func() { run(xs, fn) }); got != "" {
-			t.Errorf("%s shrinking the array at its last element panicked with %q", method, got)
+			t.Errorf("%s shrinking the array at the last element it visits panicked with %q", method, got)
 		}
 	}
 	xs, fn := shrinkAt(3, 0, 1)
 	if got := panicOf(func() { xs.Some(d, fn) }); !strings.Contains(got, "shrank to 1 element while some ran over 3") {
 		t.Errorf("a shrink to one element panicked with %q", got)
 	}
-	if n := len(iterations(d)); n != 7 {
-		t.Errorf("%d iteration methods are tested, want all 7", n)
+	if n := len(iterations(d)); n != 9 {
+		t.Errorf("%d iteration methods are tested, want all 9", n)
 	}
 }
 

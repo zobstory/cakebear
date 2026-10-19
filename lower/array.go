@@ -73,14 +73,46 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 	return out
 }
 
-// elementGet lowers `xs[i]`, an array's element.
+// elementGet lowers `xs[i]`, an array's element, or a string's (stringIndex).
+// Where the checker types the read as one that may be undefined, under
+// noUncheckedIndexedAccess, it is undefined past the end, as Node reads it
+// (D9); so is any read of an array of maybes, which can hold the undefined.
+// A read typed as the element, the flag off or the read narrowed, panics
+// there instead (M4 D8).
 func (l *lowerer) elementGet(n *ast.Node) ir.Expr {
 	access := n.AsElementAccessExpression()
+	if t := l.typeOf(access.Expression); t == ir.String || t == ir.Base64 {
+		return l.stringIndex(n, access)
+	}
 	arr, index, ok := l.element(n, access)
 	if !ok {
 		return nil
 	}
-	return &ir.IndexGet{Array: arr, Index: index, Typ: *arr.ExprType().Elem, Span: l.span(n)}
+	elem, use := *arr.ExprType().Elem, l.typeOf(n)
+	if elem.Kind != ir.KindMaybe && !use.Equal(ir.MaybeOf(elem)) {
+		return &ir.IndexGet{Array: arr, Index: index, Typ: elem, Span: l.span(n)}
+	}
+	get := &ir.IndexGet{Array: arr, Index: index, Typ: ir.OrUndefined(elem), OrUndefined: true, Span: l.span(n)}
+	return narrowed(get, use, l.span(n))
+}
+
+// stringIndex lowers `s[i]`, the UTF-16 unit at i as a string, as elementGet
+// lowers an array's: undefined outside s, or a panic there when the read is
+// typed string.
+func (l *lowerer) stringIndex(n *ast.Node, access *ast.ElementAccessExpression) ir.Expr {
+	s := l.expr(access.Expression)
+	i := l.expr(access.ArgumentExpression)
+	if s == nil || i == nil {
+		return nil
+	}
+	if i.ExprType() != ir.Number {
+		l.failf(access.ArgumentExpression, "a string's index must be a number, not a %s", i.ExprType())
+		return nil
+	}
+	if l.typeOf(n).Kind == ir.KindMaybe {
+		return &ir.BuiltinCall{Fn: ir.StrIndexOrUndefined, Args: []ir.Expr{s, i}, Typ: ir.MaybeOf(ir.String), Span: l.span(n)}
+	}
+	return &ir.BuiltinCall{Fn: ir.StrIndex, Args: []ir.Expr{s, i}, Typ: ir.String, Span: l.span(n)}
 }
 
 // element lowers an element access's array and index, refusing one that
@@ -92,7 +124,7 @@ func (l *lowerer) element(n *ast.Node, access *ast.ElementAccessExpression) (arr
 	}
 	switch t := l.typeOf(access.Expression); {
 	case t == ir.String || t == ir.Base64:
-		l.failf(n, "indexing a string is not supported yet: s[i] is undefined past the end, which waits for M5; use s.charAt(i)")
+		l.failf(n, "writing a string's element is not supported: a string can't be changed")
 		return nil, nil, false
 	case t.Kind != ir.KindArray:
 		l.failf(n, "an element access on a %s is not supported yet; an object's property is read by its name", t)
@@ -148,7 +180,8 @@ func (l *lowerer) arrayProperty(n *ast.Node) (ir.Expr, bool) {
 }
 
 // arrayCall lowers a call of an array's member, `xs.push(a, b)`, as a value,
-// and reports whether n was one. pop is a statement only (popStatement).
+// and reports whether n was one. pop and shift as statements are
+// popStatement's.
 func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) {
 	if c.Expression.Kind != ast.KindPropertyAccessExpression {
 		return nil, false
@@ -162,9 +195,14 @@ func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 	case "":
 		return nil, true
 	case "push":
-	case "pop":
-		l.failf(n, "pop's value is an element or undefined, which waits for M5; call it as a statement of its own")
-		return nil, true
+	case "pop", "shift":
+		// The element taken, or undefined from an empty array (D9).
+		arr := l.expr(access.Expression)
+		if arr == nil {
+			return nil, true
+		}
+		method := map[string]ir.ArrayMethod{"pop": ir.ArrayPop, "shift": ir.ArrayShift}[name]
+		return &ir.ArrayOp{Method: method, Array: arr, Typ: ir.OrUndefined(*arr.ExprType().Elem), Span: l.span(n)}, true
 	default:
 		if m, ok := arrayMethods[name]; ok {
 			return l.arrayMethod(n, c, access, m), true
@@ -199,8 +237,8 @@ func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 	return op, true
 }
 
-// popStatement lowers `xs.pop();` as a statement, and reports whether expr
-// was one.
+// popStatement lowers `xs.pop();` or `xs.shift();` as a statement, and
+// reports whether expr was one.
 func (l *lowerer) popStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	if expr.Kind != ast.KindCallExpression {
 		return nil, false
@@ -210,7 +248,8 @@ func (l *lowerer) popStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		return nil, false
 	}
 	access := c.Expression.AsPropertyAccessExpression()
-	if name, ok := l.arrayMember(access); !ok || (name != "pop" && name != "") {
+	name, ok := l.arrayMember(access)
+	if !ok || (name != "pop" && name != "shift" && name != "") {
 		return nil, false
 	} else if name == "" {
 		return nil, true
@@ -219,7 +258,8 @@ func (l *lowerer) popStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	if arr == nil {
 		return nil, true
 	}
-	op := &ir.ArrayOp{Method: ir.ArrayPop, Array: arr, Typ: ir.Void, Span: l.span(expr)}
+	method := map[string]ir.ArrayMethod{"pop": ir.ArrayPop, "shift": ir.ArrayShift}[name]
+	op := &ir.ArrayOp{Method: method, Array: arr, Typ: ir.Void, Span: l.span(expr)}
 	return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
 }
 

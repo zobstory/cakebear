@@ -221,6 +221,16 @@ func reread(x ir.Expr) ir.Expr {
 	return nil
 }
 
+// writtenAs is the type a write back to what read x stores: x's own, but for
+// an element read as one that may be undefined (D9), which is stored as the
+// array's element.
+func writtenAs(x ir.Expr) ir.Type {
+	if get, ok := x.(*ir.IndexGet); ok && get.OrUndefined {
+		return *get.Array.ExprType().Elem
+	}
+	return x.ExprType()
+}
+
 // coalesceAssign lowers the statement `x ??= d`: d assigned to x only when x
 // is null or undefined, as an if. x is a name, a field of a name or an
 // element of one, as for the other compound assignments, so it is read
@@ -242,11 +252,16 @@ func (l *lowerer) coalesceAssign(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	if u, ok := cur.(*ir.Unwrap); ok {
 		cur = u.Value // narrowed here, but assigned as the maybe it is
 	}
+	if get, ok := cur.(*ir.IndexGet); ok && !get.OrUndefined {
+		// An element is undefined past the end however it is typed, and
+		// Node assigns there: `xs[0] ??= v` on an empty xs appends v.
+		cur = &ir.IndexGet{Array: get.Array, Index: get.Index, Typ: ir.OrUndefined(get.Typ), OrUndefined: true, Span: get.Span}
+	}
 	t := cur.ExprType()
 	if t.Kind != ir.KindMaybe {
 		return nil, true // never null or undefined, so never assigned
 	}
-	if d = into(d, t); !d.ExprType().Equal(t) {
+	if d = into(d, writtenAs(cur)); !d.ExprType().Equal(writtenAs(cur)) {
 		l.failf(stmt, "??= of a %s to a %s is not supported yet", d.ExprType(), t)
 		return nil, true
 	}

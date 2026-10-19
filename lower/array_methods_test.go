@@ -64,7 +64,6 @@ func TestArrayMethodRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name, src, want string
 	}{
-		{"find", xs + "console.log(xs.find((x) => x > 1));\n", "find's value is an element or undefined, which waits for M5"},
 		{"a member refused plainly", xs + "const r: number[] = xs.reverse();\n", "the array method reverse is not supported yet"},
 		{"sort without a comparator", xs + "const s: number[] = xs.sort();\n", "sort without a comparator compares as strings"},
 		{"reduce without an initial value", xs + "const s: number = xs.reduce((a, b) => a + b);\n", "reduce without an initial value is not supported yet"},
@@ -135,7 +134,7 @@ func TestArrayMembersAreAccountedFor(t *testing.T) {
 	for _, name := range members {
 		_, lowered := arrayMethods[name]
 		_, refused := refusedArrayMembers[name]
-		if !lowered && !refused && name != "length" && name != "push" && name != "pop" {
+		if !lowered && !refused && name != "length" && name != "push" && name != "pop" && name != "shift" {
 			t.Errorf("Array.%s is neither lowered nor refused by name (lower/array_methods.go)", name)
 		}
 	}

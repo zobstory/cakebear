@@ -28,6 +28,27 @@ func Some[T any](v T) Maybe[T] { return Maybe[T]{v: v, state: stateValue} }
 // NullOf is null, as a Maybe of T. Undefined is the zero Maybe.
 func NullOf[T any]() Maybe[T] { return Maybe[T]{state: stateNull} }
 
+// OrUndefined is v as a `T | undefined`, for a read that may find nothing
+// (D9): v, or undefined when ok is false. It takes a comma-ok result as it
+// comes, `OrUndefined(xs.Pop())`.
+func OrUndefined[T any](v T, ok bool) Maybe[T] {
+	if !ok {
+		return Maybe[T]{}
+	}
+	return Some(v)
+}
+
+// MaybeOrUndefined is OrUndefined for a read of a maybe, an element of a
+// `(T | undefined)[]`: the element as it is, whose own undefined is the
+// read's, or undefined when there is none. A Maybe of a Maybe would hold a
+// state no JavaScript value has.
+func MaybeOrUndefined[T any](v Maybe[T], ok bool) Maybe[T] {
+	if !ok {
+		return Maybe[T]{}
+	}
+	return v
+}
+
 // IsUndefined is `m === undefined`.
 func (m Maybe[T]) IsUndefined() bool { return m.state == stateUndefined }
 

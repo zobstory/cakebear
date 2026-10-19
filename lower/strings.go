@@ -22,6 +22,7 @@ var stringMethods = map[string]ir.Builtin{
 	"trimLeft": ir.StrTrimStart, "trimRight": ir.StrTrimEnd, // the old names, aliases in V8
 	"split": ir.StrSplit, "replace": ir.StrReplace, "replaceAll": ir.StrReplaceAll,
 	"padStart": ir.StrPadStart, "padEnd": ir.StrPadEnd, "repeat": ir.StrRepeat,
+	"at": ir.StrAt, "codePointAt": ir.StrCodePointAt, // undefined outside the string (M5 D9)
 }
 
 const (
@@ -36,8 +37,6 @@ var refusedStringMembers = map[string]string{
 	"localeCompare":     "needs ICU collation, which cakebear doesn't carry; compare with < and >, which compare as JavaScript does",
 	"normalize":         "needs Unicode normalization tables, which the runtime doesn't carry yet",
 	"toLocaleLowerCase": "is locale-sensitive; use toLowerCase", "toLocaleUpperCase": "is locale-sensitive; use toUpperCase",
-	"at":           "gives undefined past the end, which waits for null and undefined (M5); use charAt",
-	"codePointAt":  "gives undefined past the end, which waits for null and undefined (M5)",
 	"concat":       "is not supported yet; use + or a template literal",
 	"substr":       "is deprecated and not supported; use slice or substring",
 	"isWellFormed": "is not supported yet", "toWellFormed": "is not supported yet",

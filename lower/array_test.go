@@ -65,7 +65,6 @@ func TestArrayRefusals(t *testing.T) {
 		{"for await", "async function f(ys: number[]): Promise<void> {\n  for await (const y of ys) {\n  }\n}\n", "for await is not supported yet"},
 		{"for…of array destructuring", "const ps: number[][] = [[1]];\nfor (const [a] of ps) {\n}\n", "array destructuring is not supported yet"},
 		{"for…of over an existing variable", xs + "let x: number = 0;\nfor (x of xs) {\n}\n", "a for…of loop needs its own const or let"},
-		{"pop as a value", xs + "console.log(xs.pop());\n", "pop's value is an element or undefined, which waits for M5"},
 		{"a method refused by name", xs + "const ys: number[] = xs.concat(xs);\n", "the array method concat is not supported yet"},
 		{"push as a value", xs + "console.log(xs.push);\n", "an array's push can only be called"},
 		{"element access on an object", "const o: { a: number } = { a: 1 };\nconst v: number = o[\"a\"];\n", "an element access on a { a: number } is not supported yet"},

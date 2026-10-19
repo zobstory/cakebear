@@ -16,6 +16,7 @@ var arrayMethods = map[string]ir.ArrayMethod{
 	"map": ir.ArrayMap, "filter": ir.ArrayFilter, "join": ir.ArrayJoin, "includes": ir.ArrayIncludes,
 	"indexOf": ir.ArrayIndexOf, "slice": ir.ArraySlice, "sort": ir.ArraySort, "some": ir.ArraySome,
 	"every": ir.ArrayEvery, "forEach": ir.ArrayForEach, "reduce": ir.ArrayReduce, "findIndex": ir.ArrayFindIndex,
+	"find": ir.ArrayFind, "findLast": ir.ArrayFindLast, "at": ir.ArrayAt,
 }
 
 // refusedArrayMembers names every other member of Array and ReadonlyArray
@@ -23,10 +24,6 @@ var arrayMethods = map[string]ir.ArrayMethod{
 // plain one. TestArrayMembersAreAccountedFor holds this table and
 // arrayMethods to the libs, so a member a new lib adds is noticed.
 var refusedArrayMembers = map[string]string{
-	"find":          "find's value is an element or undefined, which waits for M5; findIndex is supported",
-	"findLast":      "findLast's value is an element or undefined, which waits for M5",
-	"at":            "at's value is an element or undefined, which waits for M5; xs[i] is supported",
-	"shift":         "shift's value is an element or undefined, which waits for M5",
 	"findLastIndex": "", "unshift": "", "splice": "", "concat": "", "reverse": "", "flat": "", "flatMap": "",
 	"fill": "", "copyWithin": "", "lastIndexOf": "", "reduceRight": "", "entries": "", "keys": "",
 	"values": "", "toString": "", "toLocaleString": "", "toReversed": "", "toSorted": "", "toSpliced": "",
@@ -48,7 +45,7 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 		return nil
 	}
 	switch m {
-	case ir.ArrayMap, ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex, ir.ArrayForEach:
+	case ir.ArrayMap, ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex, ir.ArrayForEach, ir.ArrayFind, ir.ArrayFindLast:
 		if len(args) == 0 {
 			l.invalidf(n, "%s needs a callback", m)
 			return nil
@@ -72,17 +69,18 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 		}
 		op.Typ = ir.ArrayOf(result)
 		return l.withCallback(op, args[0], visitor(result), false)
-	case ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex:
+	case ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex, ir.ArrayFind, ir.ArrayFindLast:
 		if r := l.callbackResult(args[0]); r != ir.Boolean {
 			l.failf(args[0], "%s's callback must return a boolean; testing a %s for truthiness is not supported yet", m, r)
 			return nil
 		}
-		if rt := l.typeOf(n); m == ir.ArrayFilter && rt != ir.Invalid && !rt.Equal(t) {
+		op.Typ = map[ir.ArrayMethod]ir.Type{ir.ArrayFilter: t, ir.ArraySome: ir.Boolean, ir.ArrayEvery: ir.Boolean, ir.ArrayFindIndex: ir.Number,
+			ir.ArrayFind: ir.OrUndefined(elem), ir.ArrayFindLast: ir.OrUndefined(elem)}[m]
+		if rt := l.typeOf(n); rt != ir.Invalid && !rt.Equal(op.Typ) {
 			// A callback such as (x) => x !== undefined is a type predicate.
-			l.failf(n, "filter narrowing a %s to a %s is not supported yet", t, rt)
+			l.failf(n, "%s narrowing a %s to a %s is not supported yet", m, t, rt)
 			return nil
 		}
-		op.Typ = map[ir.ArrayMethod]ir.Type{ir.ArrayFilter: t, ir.ArraySome: ir.Boolean, ir.ArrayEvery: ir.Boolean, ir.ArrayFindIndex: ir.Number}[m]
 		return l.withCallback(op, args[0], visitor(ir.Boolean), false)
 	case ir.ArrayForEach:
 		op.Typ = ir.Void
@@ -136,6 +134,8 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 		op.Typ = ir.String
 	case ir.ArraySlice:
 		op.Typ = t
+	case ir.ArrayAt:
+		op.Typ = ir.OrUndefined(elem) // undefined outside the array (D9)
 	}
 	for _, a := range args {
 		v := l.expr(a)

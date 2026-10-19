@@ -33,8 +33,30 @@ func (e *emitter) arrayLit(x *ir.ArrayLit) string {
 	return fmt.Sprintf("%s.NewArray[%s](%s)", rtPkg, e.typ(*x.Typ.Elem, x.Span), strings.Join(elems, ", "))
 }
 
+// indexGet is `xs[i]`, which panics outside the array (D8), or, where the
+// read may be undefined, is undefined there, as Node's is (M5 plan D9).
 func (e *emitter) indexGet(x *ir.IndexGet) string {
-	return fmt.Sprintf("%s.Get(%s)", e.receiver(x.Array, elementAccess(x.Index, false)), e.expr(x.Index))
+	arr := e.receiver(x.Array, elementAccess(x.Index, false))
+	if x.OrUndefined {
+		return e.orUndefined(x.Array, arr+".Lookup("+e.expr(x.Index)+")")
+	}
+	return fmt.Sprintf("%s.Get(%s)", arr, e.expr(x.Index))
+}
+
+// orUndefined makes read, a runtime call giving an element of array and
+// whether there was one, the `T | undefined` of the IR's OrUndefined (D9):
+// a Maybe of the element, or for an array of maybes, the element itself,
+// whose own undefined is the read's.
+//
+//	cakebearrt.OrUndefined(xs.Pop())
+//	cakebearrt.MaybeOrUndefined(ms.Lookup(i))
+func (e *emitter) orUndefined(array ir.Expr, read string) string {
+	e.usesRuntime = true
+	wrap := "OrUndefined"
+	if elem := array.ExprType().Elem; elem != nil && elem.Kind == ir.KindMaybe {
+		wrap = "MaybeOrUndefined"
+	}
+	return rtPkg + "." + wrap + "(" + read + ")"
 }
 
 // indexSet is `xs[i] = v`. JavaScript evaluates xs, then i, then v; with a
@@ -74,8 +96,16 @@ func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 		return arr + ".SetLength(" + args[0] + ")"
 	case ir.ArrayPush:
 		return arr + ".Push(" + strings.Join(args, ", ") + ")"
-	case ir.ArrayPop:
-		return arr + ".Pop()"
+	case ir.ArrayPop, ir.ArrayShift:
+		read := arr + "." + removals[x.Method] + "()"
+		if x.Typ == ir.Void { // a statement, which drops the element
+			return read
+		}
+		return e.orUndefined(x.Array, read)
+	case ir.ArrayAt:
+		return e.orUndefined(x.Array, arr+".RelativeAt("+args[0]+")")
+	case ir.ArrayFind, ir.ArrayFindLast:
+		return e.orUndefined(x.Array, arr+"."+searches[x.Method]+"("+e.dom()+", "+args[0]+")")
 	case ir.ArraySlice:
 		return arr + ".Slice(" + strings.Join(args, ", ") + ")"
 	case ir.ArrayJoin:
@@ -110,7 +140,11 @@ func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 // callback alone, and arrayFuncs the functions for those that are
 // functions: Map and Reduce, whose results have a type parameter of their
 // own, and Includes and IndexOf, which need their elements comparable.
+// removals and searches are the members that may give undefined, each a
+// method giving an element and whether there was one (orUndefined).
 var (
+	removals        = map[ir.ArrayMethod]string{ir.ArrayPop: "Pop", ir.ArrayShift: "Shift"}
+	searches        = map[ir.ArrayMethod]string{ir.ArrayFind: "Find", ir.ArrayFindLast: "FindLast"}
 	callbackMethods = map[ir.ArrayMethod]string{
 		ir.ArrayFilter: "Filter", ir.ArrayForEach: "ForEach", ir.ArraySome: "Some",
 		ir.ArrayEvery: "Every", ir.ArrayFindIndex: "FindIndex", ir.ArraySort: "Sort",

@@ -89,6 +89,12 @@ var strFns = map[string]func(a strArgs) any{
 	"log":     func(a strArgs) any { return wellFormed(Format(a...)) },
 	"inspect": func(a strArgs) any { return Inspect(a[0]) },
 	"join":    func(a strArgs) any { return a[0].(interface{ Join(sep string) string }).Join(a.str(1)) },
+	// The reads that may be undefined (str_at_test.go).
+	"at":          func(a strArgs) any { return asDecoded(StrAt(a.str(0), a[1].(float64))) },
+	"codePointAt": func(a strArgs) any { return asDecoded(StrCodePointAt(a.str(0), a[1].(float64))) },
+	"index":       func(a strArgs) any { return asDecoded(StrIndexOrUndefined(a.str(0), a[1].(float64))) },
+	"arrayAt":     func(a strArgs) any { return arrayRead(a[0], a[1].(float64), true) },
+	"arrayIndex":  func(a strArgs) any { return arrayRead(a[0], a[1].(float64), false) },
 }
 
 // callStr runs one entry, with the message of a panic, if it panicked.

@@ -12,10 +12,10 @@
 // Each line is {"fn":"<name>","args":[<value>...],"out":<value>}, or, where
 // Node threw, "throws":"<String(err)>" in place of out. Values are encoded
 // as in golden-codec.mjs: {"n":"<text>"}, {"s":"..."}, {"u":[<code unit>...]}
-// for a string holding a lone surrogate, {"b":true}, {"a":[...]} and
-// {"o":[...]}. fn is the method, with args[0] its receiver and the rest its
-// arguments; an optional argument the call leaves out is absent. Besides the
-// methods:
+// for a string holding a lone surrogate, {"b":true}, {"e":"undefined"} and
+// {"e":"null"}, {"a":[...]} and {"o":[...]}. fn is the method, with args[0]
+// its receiver and the rest its arguments; an optional argument the call
+// leaves out is absent. Besides the methods:
 //   compare  args a, b: -1, 0 or 1 as a < b, a === b, a > b (StrCompare)
 //   concat   the args joined by + (StrConcat)
 //   int      args [{"s":"<decimal>"}], an i64: String() of it (IntToString)
@@ -24,6 +24,11 @@
 //   inspect  util.inspect(args[0])
 //   join     args[0].join(args[1]), an array of strings, or of arrays of
 //            them, and a separator (Array.Join)
+//   index    args[0][args[1]], a string's code unit or undefined
+//            (StrIndexOrUndefined, and StrIndex where it isn't undefined)
+//   arrayAt  args[0].at(args[1]), an array of numbers, strings or maybes
+//            (Array.RelativeAt)
+//   arrayIndex  args[0][args[1]], the same arrays (Array.Lookup)
 //
 // The index file maps each section to its 1-based line range, and records
 // JavaScript's whitespace, every code point trim removes, found by trying
@@ -51,14 +56,16 @@ const RANDOM = 12000;
 const N = (x) => ({ n: numText(x) });
 const S = (s) => (s.isWellFormed() ? { s } : { u: codeUnits(s) });
 
-// enc describes a result or an argument: a number, a string, a boolean, or
-// split's array of strings.
+// enc describes a result or an argument: a number, a string, a boolean,
+// undefined or null, or split's array of strings.
 function enc(x) {
   switch (typeof x) {
     case 'number': return N(x);
     case 'string': return S(x);
     case 'boolean': return { b: x };
+    case 'undefined': return { e: 'undefined' };
     case 'object':
+      if (x === null) return { e: 'null' };
       if (Array.isArray(x)) return { a: x.map(enc) };
   }
   throw new Error(`cannot describe ${typeof x}`);
@@ -72,7 +79,7 @@ const ch = (cp) => (cp >= 0xd800 && cp <= 0xdfff ? String.fromCharCode(cp) : Str
 const METHODS = new Set([
   'charAt', 'charCodeAt', 'includes', 'startsWith', 'endsWith', 'indexOf', 'lastIndexOf',
   'slice', 'substring', 'toLowerCase', 'toUpperCase', 'trim', 'trimStart', 'trimEnd',
-  'split', 'replace', 'replaceAll', 'padStart', 'padEnd', 'repeat',
+  'split', 'replace', 'replaceAll', 'padStart', 'padEnd', 'repeat', 'at', 'codePointAt',
 ]);
 
 function run(fn, args) {
@@ -94,6 +101,12 @@ function run(fn, args) {
     case 'log': return util.format(...args).toWellFormed();
     case 'inspect': return util.inspect(args[0]);
     case 'join': return args[0].join(args[1]);
+    case 'index': {
+      if (typeof args[0] !== 'string') throw new Error(`index of a ${typeof args[0]}`);
+      return args[0][args[1]];
+    }
+    case 'arrayAt': return args[0].at(args[1]);
+    case 'arrayIndex': return args[0][args[1]];
   }
   throw new Error(`unknown fn ${fn}`);
 }
@@ -562,6 +575,36 @@ function sectionASCII() {
 }
 
 // ---------------------------------------------------------------------------
+// AT: the reads that may be undefined (M5): a string's at, codePointAt and
+// s[i] at every code unit of each string, a pair's lead and trail units
+// included, and past both ends, and an array's at and xs[i], over numbers,
+// strings and maybes. It comes after ASCII, so every line before it stays
+// as it was.
+
+function sectionAT() {
+  const MORE = [-4, -5, -6, -7, -10, -100, -1.5, -2.5, -3.5, 1.7, 6, 7, 8, 9, 10];
+  const around = (n) => Array.from({ length: 2 * n + 5 }, (_, i) => i - n - 2);
+  // A pair's trail before a lone trail, and two lone trails: a trail unit
+  // followed by one is no pair, which only these tell from a lead.
+  const LONG = ['x😀é\uD800日😀😀yz', '\uDE00\uD83D😀\u{10FFFF}', '😀\uDE00x', '\uDC00\uDFFF'];
+  for (const s of [...POOL, ...LONG]) {
+    for (const p of [...NUMS, ...MORE, ...around(s.length)]) {
+      for (const fn of ['at', 'codePointAt', 'index']) add('AT', fn, s, p);
+    }
+  }
+  const ARRAYS = [
+    [], [1], [1, 2, 3], [1.5, -0, NaN, 4], ['a', 'b', 'c', 'd', 'e'], ['😀', '\uD800', ''],
+    [1, undefined, 3], [undefined], [null, 'x', undefined], [undefined, undefined, 2], [true, false],
+  ];
+  for (const xs of ARRAYS) {
+    for (const p of [...NUMS, ...MORE, ...around(xs.length)]) {
+      add('AT', 'arrayAt', xs, p);
+      add('AT', 'arrayIndex', xs, p);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 sectionLENGTH();
 sectionSEARCH();
@@ -582,6 +625,7 @@ const deliberate = entries.length;
 const RANDOM_TARGET = deliberate + RANDOM;
 sectionRANDOM();
 sectionASCII();
+sectionAT();
 
 const lines = [];
 const index = {};

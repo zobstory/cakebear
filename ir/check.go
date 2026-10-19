@@ -119,9 +119,9 @@ func (p *Program) checkNode(node any) error {
 		_, err := fieldAt(n.Object, n.Field)
 		return err
 	case *IndexGet:
-		return checkIndex(n.Array, n.Index, n.Typ)
+		return checkIndex(n.Array, n.Index, n.Typ, n.OrUndefined)
 	case *IndexSet:
-		return checkIndex(n.Array, n.Index, n.Value.ExprType())
+		return checkIndex(n.Array, n.Index, n.Value.ExprType(), false)
 	case *ArrayOp:
 		return checkArrayOp(n)
 	case *JSONStringify:
@@ -205,8 +205,11 @@ func fieldAt(object Expr, index int) (Field, error) {
 
 // checkIndex checks a read or a write of array[index], whose value is of
 // type t.
-func checkIndex(array, index Expr, t Type) error {
+func checkIndex(array, index Expr, t Type, orUndefined bool) error {
 	elem, err := elemOf(array.ExprType())
+	if err == nil && orUndefined {
+		elem = OrUndefined(elem)
+	}
 	switch {
 	case err != nil:
 		return err
@@ -249,11 +252,18 @@ func checkArrayOp(x *ArrayOp) error {
 
 	var result Type
 	switch x.Method {
-	case ArrayLength, ArrayPop:
+	case ArrayLength:
 		result, err = Number, args()
-		if x.Method == ArrayPop {
+	case ArrayPop, ArrayShift:
+		// The element taken, or nothing as a statement.
+		result, err = OrUndefined(elem), args()
+		if x.Typ == Void {
 			result = Void
 		}
+	case ArrayFind, ArrayFindLast:
+		result, err = OrUndefined(elem), args(visitor(Boolean))
+	case ArrayAt:
+		result, err = OrUndefined(elem), args(Number)
 	case ArraySetLength:
 		result, err = Void, args(Number)
 	case ArrayPush:

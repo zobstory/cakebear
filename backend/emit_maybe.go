@@ -169,6 +169,18 @@ func (e *emitter) sourceName(x ir.Expr) (string, bool) {
 	case *ir.ArrayOp:
 		array, ok := e.sourceName(x.Array)
 		return array + "." + x.Method.String() + argsName(x.Args), ok
+	case *ir.BuiltinCall:
+		if !isMethod(x.Fn) || len(x.Args) == 0 {
+			return "", false
+		}
+		s, ok := e.sourceName(x.Args[0])
+		switch x.Fn {
+		case ir.StrIndex, ir.StrIndexOrUndefined:
+			return s + "[" + indexName(x.Args[1]) + "]", ok
+		case ir.StrLength:
+			return s + ".length", ok
+		}
+		return s + "." + x.Fn.String() + argsName(x.Args[1:]), ok
 	}
 	return "", false
 }

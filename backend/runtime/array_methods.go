@@ -17,9 +17,9 @@ import (
 // The iteration methods read the length once, when they start, and each
 // element as it is when they reach it: an element pushed by the callback
 // isn't visited, and one it replaces is seen. Node skips an element the
-// callback removed, or passes undefined for it to findIndex. An array of T
-// has no undefined to pass, so cakebear panics instead (D9), saying what
-// Node does.
+// callback removed, or passes undefined for it to findIndex, find and
+// findLast. An array of T has no undefined to pass, so cakebear panics
+// instead (D9), saying what Node does.
 
 // Map is xs.map(fn). It needs a type parameter of its own, the element type
 // of the result, so it is a function rather than a method.
@@ -88,6 +88,31 @@ func (a *Array[T]) FindIndex(d *Domain, fn func(*Domain, T, float64, *Array[T]) 
 	return -1
 }
 
+// Find is xs.find(fn): the first element fn accepts, as it was read before
+// fn ran, with ok false when fn accepts none, where Node gives undefined.
+func (a *Array[T]) Find(d *Domain, fn func(*Domain, T, float64, *Array[T]) bool) (T, bool) {
+	n := len(a.items)
+	for k := range n {
+		if v := a.visit(k, n, "find"); fn(d, v, float64(k), a) {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
+}
+
+// FindLast is xs.findLast(fn), which is find from the last element back.
+func (a *Array[T]) FindLast(d *Domain, fn func(*Domain, T, float64, *Array[T]) bool) (T, bool) {
+	n := len(a.items)
+	for k := n - 1; k >= 0; k-- {
+		if v := a.visit(k, n, "findLast"); fn(d, v, float64(k), a) {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
+}
+
 // Reduce is xs.reduce(fn, init), folding from init. Lowering refuses reduce
 // without an initial value, whose empty case throws a TypeError. Like Map,
 // it is a function for the type parameter of its accumulator.
@@ -105,7 +130,8 @@ func Reduce[T, U any](d *Domain, a *Array[T], fn func(*Domain, U, T, float64, *A
 func (a *Array[T]) visit(k, n int, method string) T {
 	if k >= len(a.items) {
 		node := "skips the rest"
-		if method == "findIndex" { // FindViaPredicate reads every index
+		switch method {
+		case "find", "findIndex", "findLast": // FindViaPredicate reads every index
 			node = "reads undefined"
 		}
 		panic(fmt.Sprintf("cakebear: the array shrank to %s while %s ran over %d (Node %s)", elements(len(a.items)), method, n, node))
