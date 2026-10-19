@@ -93,8 +93,6 @@ func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 		name := prop.Name()
 		flags := prop.Flags()
 		switch {
-		case flags&ast.SymbolFlagsOptional != 0:
-			return ir.Invalid, "optional property `" + name + "` is not supported yet"
 		case flags&ast.SymbolFlagsMethod != 0:
 			return ir.Invalid, "method `" + name + "` is not supported yet; a property holding an arrow function is"
 		case flags&ast.SymbolFlagsAccessor != 0:
@@ -111,7 +109,15 @@ func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 			}
 			return ir.Invalid, why
 		}
-		fields = append(fields, ir.Field{Name: name, Type: ft})
+		// An optional property is a maybe that an object may leave out (M5
+		// plan D3). Its type has undefined in it unless the program sets
+		// exactOptionalPropertyTypes, but a read of an absent one gives
+		// undefined either way.
+		optional := flags&ast.SymbolFlagsOptional != 0
+		if optional && ft.Kind != ir.KindMaybe {
+			ft = ir.MaybeOf(ft)
+		}
+		fields = append(fields, ir.Field{Name: name, Type: ft, Optional: optional})
 	}
 	if l.p.pending[t] != nil {
 		// Defined by objectType once every field is known.
@@ -209,9 +215,17 @@ func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 		}
 		out.Fields = append(out.Fields, ir.FieldInit{Field: i, Value: value, Span: l.span(p)})
 	}
-	if len(out.Fields) != len(shape.Fields) {
-		l.invalidf(n, "this literal sets %d of %s's %d properties", len(out.Fields), shape, len(shape.Fields))
-		return nil
+	// TypeScript refuses a literal leaving out a required property, so this
+	// is a backstop.
+	set := make([]bool, len(shape.Fields))
+	for _, f := range out.Fields {
+		set[f.Field] = true
+	}
+	for i, f := range shape.Fields {
+		if !set[i] && !f.Optional {
+			l.invalidf(n, "this literal leaves out %s's property %s", shape, f.Name)
+			return nil
+		}
 	}
 	return out
 }

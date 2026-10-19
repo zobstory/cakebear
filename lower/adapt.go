@@ -34,7 +34,10 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 // t, as fit holds an expression to its contextual type: a shorthand has no
 // expression of its own for the checker to give one.
 func (l *lowerer) fitField(n *ast.Node, v ir.Expr, t ir.Type) ir.Expr {
-	if v == nil || v.ExprType().Equal(t) {
+	if v == nil {
+		return nil
+	}
+	if v = into(v, t); v.ExprType().Equal(t) {
 		return v
 	}
 	switch got := v.ExprType(); {

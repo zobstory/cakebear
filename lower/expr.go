@@ -25,6 +25,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	if v, ok := l.condExpr(n); ok { // cond.go
 		return v
 	}
+	if v, ok := l.presence(n); ok { // optional.go
+		return v
+	}
 	switch n.Kind {
 	case ast.KindNumericLiteral:
 		v, err := strconv.ParseFloat(n.Text(), 64)

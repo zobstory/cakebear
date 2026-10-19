@@ -401,7 +401,9 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 				l.invalidf(d, "a destructuring declaration with no initialiser")
 				continue
 			}
-			if init := l.expr(decl.Initializer); init != nil {
+			// exprOf: the checker types the value's slot by the pattern,
+			// `{ a?: number }` for `{ a = 2 }`, which is no slot of its own.
+			if init := l.exprOf(decl.Initializer); init != nil {
 				topLevel := at.Parent != nil && at.Parent.Kind == ast.KindSourceFile
 				out = append(out, l.destructure(d, decl.Name(), init, mutable, topLevel)...)
 			}

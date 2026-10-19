@@ -17,6 +17,9 @@ func (l *lowerer) exprStatement(stmt, expr *ast.Node) []ir.Stmt {
 	if out, ok := l.coalesceAssign(stmt, expr); ok { // cond.go
 		return out
 	}
+	if out, ok := l.deleteStatement(stmt, expr); ok { // optional.go
+		return out
+	}
 	if out, ok := l.update(stmt, expr); ok {
 		return out
 	}
