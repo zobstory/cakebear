@@ -33,6 +33,9 @@ func (p *Program) validateShapes() []error {
 			if err := p.checkType(f.Type); err != nil {
 				errs = append(errs, fmt.Errorf("field %s of %s: %w", f.Name, s, err))
 			}
+			if f.Optional && f.Type.Kind != KindMaybe {
+				errs = append(errs, fmt.Errorf("optional field %s of %s is a %s, where an optional property is a maybe", f.Name, s, f.Type))
+			}
 		}
 		key := shapeKey(s.Fields)
 		if j, ok := seen[key]; ok {
@@ -56,6 +59,8 @@ func (p *Program) checkType(t Type) error {
 			return fmt.Errorf("%s has no element type", t)
 		}
 		return p.checkType(*t.Elem)
+	case KindMaybe:
+		return p.checkMaybe(t)
 	case KindFunc:
 		if t.Sig == nil {
 			return errors.New("a function type with no signature")
@@ -113,6 +118,8 @@ func (p *Program) checkNode(node any) error {
 		return checkBuiltin(n)
 	case *Concat:
 		return checkConcat(n)
+	case *Wrap, *Unwrap, *Empty, *IsEmpty, *Cond:
+		return checkMaybeNode(n)
 	case *Append:
 		return checkAppend(n)
 	case *ForOf:
@@ -154,7 +161,7 @@ func (p *Program) checkObjectLit(x *ObjectLit) error {
 		}
 	}
 	for i, ok := range set {
-		if !ok {
+		if !ok && !s.Fields[i].Optional {
 			return fmt.Errorf("a %s literal leaves %s unset", s, s.Fields[i].Name)
 		}
 	}

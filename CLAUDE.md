@@ -270,20 +270,44 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **open**, with M5 to plan
+## Current phase: **M5**, `null` and `undefined`
 
-P0–P5 and M1–M4 are done. Nothing is blocked. Next is **M5**, `null` and
-`undefined`: optional properties, `T | undefined`, and the members that
-return it (`find`, `at`, `pop()` as a value, `match`). Then **M6**, errors:
-`throw`, `try`/`catch`/`finally`, `reject`. Neither is planned in detail yet,
-per the per-phase rule below. M4's re-measurement of wx-next (check 9, below)
-is the first input to M5's plan.
+P0–P5 and M1–M4 are done. **M5** is `null` and `undefined`: optional
+properties, `T | undefined`, `?.` and `??`, narrowing (by truthiness too),
+the members that return `T | undefined` (`find`, `at`, `pop()` as a value),
+and string- and number-literal unions. Its plan, decided 2026-10-15 at scope
+D, is `~/Desktop/cakebear/m5-nullables-plan.md`, sized by measurements of
+wx-next (`spikes/m5-measure/`) and a hand port of two of its paths. Then
+**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`, not planned yet,
+per the per-phase rule below.
 
-It also found four lowering bugs, fixed after M4 closed: a function with no
-result type was lowered as void whatever it returned; an extension type in a
-`number`'s slot reached Go unconverted; `import type` from a package was
-refused; and a relative import of a `.mjs` file was lowered as TypeScript,
-where it is refused by name now. Three of the four failed inside `go build`,
+Step 0, the fixes a port of real code found (D13), is done. `%`, products,
+extension-type arithmetic and literals (PR 47; "Numbers" and the type
+extensions, below), and linear appends, ASCII-pattern search and `req.url`'s
+raw bytes (PR 48; "Strings", below). CPU per request against Node, done-check
+11, is measured by `spikes/m5-cpu/`: the route server takes 0.66× Node's at
+one connection and 1.25× at eight, with 3.7× its throughput.
+
+Step 1, the IR, is done, with nothing lowered to it yet (`ir/maybe.go`):
+- `KindMaybe` (`ir.MaybeOf(T)`) is `T | null | undefined`: a T, null or
+  undefined. The IR doesn't record which of the two a type admits, since the
+  value carries its state and the checker holds a program to its types, so
+  `T | null` flows into a `T | null | undefined` slot unchanged (D2, amended).
+- `ir.Field.Optional` is `p?: T`, a field of a maybe that a literal may leave
+  out. `{ a?: string }` and `{ a: string | undefined }` are two shapes, since
+  Node prints `{}` for one and `{ a: undefined }` for the other (D3).
+- The nodes: `Wrap` (a T into a maybe's slot, D6), `Unwrap` (a maybe the
+  checker narrowed to T, checked, D4), `Empty` (null or undefined in a
+  maybe's slot), `IsEmpty` (`=== undefined`, `=== null`, `== null`, D12), and
+  `Cond` (`?:`, which `??` and `?.` are built from, D5).
+- `Program.Validate` holds each to its types. The backend refuses all of it
+  by name until step 3 (`TestMaybesAreRefusedForNow`).
+
+M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
+fixed after M4 closed: a function with no result type was lowered as void
+whatever it returned; an extension type in a `number`'s slot reached Go
+unconverted; `import type` from a package was refused; and a relative import
+of a `.mjs` file was lowered as TypeScript, where it is refused by name now. Three of the four failed inside `go build`,
 so `Program.Validate` now holds every `return` to its function's result
 (`ir/returns.go`): the next such bug is reported as invalid IR at the return,
 before `go build` runs.

@@ -95,6 +95,17 @@ func operands(x ir.Expr) []ir.Expr {
 		return x.Args
 	case *ir.Concat:
 		return x.Parts
+	case *ir.Wrap:
+		return []ir.Expr{x.Value}
+	case *ir.Unwrap:
+		return []ir.Expr{x.Value}
+	case *ir.Empty:
+		return nil
+	case *ir.IsEmpty:
+		return []ir.Expr{x.Value}
+	case *ir.Cond:
+		// Only one branch runs, but a call in either may, so both count.
+		return []ir.Expr{x.Test, x.Then, x.Else}
 	case *ir.JSONStringify:
 		if x.Space == nil {
 			return []ir.Expr{x.Value}
