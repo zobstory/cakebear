@@ -93,7 +93,14 @@ func Build(p *ir.Program, opts Options) (goSource string, err error) {
 		return goSource, fmt.Errorf("resolving output path: %w", err)
 	}
 
-	args := []string{"build", "-o", out}
+	// -trimpath keeps the module's temporary directory out of what Go
+	// compiles. Go's build cache keys a package on the paths it was built
+	// from, so without it every build stored a fresh copy of the runtime
+	// package, 2.1 MB a build even for the same program, and the cache of a
+	// machine running the tests grew past 190 GB. With it, a build after the
+	// first adds the program's own package and nothing else. A panic's stack
+	// trace names cakebear.local/out/main.go rather than the temp directory.
+	args := []string{"build", "-trimpath", "-o", out}
 	if opts.Race {
 		args = append(args, "-race")
 	}
