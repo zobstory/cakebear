@@ -11,8 +11,9 @@ import (
 // strings, booleans, and the objects and arrays made of them. It follows
 // SerializeJSONProperty in ECMA-262, and V8's message for a cycle, as Node
 // 24.18 has them. Lowering refuses a replacer, and a value holding a
-// function, a promise or a host value, so none of those reaches here, and
-// nor does undefined, which the subset can't make yet (M5).
+// function, a promise or a host value, so none of those reaches here. A
+// Maybe's null is null, and its undefined is left out of an object, and
+// null in an array, as SerializeJSONProperty gives them (M5 plan D8).
 
 // JSONStringify is JSON.stringify(v, null, space), given the gap
 // JSONGapNumber or JSONGapString made of space, or JSONGap{} for none.
@@ -101,6 +102,22 @@ func (e *jsonEncoder) value(v any, via jsonKey) {
 		e.object(x, via)
 	case jsonArray:
 		x.appendJSON(e, via)
+	case maybe:
+		switch state, value := x.maybeState(); state {
+		case stateValue:
+			e.value(value, via)
+		case stateNull:
+			e.buf = append(e.buf, "null"...)
+		default:
+			// An object leaves an undefined property out (object), and an
+			// array writes null for one. Lowering refuses JSON.stringify of
+			// a value that may itself be undefined, since that returns
+			// undefined, not a string.
+			if !via.isIndex {
+				panic("cakebear: JSON.stringify of undefined, which returns undefined rather than a string")
+			}
+			e.buf = append(e.buf, "null"...)
+		}
 	default:
 		panic(fmt.Sprintf("cakebear: JSON.stringify has no way to write a %T", v))
 	}
@@ -126,16 +143,38 @@ func (e *jsonEncoder) object(o Object, via jsonKey) {
 	}
 	e.enter(o, via)
 	e.buf = append(e.buf, '{')
+	written := 0
 	for i, key := range layout.keys {
-		e.entry(i)
+		value := o.Field(layout.fields[i])
+		if isUndefined(value) {
+			continue // SerializeJSONProperty gives undefined: no entry at all
+		}
+		e.entry(written)
+		written++
 		e.buf = appendJSONString(e.buf, key)
 		e.buf = append(e.buf, ':')
 		if e.lines {
 			e.buf = append(e.buf, ' ')
 		}
-		e.value(o.Field(layout.fields[i]), jsonKey{name: key})
+		e.value(value, jsonKey{name: key})
+	}
+	if written == 0 {
+		// Every property was undefined: "{}", with no line inside, gap or not.
+		e.stack = e.stack[:len(e.stack)-1]
+		e.buf = append(e.buf, '}')
+		return
 	}
 	e.leave('}')
+}
+
+// isUndefined reports whether v is a Maybe that is undefined.
+func isUndefined(v any) bool {
+	m, ok := v.(maybe)
+	if !ok {
+		return false
+	}
+	state, _ := m.maybeState()
+	return state == stateUndefined
 }
 
 // appendJSON is SerializeJSONArray.

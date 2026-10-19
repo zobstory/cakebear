@@ -1,5 +1,11 @@
 package runtime
 
+import (
+	"slices"
+	"sync"
+	"sync/atomic"
+)
+
 // Objects and the clone (M4 plan D2, D4, D11).
 //
 // The backend generates a struct for each shape and makes it an Object: the
@@ -22,10 +28,93 @@ type Object interface {
 
 // Layout is a key table: the keys of one object literal, in the order it
 // wrote them (D4). Every object created at that literal shares it.
+//
+// An object with optional properties changes its table as it gains and
+// loses them (M5 plan D3): `o.p = v` for a p it doesn't have appends the
+// key, as Node orders it, and `delete o.p` removes it (With, Without). An
+// object leaves the table it was made with for another, and objects that
+// take the same steps share the table they reach, as V8's hidden classes
+// do.
 type Layout struct {
 	keys    []string // as written
 	fields  []int    // the shape field each key names
 	printed []string // each key as Node prints it (R5)
+	// edges are the tables With and Without have made from this one, so
+	// each is made once. Every request's goroutine may step from a table,
+	// since tables are package-level, so the list is read with one atomic
+	// load and no lock, and replaced whole, under layoutsMu, when a step is
+	// first taken.
+	edges atomic.Pointer[[]layoutEdge]
+}
+
+// layoutEdge is a step from one table to another: field gained (with) or
+// lost.
+type layoutEdge struct {
+	field int
+	with  bool
+	to    *Layout
+}
+
+// layoutsMu orders the first taking of every step, in every table.
+var layoutsMu sync.Mutex
+
+// Has reports whether an object of this table has field: `"p" in o`.
+func (l *Layout) Has(field int) bool { return slices.Contains(l.fields, field) }
+
+// With is the table of an object of this one after `o.p = v`, where field
+// is p's and key its name: this one when it has p already, and otherwise
+// this one with p appended, which is where Node puts a property assigned
+// after the object was made.
+func (l *Layout) With(field int, key string) *Layout {
+	if l.Has(field) {
+		return l
+	}
+	return l.step(field, true, func() *Layout {
+		return NewLayout(append(slices.Clone(l.keys), key), append(slices.Clone(l.fields), field))
+	})
+}
+
+// Without is the table of an object of this one after `delete o.p`: this
+// one less p's key, or this one when it has no p.
+func (l *Layout) Without(field int) *Layout {
+	i := slices.Index(l.fields, field)
+	if i < 0 {
+		return l
+	}
+	return l.step(field, false, func() *Layout {
+		return NewLayout(slices.Delete(slices.Clone(l.keys), i, i+1), slices.Delete(slices.Clone(l.fields), i, i+1))
+	})
+}
+
+// step is the table one step from l, made by newLayout the first time.
+func (l *Layout) step(field int, with bool, newLayout func() *Layout) *Layout {
+	if to := l.stepped(field, with); to != nil {
+		return to
+	}
+	layoutsMu.Lock()
+	defer layoutsMu.Unlock()
+	if to := l.stepped(field, with); to != nil {
+		return to // another goroutine took the step while this one waited
+	}
+	to := newLayout()
+	var edges []layoutEdge
+	if old := l.edges.Load(); old != nil {
+		edges = slices.Clone(*old)
+	}
+	edges = append(edges, layoutEdge{field: field, with: with, to: to})
+	l.edges.Store(&edges)
+	return to
+}
+
+func (l *Layout) stepped(field int, with bool) *Layout {
+	if edges := l.edges.Load(); edges != nil {
+		for _, e := range *edges {
+			if e.field == field && e.with == with {
+				return e.to
+			}
+		}
+	}
+	return nil
 }
 
 // NewLayout makes the key table for a literal: keys in the order it writes
@@ -97,6 +186,10 @@ func CloneValue[T any](c *Cloner, v T) T {
 			return done.(T)
 		}
 		copied, _ := x.cloneArray(c).(T)
+		return copied
+	case maybe:
+		// A Maybe is a value; what it holds may be an object or an array.
+		copied, _ := x.cloneMaybe(c).(T)
 		return copied
 	}
 	return v

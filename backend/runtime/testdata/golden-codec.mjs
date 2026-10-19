@@ -1,7 +1,9 @@
 // The value encoding shared by gen-inspect-goldens.mjs, verify-goldens.mjs,
 // check-console-log.mjs and gen-json-goldens.mjs. See the contract in
 // gen-inspect-goldens.mjs. One form is the JSON corpus's alone, a string
-// holding a lone surrogate, as its UTF-16 code units: {"u":[55296]}.
+// holding a lone surrogate, as its UTF-16 code units: {"u":[55296]}. M5
+// added one: undefined and null, as {"e":"undefined"} and {"e":"null"}, which
+// the Go side reads as an empty Maybe.
 
 import util from 'node:util';
 
@@ -50,6 +52,10 @@ export function decodeArgs(args) {
     if ('b' in d) {
       if (keys.length !== 1 || typeof d.b !== 'boolean') throw new Error('bad boolean');
       return d.b;
+    }
+    if ('e' in d) {
+      if (keys.length !== 1 || (d.e !== 'undefined' && d.e !== 'null')) throw new Error('bad empty value');
+      return d.e === 'null' ? null : undefined;
     }
     if ('ref' in d) {
       if (keys.length !== 1) throw new Error('bad ref');
@@ -104,8 +110,9 @@ export function encodeArgs(values) {
       case 'number': return { n: numText(v) };
       case 'string': return v.isWellFormed() ? { s: v } : { u: codeUnits(v) };
       case 'boolean': return { b: v };
+      case 'undefined': return { e: 'undefined' };
       case 'object': {
-        if (v === null) throw new Error('null is outside the subset');
+        if (v === null) return { e: 'null' };
         if (ids.has(v)) {
           if (ids.get(v) === undefined) throw new Error('second visit of an unshared container');
           return { ref: ids.get(v) };
@@ -139,11 +146,11 @@ const isIntegerLike = (k) => /^(0|[1-9][0-9]*)$/.test(k) && Number(k) <= 4294967
 // strings may hold '%', since no util.format reads them.
 export function validate(args, { forJSON = false } = {}) {
   const kindOf = new Map();
-  const keySetOf = new Map();
-  const keySet = (d) => d.o.map((p) => p[0]).sort().join('\u0000');
+  const objectOf = new Map();
   const walk = (d) => {
     if ('n' in d) return 'n';
     if ('b' in d) return 'b';
+    if ('e' in d) return 'e';
     if ('s' in d) {
       if (!d.s.isWellFormed()) throw new Error('lone surrogate in a string');
       return 's';
@@ -158,16 +165,30 @@ export function validate(args, { forJSON = false } = {}) {
     }
     if ('a' in d) {
       if ('id' in d) kindOf.set(d.id, 'a');
+      // One kind, besides undefined and null: an array of T or of maybe-T.
       const kinds = new Set(d.a.map(walk));
+      kinds.delete('e');
       if (kinds.size > 1) throw new Error(`mixed array of ${[...kinds]}`);
       if (kinds.has('o')) {
-        const sets = new Set(d.a.map((e) => ('ref' in e ? keySetOf.get(e.ref) : keySet(e))));
-        if (sets.size > 1) throw new Error('array of objects with different key sets');
+        // Objects of one shape, which may leave its optional properties
+        // out: each key's values are of one kind, wherever it appears.
+        const kindOfKey = new Map();
+        for (const e of d.a) {
+          if ('e' in e) continue;
+          const o = 'ref' in e ? objectOf.get(e.ref) : e;
+          for (const [k, val] of o.o) {
+            const kind = 'e' in val ? 'e' : ('ref' in val ? kindOf.get(val.ref) : Object.keys(val).find((x) => x !== 'id'));
+            if (kind === 'e') continue;
+            const norm = kind === 'u' ? 's' : kind;
+            if (kindOfKey.has(k) && kindOfKey.get(k) !== norm) throw new Error(`array of objects whose ${k} differs in kind`);
+            kindOfKey.set(k, norm);
+          }
+        }
       }
       return 'a';
     }
     if ('o' in d) {
-      if ('id' in d) { kindOf.set(d.id, 'o'); keySetOf.set(d.id, keySet(d)); }
+      if ('id' in d) { kindOf.set(d.id, 'o'); objectOf.set(d.id, d); }
       const seen = new Set();
       for (const [k, val] of d.o) {
         if (isIntegerLike(k)) throw new Error(`integer-like key ${k}`);

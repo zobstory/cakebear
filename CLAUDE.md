@@ -303,6 +303,28 @@ Step 1, the IR, is done, with nothing lowered to it yet (`ir/maybe.go`):
 - `Program.Validate` holds each to its types. The backend refuses all of it
   by name until step 3 (`TestMaybesAreRefusedForNow`).
 
+Step 2, the runtime, is done, again with nothing lowered to it yet:
+- `Maybe[T]` (`backend/runtime/maybe.go`) is a value and a state, zero for
+  undefined. An empty one holds T's zero value and nothing else, so Go's `==`
+  on two is JavaScript's `===`, NaN and `-0` included. `Must` is an unwrap
+  that panics, naming the value, where TypeScript's narrowing was unsound.
+- Printing and JSON (D8) write undefined and null as Node does. A string a
+  Maybe holds is written raw at `console.log`'s top level. An array of maybe
+  numbers groups from the left only when the first 101 elements are all
+  numbers, as `groupArrayElements` checks. `JSON.stringify` leaves an
+  undefined property out, writes an array's as `null`, and makes `{}` of an
+  object left with none. A spawn's result copies what a Maybe holds (D11).
+- Optional properties (D3): `Layout.With` is `o.p = v` for a p the object
+  lacks, appending the key, where Node puts it, and `Without` is
+  `delete o.p`. Objects that take the same steps share the table they reach.
+  Tables are package-level, so every request's goroutine steps from them:
+  each keeps its steps in a list read with one atomic load and replaced whole
+  under a mutex. That measured 2.0 ns a lookup, against 7.4 for `sync.Map`
+  and, across 12 cores, 87 for an `RWMutex` (M5 plan D3).
+- The inspect and JSON goldens hold 333 and 95 more outputs recorded from
+  Node, with null and undefined (`{"e":"undefined"}` in the codec), in
+  sections after the old ones, which are byte for byte as they were.
+
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
 whatever it returned; an extension type in a `number`'s slot reached Go
