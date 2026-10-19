@@ -40,13 +40,18 @@ type FieldGet struct {
 	Span   Span
 }
 
-// IndexGet is `xs[i]`. An index outside the array panics (D8); Node reads
-// undefined, which waits for M5's nullable values.
+// IndexGet is `xs[i]`. An index outside the array panics (D8), where Node
+// reads undefined, unless OrUndefined is set: then the read is undefined
+// there, as Node's is, and Typ is OrUndefined of the element type (M5 plan
+// D9). Lowering sets it where the read may be undefined: under
+// noUncheckedIndexedAccess, which types it `T | undefined`, and for an array
+// of maybes, which can hold the undefined.
 type IndexGet struct {
-	Array Expr
-	Index Expr
-	Typ   Type
-	Span  Span
+	Array       Expr
+	Index       Expr
+	Typ         Type
+	OrUndefined bool
+	Span        Span
 }
 
 // ArrayMethod is one of the array members M4 lowers (D16). Each is
@@ -58,7 +63,7 @@ const (
 	ArrayLength                           // xs.length
 	ArraySetLength                        // xs.length = n, which may only shrink the array (D9)
 	ArrayPush                             // xs.push(a, …), the new length
-	ArrayPop                              // xs.pop(), a statement: its value is T | undefined, M5's
+	ArrayPop                              // xs.pop(): its value is OrUndefined(T), or void as a statement
 	ArrayMap
 	ArrayFilter
 	ArrayJoin
@@ -71,6 +76,10 @@ const (
 	ArrayReduce // with an initial value only
 	ArrayFindIndex
 	ArrayIndexOf
+	ArrayFind // OrUndefined(T), M5's (D9), as are the three below
+	ArrayFindLast
+	ArrayAt
+	ArrayShift // xs.shift(), as pop: or void as a statement
 )
 
 var arrayMethodNames = map[ArrayMethod]string{
@@ -78,6 +87,7 @@ var arrayMethodNames = map[ArrayMethod]string{
 	ArrayMap: "map", ArrayFilter: "filter", ArrayJoin: "join", ArrayIncludes: "includes",
 	ArraySlice: "slice", ArraySort: "sort", ArraySome: "some", ArrayEvery: "every",
 	ArrayForEach: "forEach", ArrayReduce: "reduce", ArrayFindIndex: "findIndex", ArrayIndexOf: "indexOf",
+	ArrayFind: "find", ArrayFindLast: "findLast", ArrayAt: "at", ArrayShift: "shift",
 }
 
 func (m ArrayMethod) String() string {

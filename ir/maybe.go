@@ -97,6 +97,16 @@ func (e *IsEmpty) ExprSpan() Span { return e.Span }
 func (e *Cond) ExprSpan() Span    { return e.Span }
 func (e *Let) ExprSpan() Span     { return e.Span }
 
+// OrUndefined is t, or a maybe of it: the type of a read that is undefined
+// where there is no t to read, past an array's end, say (D9). A maybe is one
+// already, its undefined the read's.
+func OrUndefined(t Type) Type {
+	if t.Kind == KindMaybe {
+		return t
+	}
+	return MaybeOf(t)
+}
+
 // checkMaybe holds a Maybe's element to a type that can be one of its states'
 // values: not void, null or undefined, which a state of their own already is,
 // and not another Maybe, which would hold a fourth state no value has.

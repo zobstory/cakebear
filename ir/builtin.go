@@ -36,6 +36,10 @@ const (
 	StrPadStart
 	StrPadEnd
 	StrRepeat
+	StrAt // s.at(i): OrUndefined, M5's (D9), as are the three below
+	StrCodePointAt
+	StrIndex // s[i] typed string, which panics past the end, as xs[i] does (M4 D8)
+	StrIndexOrUndefined
 
 	ToString     // String(x), x.toString(), a template's ${x}: x a primitive
 	NumToFixed   // n.toFixed(digits)
@@ -66,37 +70,41 @@ var (
 )
 
 var builtinSigs = map[Builtin]BuiltinSig{
-	StrLength:      {"length", str1, nil, Number},
-	StrCharAt:      {"charAt", []Type{String, Number}, nil, String},
-	StrCharCodeAt:  {"charCodeAt", []Type{String, Number}, nil, Number},
-	StrIncludes:    {"includes", str2, num1, Boolean},
-	StrStartsWith:  {"startsWith", str2, num1, Boolean},
-	StrEndsWith:    {"endsWith", str2, num1, Boolean},
-	StrIndexOf:     {"indexOf", str2, num1, Number},
-	StrLastIndexOf: {"lastIndexOf", str2, num1, Number},
-	StrSlice:       {"slice", str1, []Type{Number, Number}, String},
-	StrSubstring:   {"substring", []Type{String, Number}, num1, String},
-	StrToLowerCase: {"toLowerCase", str1, nil, String},
-	StrToUpperCase: {"toUpperCase", str1, nil, String},
-	StrTrim:        {"trim", str1, nil, String},
-	StrTrimStart:   {"trimStart", str1, nil, String},
-	StrTrimEnd:     {"trimEnd", str1, nil, String},
-	StrSplit:       {"split", str2, num1, ArrayOf(String)},
-	StrReplace:     {"replace", []Type{String, String, String}, nil, String},
-	StrReplaceAll:  {"replaceAll", []Type{String, String, String}, nil, String},
-	StrPadStart:    {"padStart", []Type{String, Number}, str1, String},
-	StrPadEnd:      {"padEnd", []Type{String, Number}, str1, String},
-	StrRepeat:      {"repeat", []Type{String, Number}, nil, String},
-	ToString:       {"String", nil, nil, String}, // one primitive, checked on its own
-	NumToFixed:     {"toFixed", []Type{Number, Number}, nil, String},
-	NumFromStr:     {"Number", str1, nil, Number},
-	NumParseInt:    {"parseInt", str1, num1, Number},
-	NumParseFlt:    {"parseFloat", str1, nil, Number},
-	NumIsFinite:    {"isFinite", num1, nil, Boolean},
-	NumIsNaN:       {"isNaN", num1, nil, Boolean},
-	NumIsInteger:   {"isInteger", num1, nil, Boolean},
-	URIEncode:      {"encodeURIComponent", str1, nil, String},
-	URIDecode:      {"decodeURIComponent", str1, nil, String},
+	StrLength:           {"length", str1, nil, Number},
+	StrCharAt:           {"charAt", []Type{String, Number}, nil, String},
+	StrCharCodeAt:       {"charCodeAt", []Type{String, Number}, nil, Number},
+	StrIncludes:         {"includes", str2, num1, Boolean},
+	StrStartsWith:       {"startsWith", str2, num1, Boolean},
+	StrEndsWith:         {"endsWith", str2, num1, Boolean},
+	StrIndexOf:          {"indexOf", str2, num1, Number},
+	StrLastIndexOf:      {"lastIndexOf", str2, num1, Number},
+	StrSlice:            {"slice", str1, []Type{Number, Number}, String},
+	StrSubstring:        {"substring", []Type{String, Number}, num1, String},
+	StrToLowerCase:      {"toLowerCase", str1, nil, String},
+	StrToUpperCase:      {"toUpperCase", str1, nil, String},
+	StrTrim:             {"trim", str1, nil, String},
+	StrTrimStart:        {"trimStart", str1, nil, String},
+	StrTrimEnd:          {"trimEnd", str1, nil, String},
+	StrSplit:            {"split", str2, num1, ArrayOf(String)},
+	StrReplace:          {"replace", []Type{String, String, String}, nil, String},
+	StrReplaceAll:       {"replaceAll", []Type{String, String, String}, nil, String},
+	StrPadStart:         {"padStart", []Type{String, Number}, str1, String},
+	StrPadEnd:           {"padEnd", []Type{String, Number}, str1, String},
+	StrRepeat:           {"repeat", []Type{String, Number}, nil, String},
+	StrAt:               {"at", []Type{String, Number}, nil, MaybeOf(String)},
+	StrCodePointAt:      {"codePointAt", []Type{String, Number}, nil, MaybeOf(Number)},
+	StrIndex:            {"[i]", []Type{String, Number}, nil, String},
+	StrIndexOrUndefined: {"[i]", []Type{String, Number}, nil, MaybeOf(String)},
+	ToString:            {"String", nil, nil, String}, // one primitive, checked on its own
+	NumToFixed:          {"toFixed", []Type{Number, Number}, nil, String},
+	NumFromStr:          {"Number", str1, nil, Number},
+	NumParseInt:         {"parseInt", str1, num1, Number},
+	NumParseFlt:         {"parseFloat", str1, nil, Number},
+	NumIsFinite:         {"isFinite", num1, nil, Boolean},
+	NumIsNaN:            {"isNaN", num1, nil, Boolean},
+	NumIsInteger:        {"isInteger", num1, nil, Boolean},
+	URIEncode:           {"encodeURIComponent", str1, nil, String},
+	URIDecode:           {"decodeURIComponent", str1, nil, String},
 }
 
 // Sig is b's signature. A Builtin the table doesn't hold has the zero one.
