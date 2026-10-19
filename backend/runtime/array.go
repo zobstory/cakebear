@@ -14,6 +14,10 @@ import (
 // of T can't hold (D8, D9): reading past the end gives undefined in Node,
 // and writing past it leaves a hole. Both panic here, with a message saying
 // what Node does instead.
+//
+// The reads TypeScript types `T | undefined` (M5 plan D9), Lookup,
+// RelativeAt, Pop, Shift, Find and FindLast, give their element and ok,
+// false where Node gives undefined, which OrUndefined makes a Maybe of.
 type Array[T any] struct {
 	items []T
 }
@@ -80,14 +84,61 @@ func (a *Array[T]) Push(vs ...T) float64 {
 	return float64(len(a.items))
 }
 
-// Pop is `xs.pop()` as a statement: it removes the last element, if there is
-// one. Its value, T or undefined, waits for M5's nullable values.
-func (a *Array[T]) Pop() {
-	if n := len(a.items); n > 0 {
-		var zero T
-		a.items[n-1] = zero
-		a.items = a.items[:n-1]
+// Lookup is `xs[i]` where the read may be undefined (D9): ok is false past
+// the end, and for a number that isn't an array index, negative or
+// fractional, which Node reads as a property the array doesn't have. -0 is
+// the property "0", as in Node.
+func (a *Array[T]) Lookup(i float64) (T, bool) {
+	if n, ok := arrayIndex(i); ok && n < len(a.items) {
+		return a.items[n], true
 	}
+	var zero T
+	return zero, false
+}
+
+// RelativeAt is `xs.at(i)`: i is ToIntegerOrInfinity, counted back from the
+// end when negative, and ok is false outside the array. At, which loops
+// use, is the element at an int already checked.
+func (a *Array[T]) RelativeAt(i float64) (T, bool) {
+	k := toInteger(i)
+	if k < 0 {
+		k += float64(len(a.items))
+	}
+	if k < 0 || k >= float64(len(a.items)) { // the infinities too
+		var zero T
+		return zero, false
+	}
+	return a.items[int(k)], true
+}
+
+// Pop is `xs.pop()`: it removes the last element and gives it, with ok
+// false for an empty array, where Node gives undefined. As a statement, the
+// results are dropped.
+func (a *Array[T]) Pop() (T, bool) {
+	var zero T
+	n := len(a.items)
+	if n == 0 {
+		return zero, false
+	}
+	v := a.items[n-1]
+	a.items[n-1] = zero // let it go
+	a.items = a.items[:n-1]
+	return v, true
+}
+
+// Shift is `xs.shift()`: Pop, from the front. The array starts one element
+// later in the same backing slice rather than moving the rest, so a queue's
+// push and shift are each O(1), and the next append that outgrows the slice
+// copies only what is left.
+func (a *Array[T]) Shift() (T, bool) {
+	var zero T
+	if len(a.items) == 0 {
+		return zero, false
+	}
+	v := a.items[0]
+	a.items[0] = zero
+	a.items = a.items[1:]
+	return v, true
 }
 
 // arrayIndex converts an index to an int, and reports whether it is one: an

@@ -22,6 +22,8 @@ var builtinFuncs = map[ir.Builtin]string{
 	ir.StrTrim: "StrTrim", ir.StrTrimStart: "StrTrimStart", ir.StrTrimEnd: "StrTrimEnd",
 	ir.StrSplit: "StrSplit", ir.StrReplace: "StrReplace", ir.StrReplaceAll: "StrReplaceAll",
 	ir.StrPadStart: "StrPadStart", ir.StrPadEnd: "StrPadEnd", ir.StrRepeat: "StrRepeat",
+	ir.StrAt: "StrAt", ir.StrCodePointAt: "StrCodePointAt", // a Maybe, undefined outside the string (str_at.go)
+	ir.StrIndex: "StrIndex", ir.StrIndexOrUndefined: "StrIndexOrUndefined",
 	ir.NumToFixed: "NumberToFixed", ir.NumFromStr: "StringToNumber",
 	ir.NumParseInt: "ParseInt", ir.NumParseFlt: "ParseFloat",
 	ir.NumIsFinite: "NumberIsFinite", ir.NumIsNaN: "NumberIsNaN", ir.NumIsInteger: "NumberIsInteger",
@@ -42,9 +44,12 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
-		if i == 0 && isMethod(x.Fn) {
+		switch {
+		case i == 0 && (x.Fn == ir.StrIndex || x.Fn == ir.StrIndexOrUndefined):
+			args[i] = e.receiver(a, elementAccess(x.Args[1], false)) // `s[i]` reads the property i
+		case i == 0 && isMethod(x.Fn):
 			args[i] = e.receiver(a, reading(x.Fn.String()))
-		} else {
+		default:
 			args[i] = e.expr(a)
 		}
 	}
@@ -52,11 +57,12 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 }
 
 // isMethod reports whether fn is a method, whose first argument is its
-// receiver: a string's, which ir/builtin.go lists together, or toFixed.
-// String(x) and x.toString() are one builtin, ToString, whose argument is
-// taken for String's: Node carries on with an empty one, as String does.
+// receiver: a string's, which ir/builtin.go lists together, `s[i]`
+// included, or toFixed. String(x) and x.toString() are one builtin,
+// ToString, whose argument is taken for String's: Node carries on with an
+// empty one, as String does.
 func isMethod(fn ir.Builtin) bool {
-	return fn >= ir.StrLength && fn <= ir.StrRepeat || fn == ir.NumToFixed
+	return fn >= ir.StrLength && fn <= ir.StrIndexOrUndefined || fn == ir.NumToFixed
 }
 
 // toString is a primitive's ToString: a number as JavaScript prints it, an

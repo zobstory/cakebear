@@ -91,6 +91,7 @@ func TestUnwrappedNames(t *testing.T) {
 	idx := func(i ir.Expr) ir.Expr {
 		return &ir.IndexGet{Array: xs, Index: i, Typ: ir.MaybeOf(ir.Number), Span: span}
 	}
+	s := stable("s", ir.String)
 	at := ir.Span{File: "src/main.ts", Line: 4, Col: 9}
 	awaited := &ir.Await{Value: stable("p", ir.PromiseOf(ir.MaybeOf(ir.Number))), Typ: ir.MaybeOf(ir.Number), Span: at}
 	for _, tt := range []struct {
@@ -106,6 +107,12 @@ func TestUnwrappedNames(t *testing.T) {
 		{&ir.Call{Callee: "find", Args: []ir.Expr{num(1)}, Typ: ir.MaybeOf(ir.Number), Span: span}, "find(…)"},
 		{&ir.Call{Callee: "next", Typ: ir.MaybeOf(ir.Number), Span: span}, "next()"},
 		{method(ir.ArrayPop, xs, ir.MaybeOf(ir.Number)), "xs.pop()"},
+		{method(ir.ArrayAt, xs, ir.MaybeOf(ir.Number), num(-1)), "xs.at(…)"},
+		{strCall(ir.StrAt, ir.MaybeOf(ir.String), s, num(0)), "s.at(…)"},
+		{strCall(ir.StrIndexOrUndefined, ir.MaybeOf(ir.String), s, stable("i", ir.Number)), "s[i]"},
+		{strCall(ir.StrCodePointAt, ir.MaybeOf(ir.Number), strCall(ir.StrTrim, ir.String, s), num(0)), "s.trim().codePointAt(…)"},
+		{strCall(ir.StrAt, ir.MaybeOf(ir.String), strCall(ir.NumToFixed, ir.String, strCall(ir.StrLength, ir.Number, s), num(1)), num(0)),
+			"s.length.toFixed(…).at(…)"},
 		{awaited, "the value at src/main.ts:4:9"},
 	} {
 		if got := new(emitter).unwrapped(tt.x); got != tt.want {
