@@ -46,7 +46,7 @@ const xs: (number | undefined)[] = [1, undefined];
 xs.push(2, undefined);
 interface Link { v: number; next: Link | undefined }
 const list: Link = { v: 1, next: { v: 2, next: undefined } };
-const ys: number[] | null = [1];
+const ys: number[] | null = []; // typed by its slot alone
 `)
 	m := p.EntryModule()
 	maybe := func(e ir.Type) ir.Type { return ir.MaybeOf(e) }
@@ -263,6 +263,7 @@ func TestMaybeRefusals(t *testing.T) {
 		{"objects", "interface A { a: number }\ninterface B { b: number }\nconst x: A | B = { a: 1 };\n", "unions of object types are not supported yet"},
 		{"only null", "const x: null = null;\n", "a type that is only null is not supported yet"},
 		{"only undefined", "let x: undefined = undefined;\n", "a type that is only undefined is not supported yet"},
+		{"only null or undefined", "let x: null | undefined = null;\n", "a type that is only null or undefined is not supported yet"},
 		{"void", "function f(): void | undefined {\n  return;\n}\n", "a union with void is not supported yet"},
 		{"null with undefined", "const b: boolean = null === undefined;\n", "comparing null or undefined with null or undefined is not supported yet"},
 		{"maybe functions", "const f: (() => void) | undefined = undefined;\nconst g: (() => void) | undefined = undefined;\nconst b: boolean = f === g;\n", "on a"},
