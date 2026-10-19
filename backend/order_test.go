@@ -12,6 +12,7 @@ func TestInnerCall(t *testing.T) {
 
 	a := &ir.Ident{Name: "a", Typ: ir.Number}
 	f := &ir.Call{Callee: "f", Typ: ir.Number}
+	c, held := &ir.Ident{Name: "c", Typ: ir.Boolean}, &ir.Ident{Name: "ts held1", Typ: ir.Number}
 	sum := func(l, r ir.Expr) ir.Expr { return &ir.Binary{Op: ir.OpAdd, Left: l, Right: r, Typ: ir.Number} }
 	for _, tt := range []struct {
 		name string
@@ -28,6 +29,14 @@ func TestInnerCall(t *testing.T) {
 		{"a host property", sum(a, &ir.HostProp{Prop: ir.HostURL, Recv: a}), true},
 		{"console.log of a sum with a call", &ir.ConsoleLog{Args: []ir.Expr{sum(a, f)}}, true},
 		{"console.log of a read", &ir.ConsoleLog{Args: []ir.Expr{a}}, false},
+		// A conditional and a Let are calls in Go, but not calls that can
+		// change a binding: what is under them decides (isCall).
+		{"a read beside a conditional with no call", sum(a, &ir.Cond{Test: c, Then: a, Else: a}), false},
+		{"a read beside a call in a conditional's test", sum(a, &ir.Cond{Test: &ir.Call{Callee: "t", Typ: ir.Boolean}, Then: a, Else: a}), true},
+		{"a read beside a call in a conditional's branch", sum(a, &ir.Cond{Test: c, Then: a, Else: f}), true},
+		{"a read beside a let of a read", sum(a, &ir.Let{Name: "ts held1", Value: a, Body: held}), false},
+		{"a read beside a let holding a call", sum(a, &ir.Let{Name: "ts held1", Value: f, Body: held}), true},
+		{"a read beside a call in a let's body", sum(a, &ir.Let{Name: "ts held1", Value: a, Body: sum(held, f)}), true},
 	} {
 		if got := innerCall(tt.x); got != tt.want {
 			t.Errorf("%s: innerCall = %v, want %v", tt.name, got, tt.want)

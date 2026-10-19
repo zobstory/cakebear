@@ -95,6 +95,10 @@ func (e *emitter) simple(s ir.Stmt) string {
 	case *ir.FieldSet:
 		return e.fieldSet(s)
 	case *ir.ExprStmt:
+		switch s.Expr.(type) {
+		case *ir.Cond, *ir.Let: // a literal called, which may be void (emit_cond.go)
+			return e.full(s.Expr)
+		}
 		if isCall(s.Expr) {
 			return e.full(s.Expr)
 		}

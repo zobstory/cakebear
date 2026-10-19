@@ -34,7 +34,7 @@ func (e *emitter) arrayLit(x *ir.ArrayLit) string {
 }
 
 func (e *emitter) indexGet(x *ir.IndexGet) string {
-	return fmt.Sprintf("%s.Get(%s)", e.expr(x.Array), e.expr(x.Index))
+	return fmt.Sprintf("%s.Get(%s)", e.receiver(x.Array, elementAccess(x.Index, false)), e.expr(x.Index))
 }
 
 // indexSet is `xs[i] = v`. JavaScript evaluates xs, then i, then v; with a
@@ -47,7 +47,7 @@ func (e *emitter) indexSet(s *ir.IndexSet) string {
 		e.order = e.order || isCall(x) || innerCall(x)
 	}
 	defer func() { e.order = saved }()
-	return fmt.Sprintf("%s.Set(%s, %s)", e.expr(s.Array), e.expr(s.Index), e.expr(s.Value))
+	return fmt.Sprintf("%s.Set(%s, %s)", e.receiver(s.Array, elementAccess(s.Index, true)), e.expr(s.Index), e.expr(s.Value))
 }
 
 // arrayOp emits an array member (D16), each a method or a function of the
@@ -58,7 +58,11 @@ func (e *emitter) indexSet(s *ir.IndexSet) string {
 // (order.go). A method that takes a callback passes the domain the call
 // runs in, which the callback runs in too.
 func (e *emitter) arrayOp(x *ir.ArrayOp) string {
-	arr := e.expr(x.Array)
+	use := reading(x.Method.String())
+	if x.Method == ir.ArraySetLength {
+		use = writing("length") // its String is "length ="
+	}
+	arr := e.receiver(x.Array, use)
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)
@@ -147,7 +151,7 @@ func unjoinable(t ir.Type) string {
 func (e *emitter) forOf(s *ir.ForOf, pad string, depth int) {
 	name := mangle(s.Name)
 	fmt.Fprintf(&e.buf, "%s{\n", pad)
-	fmt.Fprintf(&e.buf, "%s\t%s := %s\n", pad, ofVar, e.full(s.Array))
+	fmt.Fprintf(&e.buf, "%s\t%s := %s\n", pad, ofVar, e.fullAs(s.Array, iterating))
 	fmt.Fprintf(&e.buf, "%s\tfor %s := 0; %s < %s.Len(); %s++ {\n", pad, ofIndex, ofIndex, ofVar, ofIndex)
 	fmt.Fprintf(&e.buf, "%s\t\t%s := %s.At(%s)\n", pad, name, ofVar, ofIndex)
 	fmt.Fprintf(&e.buf, "%s\t\t_ = %s\n", pad, name)
