@@ -128,7 +128,7 @@ func (e *emitter) function(fn *ir.Func) {
 	if fn.Async {
 		e.asyncBody(fn.Result, fn.Body, 1)
 	} else {
-		e.body(fn.Body, 1, fn.Result != ir.Void)
+		e.body(fn.Body, 1, fn.Result)
 	}
 	e.buf.WriteString("}\n")
 }
@@ -251,9 +251,11 @@ func (e *emitter) expr(x ir.Expr) string {
 		return strconv.FormatBool(x.Value)
 
 	case *ir.NullLit, *ir.UndefinedLit:
-		// Phase 1 has no nullable representation yet: null and undefined can be
-		// written but not stored in a typed binding, so nothing should reach
-		// here. lower/ rejects them first.
+		// A bare null or undefined stands for itself, in a log or a
+		// comparison, and has no type to be stored as: a maybe's empty
+		// states are ir.Empty's. console.log prints one without evaluating
+		// it (consoleLog), and `x === null` on a maybe is an ir.IsEmpty, so
+		// nothing should reach here.
 		return "nil"
 
 	case *ir.Ident:
@@ -322,6 +324,9 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.ArrayOp:
 		return e.arrayOp(x)
 
+	case *ir.Wrap, *ir.Unwrap, *ir.Empty, *ir.IsEmpty:
+		return e.maybe(x)
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)
@@ -347,7 +352,7 @@ func (e *emitter) funcLit(x *ir.FuncLit) string {
 		if x.Async {
 			e.asyncBody(x.Result, x.Body, depth+1)
 		} else {
-			e.body(x.Body, depth+1, x.Result != ir.Void)
+			e.body(x.Body, depth+1, x.Result)
 		}
 	})
 	e.asyncVoid, e.usesDomain = savedVoid, savedDomain
@@ -370,6 +375,9 @@ func (e *emitter) binary(x *ir.Binary) string {
 	op, ok := goBinaryOp(x.Op)
 	if !ok {
 		return e.cannot(x.Span, "the backend cannot emit the operator "+x.Op.String()+" yet")
+	}
+	if t := x.Left.ExprType(); (x.Op == ir.OpEqual || x.Op == ir.OpNotEqual) && uncomparable(t) {
+		return e.cannot(x.Span, "the backend cannot compare a "+t.String()+": Go can't compare functions")
 	}
 	left, right := e.expr(x.Left), e.expr(x.Right)
 	if s, ok := e.stringBinary(x, left, right); ok {
@@ -417,6 +425,8 @@ func goType(t ir.Type) (string, bool) {
 		return goObjectType(t.Shape)
 	case ir.KindArray:
 		return goArrayType(t)
+	case ir.KindMaybe:
+		return goMaybeType(t)
 	}
 	switch t {
 	case ir.Number:

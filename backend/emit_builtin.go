@@ -48,25 +48,39 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 }
 
 // toString is a primitive's ToString: a number as JavaScript prints it, an
-// extension type as console.log prints it, a string as it is.
+// extension type as console.log prints it, a string as it is, and a maybe
+// of one of them as "undefined", "null" or its value's.
 func (e *emitter) toString(a ir.Expr) string {
 	v := e.expr(a)
-	switch t := a.ExprType(); t {
-	case ir.String, ir.Base64:
-		return v
-	case ir.Number:
-		return fmt.Sprintf("%s.NumberToString(%s)", rtPkg, v)
-	case ir.Float32:
-		return fmt.Sprintf("%s.NumberToString(float64(%s))", rtPkg, v)
-	case ir.Boolean:
-		return fmt.Sprintf("%s.BoolToString(%s)", rtPkg, v)
-	case ir.Int32, ir.Int64:
-		return fmt.Sprintf("%s.IntToString(int64(%s))", rtPkg, v)
-	case ir.Uint32, ir.Uint64:
-		return fmt.Sprintf("%s.UintToString(uint64(%s))", rtPkg, v)
-	default:
+	t := a.ExprType()
+	if t.Kind == ir.KindMaybe && t.Elem != nil {
+		return e.maybeToString(v, t, a.ExprSpan())
+	}
+	s, ok := primitiveToString(t, v)
+	if !ok {
 		return e.cannot(a.ExprSpan(), "the backend cannot convert a "+t.String()+" to a string yet")
 	}
+	return s
+}
+
+// primitiveToString is ToString of v, a primitive of type t. ok is false for
+// a type that isn't one.
+func primitiveToString(t ir.Type, v string) (string, bool) {
+	switch t {
+	case ir.String, ir.Base64:
+		return v, true
+	case ir.Number:
+		return fmt.Sprintf("%s.NumberToString(%s)", rtPkg, v), true
+	case ir.Float32:
+		return fmt.Sprintf("%s.NumberToString(float64(%s))", rtPkg, v), true
+	case ir.Boolean:
+		return fmt.Sprintf("%s.BoolToString(%s)", rtPkg, v), true
+	case ir.Int32, ir.Int64:
+		return fmt.Sprintf("%s.IntToString(int64(%s))", rtPkg, v), true
+	case ir.Uint32, ir.Uint64:
+		return fmt.Sprintf("%s.UintToString(uint64(%s))", rtPkg, v), true
+	}
+	return "", false
 }
 
 // concat joins a template's parts through the runtime, which joins a
