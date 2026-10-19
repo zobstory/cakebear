@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"math"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -230,9 +229,7 @@ func TestUnwrapOfAnEmptyPanics(t *testing.T) {
 //	console.log(`${i} ${u} ${f} ${big} ${e} ${none}`);
 //
 // Node ran it with i32 = x => x | 0, u32 = x => x >>> 0, f32 = Math.fround,
-// and i64 and base64 the identity. ir.checkBuiltin takes only a primitive
-// for ToString until lowering's half of M5 step 3 widens it, so this test
-// builds the program without Validate.
+// and i64 and base64 the identity.
 func TestMaybeToStringMatchesNode(t *testing.T) {
 	t.Parallel()
 
@@ -270,11 +267,12 @@ func TestMaybeToStringMatchesNode(t *testing.T) {
 		logNum(toStr(use("n1"))),
 		tmpl(use("i"), sp, use("u"), sp, use("f"), sp, use("big"), sp, use("e"), sp, use("none")),
 	)
-	src, got := buildUnvalidated(t, ir.ProgramOf(&ir.Module{Name: "t", Main: main}))
+	p := ir.ProgramOf(&ir.Module{Name: "t", Main: main})
 	want := "1.5 undefined null\n[hi] [null]\nfalse undefined\n1.5\n-3 4294967295 0.10000000149011612 9007199254740992 aGk= undefined\n"
-	if got != want {
+	if got := buildAndRun(t, p); got != want {
 		t.Errorf("the program printed %q, want %q", got, want)
 	}
+	src := Emit(p)
 	for _, want := range []string{
 		"cakebearrt.MaybeToString(n1, cakebearrt.NumberToString)",
 		"cakebearrt.MaybeToString(s1, func(v string) string { return v })",
@@ -286,34 +284,6 @@ func TestMaybeToStringMatchesNode(t *testing.T) {
 			t.Errorf("emitted source missing %q:\n%s", want, src)
 		}
 	}
-}
-
-// buildUnvalidated builds p as Build does, but without Program.Validate,
-// and returns its source and what it prints.
-func buildUnvalidated(t *testing.T, p *ir.Program) (string, string) {
-	t.Helper()
-	var e emitter
-	body := e.program(p)
-	if len(e.unsupported) > 0 {
-		t.Fatalf("unsupported: %+v\n%s", e.unsupported, body)
-	}
-	src := "package main\n\nimport " + rtPkg + " \"" + genModule + "/" + rtDir + "\"\n\n" + body
-	dir := t.TempDir()
-	if err := writeModule(dir, src); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(dir, "prog")
-	build := exec.Command("go", "build", "-trimpath", "-o", out, ".")
-	build.Dir = dir
-	build.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GO111MODULE=on")
-	if combined, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s\n%s", err, combined, src)
-	}
-	got, err := exec.Command(out).Output()
-	if err != nil {
-		t.Fatalf("running the binary: %v", err)
-	}
-	return src, string(got)
 }
 
 // TestMaybesInAggregatesMatchNode: maybes inside objects and arrays print
@@ -367,6 +337,43 @@ func TestMaybesInAggregatesMatchNode(t *testing.T) {
 		"{ a: 1, b: null, c: undefined } undefined\n{ p: { a: 1, b: null, c: undefined } }\n" +
 		"{\"a\":1,\"b\":null}\n[1,null,3]\n{\n  \"p\": {\n    \"a\": 1,\n    \"b\": null\n  }\n}\n{\"b\":\"s\",\"c\":false}\n"
 	if got := buildAndRun(t, withShapes(m, &shapes)); got != want {
+		t.Errorf("the program printed %q, want %q", got, want)
+	}
+}
+
+// TestMaybeArraySearchMatchesNode: includes and indexOf over maybes, given
+// a wrapped value or an empty one, and push of both. Go's == on two Maybes
+// is ===, so indexOf misses NaN, and includes finds it, as SameValueZero
+// does: the runtime's v != v holds for a Maybe holding NaN. An undefined or
+// a null holds 0, and is still not 0.
+//
+//	const xs: (number | null | undefined)[] = [1, undefined, NaN, null];
+//	console.log(xs.includes(1), xs.includes(undefined), xs.includes(NaN), xs.includes(null), xs.includes(0), xs.includes(2));
+//	console.log(xs.indexOf(1), xs.indexOf(undefined), xs.indexOf(NaN), xs.indexOf(null), xs.indexOf(0));
+//	xs.push(5, undefined);
+//	console.log(xs, xs.length);
+func TestMaybeArraySearchMatchesNode(t *testing.T) {
+	t.Parallel()
+
+	numM := ir.MaybeOf(ir.Number)
+	xs := stable("xs", ir.ArrayOf(numM))
+	nan := some(binary(ir.OpDiv, num(0), num(0), ir.Number))
+	search := func(m ir.ArrayMethod, t ir.Type, args ...ir.Expr) []ir.Expr {
+		found := make([]ir.Expr, len(args))
+		for i, a := range args {
+			found[i] = method(m, xs, t, a)
+		}
+		return found
+	}
+	m := &ir.Module{Name: "t", Main: []ir.Stmt{
+		decl("xs", xs.Typ, arrayOf(numM, some(num(1)), undef(ir.Number), nan, null(ir.Number))),
+		logAll(search(ir.ArrayIncludes, ir.Boolean, some(num(1)), undef(ir.Number), nan, null(ir.Number), some(num(0)), some(num(2)))...),
+		logAll(search(ir.ArrayIndexOf, ir.Number, some(num(1)), undef(ir.Number), nan, null(ir.Number), some(num(0)))...),
+		do(method(ir.ArrayPush, xs, ir.Number, some(num(5)), undef(ir.Number))),
+		logAll(xs, method(ir.ArrayLength, xs, ir.Number)),
+	}}
+	want := "true true true true false false\n0 1 -1 3 -1\n[ 1, undefined, NaN, null, 5, undefined ] 6\n"
+	if got := buildAndRun(t, ir.ProgramOf(m)); got != want {
 		t.Errorf("the program printed %q, want %q", got, want)
 	}
 }
