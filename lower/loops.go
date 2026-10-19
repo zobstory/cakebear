@@ -14,6 +14,9 @@ import (
 // Assignment and its relatives are expressions in TypeScript and statements
 // in Go, so they are recognised here rather than in expr().
 func (l *lowerer) exprStatement(stmt, expr *ast.Node) []ir.Stmt {
+	if out, ok := l.coalesceAssign(stmt, expr); ok { // cond.go
+		return out
+	}
 	if out, ok := l.update(stmt, expr); ok {
 		return out
 	}

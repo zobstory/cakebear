@@ -22,6 +22,9 @@ func (l *lowerer) expr(n *ast.Node) ir.Expr {
 
 // exprOf lowers n, for expr, which then holds it to its slot.
 func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
+	if v, ok := l.condExpr(n); ok { // cond.go
+		return v
+	}
 	switch n.Kind {
 	case ast.KindNumericLiteral:
 		v, err := strconv.ParseFloat(n.Text(), 64)

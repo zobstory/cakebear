@@ -10,6 +10,7 @@ import (
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/scanner"
 	"github.com/zobstory/cakebear/ir"
+	"github.com/zobstory/cakebear/types"
 )
 
 // Arithmetic on cakebear's numeric types: i32, i64, u32, u64 and f32.
@@ -174,4 +175,24 @@ func literalText(n *ast.Node) (string, bool) {
 		return "", false
 	}
 	return sign + scanner.GetSourceTextOfNodeFromSourceFile(ast.GetSourceFileOfNode(n), n, false), true
+}
+
+// extensionType maps a brand name onto its IR type.
+func extensionType(brand string) ir.Type {
+	switch brand {
+	case types.I32:
+		return ir.Int32
+	case types.I64:
+		return ir.Int64
+	case types.U32:
+		return ir.Uint32
+	case types.U64:
+		return ir.Uint64
+	case types.F32:
+		return ir.Float32
+	case types.Base64:
+		return ir.Base64
+	default:
+		return ir.Invalid
+	}
 }

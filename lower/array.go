@@ -86,8 +86,8 @@ func (l *lowerer) elementGet(n *ast.Node) ir.Expr {
 // element lowers an element access's array and index, refusing one that
 // isn't an array indexed by a number.
 func (l *lowerer) element(n *ast.Node, access *ast.ElementAccessExpression) (arr, index ir.Expr, ok bool) {
-	if access.QuestionDotToken != nil {
-		l.failf(n, "optional chaining (?.) is not supported yet")
+	if access.QuestionDotToken != nil && l.held[access.Expression] == nil {
+		l.failf(n, "optional chaining reached an element read without its receiver held, a bug in lowering")
 		return nil, nil, false
 	}
 	switch t := l.typeOf(access.Expression); {
