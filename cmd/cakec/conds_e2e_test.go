@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"os/exec"
+	"strings"
+	"testing"
+)
 
 // condsProgram covers M5 step 4, the conditional expressions:
 //   - `?:`, nested, in a template, and with a call in one branch, which
@@ -111,4 +116,39 @@ async 5 1
 func TestCondsMatchNode(t *testing.T) {
 	t.Parallel()
 	matchesNode(t, buildProgram(t, "conds", condsProgram), nodeConds, 20)
+}
+
+// TestAssertionFailuresSayWhatNodeDoes: a `!` on a value that is empty stops
+// the program, exit 2 with nothing printed, saying what Node does instead.
+// Node 24.18 printed NaN for the first, and threw this TypeError, exit 1, for
+// the second.
+func TestAssertionFailuresSayWhatNodeDoes(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct{ name, src, want string }{
+		{"used as a value", `function get(): number | undefined {
+  return undefined;
+}
+const m: number | undefined = get();
+const n: number = m!;
+console.log(n + 1);
+`, "cakebear: m is undefined, though a ! asserted it isn't (Node carries on with undefined)"},
+		{"read from", `interface P { x: number }
+function get(): P | null {
+  return null;
+}
+const p: P | null = get();
+console.log(p!.x);
+`, "cakebear: p is null, though a ! asserted it isn't (Node throws TypeError: Cannot read properties of null (reading 'x'))"},
+	} {
+		bin := buildProgram(t, "asserted", tt.src)
+		var stdout, stderr strings.Builder
+		cmd := exec.Command(bin)
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err := cmd.Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 2 || stdout.Len() > 0 || !strings.Contains(stderr.String(), tt.want) {
+			t.Errorf("%s: %v, stdout %q, stderr\n%s\nwant exit 2, nothing printed, and %q", tt.name, err, stdout.String(), stderr.String(), tt.want)
+		}
+	}
 }
