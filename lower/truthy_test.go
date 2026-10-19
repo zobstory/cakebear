@@ -111,6 +111,8 @@ const both: boolean = flag || n > 1;
 	}
 	if kept, ok := and.Else.(*ir.Cond); !ok || !isEmptyTest(kept.Test) {
 		t.Errorf("u && u.name keeps an empty u as %#v, want its null or undefined", and.Else)
+	} else if null, ok := kept.Then.(*ir.Empty); !ok || !null.Null {
+		t.Errorf("u && u.name gives a null u as %#v, want null", kept.Then)
 	}
 	if b, ok := initOf(t, m, 9).(*ir.Binary); !ok || b.Op != ir.OpOr {
 		t.Errorf("flag || n > 1 is %#v, want a boolean ||", initOf(t, m, 9))
@@ -137,8 +139,12 @@ func TestBooleanCallback(t *testing.T) {
 		if !ok || len(lit.Params) != 3 || lit.Result != ir.Boolean {
 			t.Fatalf("%s's callback is %#v, want a (value, index, array) => boolean", op.Method, op.Args[0])
 		}
-		if ret, ok := lit.Body[0].(*ir.Return); !ok || !isTruthy(ret.Value) {
-			t.Errorf("%s's Boolean returns %#v, want the value's truthiness", op.Method, lit.Body)
+		ret, ok := lit.Body[0].(*ir.Return)
+		if !ok || !isTruthy(ret.Value) {
+			t.Fatalf("%s's Boolean returns %#v, want the value's truthiness", op.Method, lit.Body)
+		}
+		if id, ok := ret.Value.(*ir.Truthy).Value.(*ir.Ident); !ok || id.Name != lit.Params[0].Name || id.Name == "" {
+			t.Errorf("%s's Boolean tests %#v, want its first parameter, %q", op.Method, ret.Value, lit.Params[0].Name)
 		}
 	}
 }
