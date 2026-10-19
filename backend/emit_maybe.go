@@ -29,7 +29,8 @@ func goMaybeType(t ir.Type) (string, bool) {
 	return rtPkg + ".Maybe[" + elem + "]", ok
 }
 
-// maybe emits the nodes that move a value between its states, all but Cond.
+// maybe emits the nodes that move a value between its states. Cond and Let
+// are cond's (emit_cond.go).
 func (e *emitter) maybe(x ir.Expr) string {
 	e.usesRuntime = true
 	switch x := x.(type) {
@@ -38,7 +39,7 @@ func (e *emitter) maybe(x ir.Expr) string {
 		// Maybe is of the slot's T whatever Go would infer from the value.
 		return fmt.Sprintf("%s.Some[%s](%s)", rtPkg, e.typ(*x.Typ.Elem, x.Span), e.expr(x.Value))
 	case *ir.Unwrap:
-		return fmt.Sprintf("%s.Must(%s)", e.operand(x.Value), strconv.Quote(unwrapped(x.Value)))
+		return e.unwrap(x, access{})
 	case *ir.Empty:
 		if x.Null {
 			return fmt.Sprintf("%s.NullOf[%s]()", rtPkg, e.typ(*x.Typ.Elem, x.Span))
@@ -68,11 +69,71 @@ func (e *emitter) operand(x ir.Expr) string {
 	return e.expr(x)
 }
 
+// An access is what a program does to a value beyond using it: read a
+// property of it, write one, or iterate it. Node does each only to a value
+// that is neither null nor undefined, and throws for one that is, where a
+// value only used carries on. So an Unwrap that is an access's receiver
+// fails saying Node throws, and how (runtime/maybe.go). The zero access is
+// a use.
+type access struct {
+	kind string // the suffix of the runtime's method: Read, Write or Iterate
+	key  string // the property, as Node's TypeError names it
+}
+
+var iterating = access{kind: "Iterate"}
+
+// reading and writing are accesses of the property named key.
+func reading(key string) access { return access{"Read", quoteKey(key)} }
+func writing(key string) access { return access{"Write", quoteKey(key)} }
+
+// quoteKey quotes a property as Node's TypeError does: 'x', 'a'b'.
+func quoteKey(key string) string { return "'" + key + "'" }
+
+// elementAccess is the access of xs[i]. Node's TypeError names i's value,
+// which Node evaluates before it throws, and cakebear's check fails before
+// i is evaluated, so only a number the source writes is named, and any
+// other index is "an index".
+func elementAccess(index ir.Expr, write bool) access {
+	key := "an index"
+	if n, ok := index.(*ir.NumberLit); ok {
+		key = quoteKey(indexName(n))
+	}
+	if write {
+		return access{"Write", key}
+	}
+	return access{"Read", key}
+}
+
+// receiver emits x as the receiver of a, as itself, or, when it is an
+// Unwrap, checked for a.
+func (e *emitter) receiver(x ir.Expr, a access) string {
+	if u, ok := x.(*ir.Unwrap); ok {
+		return e.unwrap(u, a)
+	}
+	return e.expr(x)
+}
+
+// unwrap emits x for the access a makes of it: Must where the checker
+// narrowed it and Assert where the program's own `!` did, each followed by
+// a's kind, so that an empty one fails saying what Node would have done
+// (runtime/maybe.go): `p.MustRead("p", "'x'").x`.
+func (e *emitter) unwrap(x *ir.Unwrap, a access) string {
+	method := "Must"
+	if x.Asserted {
+		method = "Assert"
+	}
+	args := strconv.Quote(e.unwrapped(x.Value))
+	if a.key != "" {
+		args += ", " + strconv.Quote(a.key)
+	}
+	return fmt.Sprintf("%s.%s%s(%s)", e.operand(x.Value), method, a.kind, args)
+}
+
 // unwrapped names the value an Unwrap reads, as the source writes it, for
 // Must's message: `user`, `user.name`, `xs[i]`, `find(…)`. Anything else is
 // named by where it is.
-func unwrapped(x ir.Expr) string {
-	if name, ok := sourceName(x); ok {
+func (e *emitter) unwrapped(x ir.Expr) string {
+	if name, ok := e.sourceName(x); ok {
 		return name
 	}
 	return "the value at " + x.ExprSpan().String()
@@ -80,23 +141,26 @@ func unwrapped(x ir.Expr) string {
 
 // sourceName is x as the source writes it, when x is a name, a path of
 // fields and elements from one, or a call: a binding by its TypeScript name,
-// not its Go one.
-func sourceName(x ir.Expr) (string, bool) {
+// not its Go one, and a Let's by the name of the value it holds.
+func (e *emitter) sourceName(x ir.Expr) (string, bool) {
 	switch x := x.(type) {
 	case *ir.Ident:
+		if h, ok := e.held[x.Name]; ok && x.Module == "" {
+			return h.name, h.named
+		}
 		return x.Name, true
 	case *ir.Unwrap:
-		return sourceName(x.Value)
+		return e.sourceName(x.Value)
 	case *ir.FieldGet:
-		object, ok := sourceName(x.Object)
+		object, ok := e.sourceName(x.Object)
 		return object + propertyAccess(x.Object.ExprType().Shape.Fields[x.Field].Name), ok
 	case *ir.IndexGet:
-		array, ok := sourceName(x.Array)
+		array, ok := e.sourceName(x.Array)
 		return array + "[" + indexName(x.Index) + "]", ok
 	case *ir.Call:
 		return x.Callee + argsName(x.Args), true
 	case *ir.ArrayOp:
-		array, ok := sourceName(x.Array)
+		array, ok := e.sourceName(x.Array)
 		return array + "." + x.Method.String() + argsName(x.Args), ok
 	}
 	return "", false

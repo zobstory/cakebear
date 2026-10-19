@@ -59,6 +59,9 @@ type emitter struct {
 	shapeUse    map[*ir.Shape]ir.Span
 	layouts     map[string]string
 	layoutDecls []string
+	// held holds what the source calls the value of each Let in scope, by
+	// the Let's name (emit_cond.go).
+	held map[string]heldName
 }
 
 // Emit renders a program as the contents of a Go main package. IR the backend
@@ -218,7 +221,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
-		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise, *ir.ArrayOp:
+		case *ir.Call, *ir.ConsoleLog, *ir.HostCall, *ir.Await, *ir.NewPromise, *ir.ArrayOp, *ir.Cond, *ir.Let:
 			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.full(s.Expr))
 		default:
 			// Go accepts only calls as expression statements, TypeScript any
@@ -326,6 +329,9 @@ func (e *emitter) expr(x ir.Expr) string {
 
 	case *ir.Wrap, *ir.Unwrap, *ir.Empty, *ir.IsEmpty:
 		return e.maybe(x)
+
+	case *ir.Cond, *ir.Let:
+		return e.cond(x)
 
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})

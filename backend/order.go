@@ -32,11 +32,14 @@ const readFunc = "ts_read"
 
 // full emits x, the whole expression of a statement, ordering its reads if
 // they need it.
-func (e *emitter) full(x ir.Expr) string {
+func (e *emitter) full(x ir.Expr) string { return e.fullAs(x, access{}) }
+
+// fullAs is full for x as the receiver of an access (emit_maybe.go).
+func (e *emitter) fullAs(x ir.Expr, a access) string {
 	saved := e.order
 	e.order = innerCall(x)
 	defer func() { e.order = saved }()
-	return e.expr(x)
+	return e.receiver(x, a)
 }
 
 // read emits a read of a binding, through readFunc when the expression's
@@ -63,6 +66,14 @@ func innerCall(x ir.Expr) bool {
 
 // isCall reports whether evaluating x runs code that could change a binding:
 // a call of any kind, including the runtime's.
+//
+// A Cond and a Let are not, though each is a call of a function literal in
+// Go (emit_cond.go). They run only what is under them, which innerCall looks
+// at through their operands. Go orders the literal among the calls around
+// it, and a plain read beside it before or after, unspecified, which only
+// matters if the literal can change what the read reads: with no call
+// under it, it can't, and with one, innerCall has found that call, and the
+// read is ordered.
 func isCall(x ir.Expr) bool {
 	switch x.(type) {
 	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog, *ir.ArrayOp, *ir.JSONStringify, *ir.BuiltinCall:
@@ -106,6 +117,8 @@ func operands(x ir.Expr) []ir.Expr {
 	case *ir.Cond:
 		// Only one branch runs, but a call in either may, so both count.
 		return []ir.Expr{x.Test, x.Then, x.Else}
+	case *ir.Let:
+		return []ir.Expr{x.Value, x.Body}
 	case *ir.JSONStringify:
 		if x.Space == nil {
 			return []ir.Expr{x.Value}

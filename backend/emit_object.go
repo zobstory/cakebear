@@ -253,7 +253,7 @@ func arrayIndex(key string) (uint64, bool) {
 // the whole path, `ts_read(p.a.b)`, is read in call order.
 func (e *emitter) fieldGet(x *ir.FieldGet) string {
 	if !e.order {
-		return e.object(x.Object) + "." + fieldOf(x.Object, x.Field)
+		return e.object(x.Object, reading(keyOf(x.Object, x.Field))) + "." + fieldOf(x.Object, x.Field)
 	}
 	e.usesRead = true
 	return readFunc + "(" + e.path(x) + ")"
@@ -262,14 +262,17 @@ func (e *emitter) fieldGet(x *ir.FieldGet) string {
 // path emits a field read inside readFunc's argument: the binding and the
 // fields leading to it are read as that argument, so none is wrapped again.
 // Anything else the path starts from is ordered as usual.
-func (e *emitter) path(x ir.Expr) string {
-	switch x := x.(type) {
+func (e *emitter) path(x *ir.FieldGet) string {
+	var object string
+	switch o := x.Object.(type) {
 	case *ir.Ident:
-		return e.top(x.Module, x.Name)
+		object = e.top(o.Module, o.Name)
 	case *ir.FieldGet:
-		return e.path(x.Object) + "." + fieldOf(x.Object, x.Field)
+		object = e.path(o)
+	default:
+		object = e.object(o, reading(keyOf(o, x.Field)))
 	}
-	return e.object(x)
+	return object + "." + fieldOf(x.Object, x.Field)
 }
 
 // fieldSet emits obj.f = v. JavaScript evaluates obj before v, and Go orders
@@ -286,20 +289,20 @@ func (e *emitter) fieldSet(s *ir.FieldSet) string {
 	saved := e.order
 	e.order = isCall(s.Object) || innerCall(s.Object) || isCall(s.Value) || innerCall(s.Value)
 	defer func() { e.order = saved }()
-	target := e.object(s.Object) + "." + fieldOf(s.Object, s.Field)
+	target := e.object(s.Object, writing(keyOf(s.Object, s.Field))) + "." + fieldOf(s.Object, s.Field)
 	return target + " = " + e.expr(s.Value)
 }
 
-// object emits an expression whose field is selected. A literal is
-// parenthesised: `&T{…}.f` would take the address of the field.
-func (e *emitter) object(x ir.Expr) string {
+// object emits an expression whose field is selected, the receiver of a. A
+// literal is parenthesised: `&T{…}.f` would take the address of the field.
+func (e *emitter) object(x ir.Expr, a access) string {
 	if _, ok := x.(*ir.ObjectLit); ok {
 		return "(" + e.expr(x) + ")"
 	}
-	return e.expr(x)
+	return e.receiver(x, a)
 }
 
-// fieldOf names field i of object's shape, which Validate has checked.
-func fieldOf(object ir.Expr, i int) string {
-	return fieldName(object.ExprType().Shape.Fields[i].Name)
-}
+// fieldOf names field i of object's shape, which Validate has checked, and
+// keyOf is its property's key.
+func fieldOf(object ir.Expr, i int) string { return fieldName(keyOf(object, i)) }
+func keyOf(object ir.Expr, i int) string   { return object.ExprType().Shape.Fields[i].Name }

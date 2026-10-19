@@ -127,7 +127,6 @@ func TestObjectRefusals(t *testing.T) {
 		{"a wider object returned", "interface P { x: number }\ninterface P3 { x: number; z: number }\nfunction f(a: P3): P {\n  return a;\n}\n", "a P3 can't be used as a P"},
 		{"a wider object in a field", "interface P { x: number }\ninterface P3 { x: number; z: number }\ninterface Box { p: P }\nconst a: P3 = { x: 1, z: 2 };\nconst b: Box = { p: a };\n", "a P3 can't be used as a P"},
 		{"a union", "const u: { a: number } | { b: string } = { a: 1 };\n", "unions of object types are not supported yet"},
-		{"optional chaining", "const o: { x: number } = { x: 1 };\nconst y: number = o?.x;\n", "optional chaining (?.) is not supported yet"},
 		{"a tuple property", "interface Pair { p: [number, string] }\nfunction size(b: Pair): number {\n  return 1;\n}\n", "property `p`: tuples are not supported yet"},
 		{"logging an object holding a function", "const o: { f: () => number } = { f: (): number => 1 };\nconsole.log(o);\n", "console.log cannot print a { f: () => number } yet: it holds a function"},
 		{"=== between two shapes", "const a: { x: number } = { x: 1 };\nconst b: { y: number } = { y: 1 };\nconst t: boolean = (a as unknown) === (b as unknown);\n", "not supported yet"},

@@ -301,8 +301,7 @@ Step 1, the IR, is done, with nothing lowered to it yet (`ir/maybe.go`):
   maybe's slot), `IsEmpty` (`=== undefined`, `=== null`, `== null`, D12), and
   `Cond` (`?:`, which `??` and `?.` are built from, D5).
 - `Program.Validate` holds each to its types. The backend refused all of it
-  by name until step 3, and refuses `Cond` until step 4
-  (`TestMaybesAreRefusedForNow`).
+  by name until step 3, and `Cond` until step 4.
 
 Step 2, the runtime, is done, again with nothing lowered to it yet:
 - `Maybe[T]` (`backend/runtime/maybe.go`) is a value and a state, zero for
@@ -354,6 +353,28 @@ Step 3, maybes lowered and emitted, is done (`lower/maybe.go`,
 - `TestMaybesMatchNode` holds a program of them to Node, 20 runs, beside the
   emitter's own tests against Node: states, equality, conversions, aggregates
   and array search.
+
+Step 4, the conditional expressions, is done (`lower/cond.go`,
+`backend/emit_cond.go`; see "Since M5 step 4" in the language subset):
+- `c ? a : b` is an `ir.Cond`, emitted as a function literal called in place,
+  since Go has no `?:`, so only the chosen branch runs. A Cond in another's
+  else joins the same literal. The condition must be a boolean.
+- `x ?? d` is a Cond on x being null or undefined. x is read again when it is
+  a binding or a field of one, and held in an `ir.Let` otherwise, a local in
+  the same literal, so a call runs once.
+- `a?.b.c` is undefined when a is empty, and otherwise the chain read from a's
+  value. The receiver is held for the chain's links, which then lower as
+  plain ones. The checker types each link inside a chain as one that may be
+  undefined, which is the chain's type, so lowering drops it there.
+- `x!` is a checked unwrap, asserted. Every failed unwrap now says what Node
+  does: carries on with undefined for a value, or throws the TypeError it
+  throws reading, writing or iterating one (see the accepted differences).
+- `x ??= d` is an if, on a name, a field of one or an element.
+- A Cond or Let doesn't count as a call to the order pass: it runs only what
+  is under it, and a call there already orders the reads beside it.
+- `TestCondsMatchNode` holds a program of them to Node, 20 runs, beside the
+  emitter's tests against Node for each position, `??`'s single evaluation,
+  chains, awaits in a branch, evaluation order and each failure's message.
 
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
@@ -791,7 +812,7 @@ another, even where TypeScript allows an object with more fields. Refused by
 name: optional properties, index signatures and `Record`, unions (but for
 M5's maybes) and intersections, classes, methods and accessors, computed, numeric and
 integer-like keys, `__proto__`, spread,
-optional chaining, and `console.log` of a value holding a function (a Go
+and `console.log` of a value holding a function (a Go
 func has no name to print).
 
 Since M4 step 6 (`lower/array.go`), arrays:
@@ -921,9 +942,18 @@ may be either, a **maybe** (`cakebearrt.Maybe[T]`):
 - `push`, `includes`, `indexOf` and the callback methods over arrays of
   them.
 
-Refused by name: other unions, a type that is only null or undefined, `?.`,
-`??`, `!` and `?:` (step 4), optional properties (step 5), `join` and `sort`
-over maybes, a `filter` that narrows its elements' type, calling a function
+Since M5 step 4 (`lower/cond.go`), the conditional expressions:
+- `c ? a : b`, with a boolean condition, its branches in any slot;
+- `x ?? d`, chained too, d evaluated only when x is null or undefined;
+- optional chains, `a?.b.c`, through fields, elements, `length` and the
+  string and array methods, and `a?.b?.c`;
+- `x!`;
+- `x ??= d` as a statement, on a name, a field of one or an element of one.
+
+Refused by name: other unions, a type that is only null or undefined, an
+optional call `f?.()` (calling a function that may be empty), `??=` as a
+value, `||=` and `&&=` (truthiness, step 7), optional properties (step 5),
+`join` and `sort` over maybes, a `filter` that narrows its elements' type, calling a function
 that may be null or undefined, `===` on maybes of functions,
 `JSON.stringify` of a value that may be undefined or with a space that may
 be, and a request handler reading a const maybe of a function.
@@ -936,8 +966,7 @@ as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
 The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
-Not yet: optional properties, `?.`, `??`, `!` and `?:` (M5's next steps),
-truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+Not yet: optional properties (M5 step 5), truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
@@ -1248,6 +1277,7 @@ not listed here that behaves differently is a bug.
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
+| `x!` on a value that is null or undefined (M5 step 4) | carries on with it, or throws reading, writing or iterating it | a panic saying which: `cakebear: p is null, though a ! asserted it isn't (Node throws TypeError: Cannot read properties of null (reading 'x'))`, exit 2. The same wording is on a narrowed value read from |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,

@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,28 +25,6 @@ func isEmpty(v ir.Expr, u, n bool) *ir.IsEmpty {
 func boolLit(b bool) ir.Expr { return &ir.BoolLit{Value: b, Span: span} }
 
 func assign(name string, v ir.Expr) ir.Stmt { return &ir.Assign{Name: name, Value: v, Span: span} }
-
-// TestMaybesAreRefusedForNow: Cond, which `?:`, `??` and `?.` are made of,
-// is in the IR (M5 step 1) before the backend can emit it (step 4), so a
-// program using it is refused rather than built into something that quietly
-// does less, or crashing the order pass, which panics on an expression it
-// doesn't know. The nodes around it emit.
-func TestMaybesAreRefusedForNow(t *testing.T) {
-	t.Parallel()
-
-	maybe := ir.MaybeOf(ir.Number)
-	v := &ir.Ident{Name: "v", Typ: maybe, Span: span}
-	at := ir.Span{File: "t.ts", Line: 2, Col: 13}
-	m := &ir.Module{Name: "t", Main: []ir.Stmt{
-		&ir.VarDecl{Name: "v", Type: maybe, Init: &ir.Empty{Typ: maybe, Span: span}, Mutable: true, Span: span},
-		logNum(&ir.Cond{Test: &ir.IsEmpty{Value: v, Undefined: true, Span: span}, Then: num(0), Else: &ir.Unwrap{Value: v, Typ: ir.Number, Span: span}, Typ: ir.Number, Span: at}),
-	}}
-	_, err := Build(ir.ProgramOf(m), Options{Output: filepath.Join(t.TempDir(), "prog")})
-	var unsupported *UnsupportedError
-	if !errors.As(err, &unsupported) || len(unsupported.Nodes) != 1 || unsupported.Nodes[0].Span != at || !strings.Contains(unsupported.Nodes[0].What, "*ir.Cond") {
-		t.Fatalf("Build = %v, want the conditional alone reported as unsupported, at %v", err, at)
-	}
-}
 
 // TestEmitMaybe: each node as the Go a reader would check it against. An
 // undefined Empty is parenthesised where it is a method's receiver, since Go
@@ -132,7 +108,7 @@ func TestUnwrappedNames(t *testing.T) {
 		{method(ir.ArrayPop, xs, ir.MaybeOf(ir.Number)), "xs.pop()"},
 		{awaited, "the value at src/main.ts:4:9"},
 	} {
-		if got := unwrapped(tt.x); got != tt.want {
+		if got := new(emitter).unwrapped(tt.x); got != tt.want {
 			t.Errorf("unwrapped(%T) = %q, want %q", tt.x, got, tt.want)
 		}
 	}

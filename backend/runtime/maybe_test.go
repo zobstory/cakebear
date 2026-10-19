@@ -82,6 +82,47 @@ func TestMustSaysWhatWasEmpty(t *testing.T) {
 	}
 }
 
+// TestUnwrapsSayWhatNodeDoes: each unwrap of an empty Maybe says whether
+// the checker narrowed it or a ! asserted it, and what Node does with it:
+// carry on, or throw the TypeError it throws for the access, in its own
+// words, the state in place of $. One holding a value is that value,
+// whatever the access.
+func TestUnwrapsSayWhatNodeDoes(t *testing.T) {
+	t.Parallel()
+
+	const narrowed, asserted = " where TypeScript had narrowed it to a value", ", though a ! asserted it isn't"
+	for _, tt := range []struct {
+		method string
+		unwrap func(Maybe[float64]) float64
+		why    string
+		node   string
+	}{
+		{"Must", func(m Maybe[float64]) float64 { return m.Must("p") }, narrowed, "carries on with $"},
+		{"Assert", func(m Maybe[float64]) float64 { return m.Assert("p") }, asserted, "carries on with $"},
+		{"MustRead", func(m Maybe[float64]) float64 { return m.MustRead("p", "'x'") }, narrowed,
+			"throws TypeError: Cannot read properties of $ (reading 'x')"},
+		{"AssertRead", func(m Maybe[float64]) float64 { return m.AssertRead("p", "'0'") }, asserted,
+			"throws TypeError: Cannot read properties of $ (reading '0')"},
+		{"MustWrite", func(m Maybe[float64]) float64 { return m.MustWrite("p", "'x'") }, narrowed,
+			"throws TypeError: Cannot set properties of $ (setting 'x')"},
+		{"AssertWrite", func(m Maybe[float64]) float64 { return m.AssertWrite("p", "an index") }, asserted,
+			"throws TypeError: Cannot set properties of $ (setting an index)"},
+		{"MustIterate", func(m Maybe[float64]) float64 { return m.MustIterate("p") }, narrowed, "throws TypeError: p is not iterable"},
+		{"AssertIterate", func(m Maybe[float64]) float64 { return m.AssertIterate("p") }, asserted, "throws TypeError: p is not iterable"},
+	} {
+		if got := tt.unwrap(Some(3.0)); got != 3 {
+			t.Errorf("%s of 3 = %v", tt.method, got)
+		}
+		for _, empty := range []Maybe[float64]{{}, NullOf[float64]()} {
+			state := empty.emptyName()
+			want := "cakebear: p is " + state + tt.why + " (Node " + strings.ReplaceAll(tt.node, "$", state) + ")"
+			if got := panicked(func() { tt.unwrap(empty) }); got != want {
+				t.Errorf("%s of %s panicked %q, want %q", tt.method, state, got, want)
+			}
+		}
+	}
+}
+
 // TestFormatWritesAMaybeStringAsAString: at console.log's top level a string
 // is written as it is, and so is one a Maybe holds; inside a container it is
 // quoted, as any string is.

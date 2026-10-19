@@ -89,7 +89,7 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 		return "#error unhandled host operation"
 	}
 	e.usesRuntime, e.needsRun = true, true
-	return e.expr(x.Recv) + "." + method + "(" + list + ")"
+	return e.receiver(x.Recv, reading(member(x.Op.String()))) + "." + method + "(" + list + ")"
 }
 
 func (e *emitter) hostProp(x *ir.HostProp) string {
@@ -98,5 +98,9 @@ func (e *emitter) hostProp(x *ir.HostProp) string {
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.Span, What: describeUnsupported(x)})
 		return "#error unhandled host property"
 	}
-	return e.expr(x.Recv) + "." + method + "()"
+	return e.receiver(x.Recv, reading(member(x.Prop.String()))) + "." + method + "()"
 }
+
+// member is the property a host operation reads of its receiver: `end`, of
+// ServerResponse.end.
+func member(op string) string { return op[strings.LastIndex(op, ".")+1:] }

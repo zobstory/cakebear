@@ -259,8 +259,8 @@ func (l *lowerer) fieldGet(n *ast.Node) (ir.Expr, bool) {
 	if !ok {
 		return nil, false
 	}
-	if access.QuestionDotToken != nil {
-		l.failf(n, "optional chaining (?.) is not supported yet")
+	if access.QuestionDotToken != nil && l.held[access.Expression] == nil {
+		l.failf(n, "optional chaining reached a field read without its receiver held, a bug in lowering")
 		return nil, true
 	}
 	if recv == nil {

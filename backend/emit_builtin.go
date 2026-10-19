@@ -42,9 +42,21 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
-		args[i] = e.expr(a)
+		if i == 0 && isMethod(x.Fn) {
+			args[i] = e.receiver(a, reading(x.Fn.String()))
+		} else {
+			args[i] = e.expr(a)
+		}
 	}
 	return fmt.Sprintf("%s.%s(%s)", rtPkg, fn, strings.Join(args, ", "))
+}
+
+// isMethod reports whether fn is a method, whose first argument is its
+// receiver: a string's, which ir/builtin.go lists together, or toFixed.
+// String(x) and x.toString() are one builtin, ToString, whose argument is
+// taken for String's: Node carries on with an empty one, as String does.
+func isMethod(fn ir.Builtin) bool {
+	return fn >= ir.StrLength && fn <= ir.StrRepeat || fn == ir.NumToFixed
 }
 
 // toString is a primitive's ToString: a number as JavaScript prints it, an

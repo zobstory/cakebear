@@ -77,6 +77,11 @@ type lowerer struct {
 	// native holds, while a conversion's argument is lowered, the
 	// arithmetic in it that is native to the conversion's type (arith.go).
 	native map[*ast.Node]ir.Type
+	// held maps the receiver of each optional chain's `?.`, while the chain
+	// is lowered, to its tested value, and chaining marks the chain's last
+	// link, which then lowers as a plain one (cond.go).
+	held     map[*ast.Node]ir.Expr
+	chaining map[*ast.Node]bool
 }
 
 // module lowers the lowerer's file into a module of the program.
@@ -151,7 +156,10 @@ func (l *lowerer) typeOf(n *ast.Node) ir.Type {
 	if t, ok := l.resolverType(n); ok {
 		return t
 	}
-	return l.typeFromType(l.checker.GetTypeAtLocation(n))
+	if v, ok := l.held[n]; ok {
+		return v.ExprType()
+	}
+	return chainLinkType(n, l.typeFromType(l.checker.GetTypeAtLocation(n)))
 }
 
 // typeFromType maps a checked TypeScript type onto the IR's type surface.
@@ -211,26 +219,6 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 			return l.objectType(t)
 		}
 		return l.funcType(t)
-	}
-}
-
-// extensionType maps a brand name onto its IR type.
-func extensionType(brand string) ir.Type {
-	switch brand {
-	case types.I32:
-		return ir.Int32
-	case types.I64:
-		return ir.Int64
-	case types.U32:
-		return ir.Uint32
-	case types.U64:
-		return ir.Uint64
-	case types.F32:
-		return ir.Float32
-	case types.Base64:
-		return ir.Base64
-	default:
-		return ir.Invalid
 	}
 }
 
