@@ -53,6 +53,8 @@ func inspectStmt(s Stmt, visit func(node any)) {
 	case *FieldSet:
 		inspectExpr(s.Object, visit)
 		inspectExpr(s.Value, visit)
+	case *FieldDelete:
+		inspectExpr(s.Object, visit)
 	case *IndexSet:
 		inspectExpr(s.Array, visit)
 		inspectExpr(s.Index, visit)
@@ -126,6 +128,8 @@ func inspectExpr(e Expr, visit func(node any)) {
 	case *ArrayLit:
 		inspectExprs(e.Elems, visit)
 	case *FieldGet:
+		inspectExpr(e.Object, visit)
+	case *HasField:
 		inspectExpr(e.Object, visit)
 	case *IndexGet:
 		inspectExpr(e.Array, visit)
