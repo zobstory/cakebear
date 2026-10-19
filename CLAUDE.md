@@ -300,8 +300,9 @@ Step 1, the IR, is done, with nothing lowered to it yet (`ir/maybe.go`):
   checker narrowed to T, checked, D4), `Empty` (null or undefined in a
   maybe's slot), `IsEmpty` (`=== undefined`, `=== null`, `== null`, D12), and
   `Cond` (`?:`, which `??` and `?.` are built from, D5).
-- `Program.Validate` holds each to its types. The backend refuses all of it
-  by name until step 3 (`TestMaybesAreRefusedForNow`).
+- `Program.Validate` holds each to its types. The backend refused all of it
+  by name until step 3, and refuses `Cond` until step 4
+  (`TestMaybesAreRefusedForNow`).
 
 Step 2, the runtime, is done, again with nothing lowered to it yet:
 - `Maybe[T]` (`backend/runtime/maybe.go`) is a value and a state, zero for
@@ -324,6 +325,35 @@ Step 2, the runtime, is done, again with nothing lowered to it yet:
 - The inspect and JSON goldens hold 333 and 95 more outputs recorded from
   Node, with null and undefined (`{"e":"undefined"}` in the codec), in
   sections after the old ones, which are byte for byte as they were.
+
+Step 3, maybes lowered and emitted, is done (`lower/maybe.go`,
+`backend/emit_maybe.go`; see "Since M5 step 3" in the language subset):
+- A union of T with null, undefined or both is a maybe of T, and a union of
+  literals of one type is that type (D10, planned for step 6). Any other
+  union is refused by name.
+- A T, null or undefined into a maybe's slot is wrapped (D6). The slot is
+  found by its contextual type, or by the callee's parameter where the
+  checker's type for it is no maybe (resolve's `T | PromiseLike<T>`). A
+  library parameter its own declaration lets be undefined (setTimeout's
+  delay, clearTimeout's id) is left to the call's own lowering.
+- A read the checker has narrowed to the element is an `Unwrap` (D4),
+  emitted as `Must("box.n")`, which panics naming the value where the
+  narrowing was unsound (see the accepted differences).
+- `=== undefined`, `=== null`, `== null` and their negations test the state
+  (D12): `IsUndefined()`, `IsNull()`, `IsEmpty()`. A value that isn't a maybe
+  is wrapped first, so it is still evaluated, and the test is false.
+  `m === 5` compares m with 5 wrapped, which is Go's `==` on two `Maybe[T]`.
+- A function returning a maybe returns undefined from a bare `return` and
+  from its end.
+- The race rule (D11): a const maybe of a primitive is shareable, of an
+  object or array only when frozen, and of a function not yet.
+- `Program.Validate` now holds every declaration's value to its type, as it
+  holds returns. That caught a `filter` whose callback is a type predicate
+  and a `base64` into a maybe of a string, both of which would have failed
+  inside `go build`.
+- `TestMaybesMatchNode` holds a program of them to Node, 20 runs, beside the
+  emitter's own tests against Node: states, equality, conversions, aggregates
+  and array search.
 
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
@@ -758,8 +788,8 @@ Since M4 step 5 (`lower/object.go`), objects:
 
 Flows are exact (M4 plan D5): a value of one shape can't fill a slot of
 another, even where TypeScript allows an object with more fields. Refused by
-name: optional properties, index signatures and `Record`, unions and
-intersections, classes, methods and accessors, computed, numeric and
+name: optional properties, index signatures and `Record`, unions (but for
+M5's maybes) and intersections, classes, methods and accessors, computed, numeric and
 integer-like keys, `__proto__`, spread,
 optional chaining, and `console.log` of a value holding a function (a Go
 func has no name to print).
@@ -874,6 +904,30 @@ Refused by name: anything taking a RegExp, and `match`, `matchAll` and
 `Number()` of anything but a primitive; and `+` between a string and
 anything else (measured at 10 uses in wx-next: write a template literal).
 
+Since M5 step 3 (`lower/maybe.go`), null, undefined and the values that
+may be either, a **maybe** (`cakebearrt.Maybe[T]`):
+- `T | undefined`, `T | null` and `T | null | undefined` of any type the
+  subset holds, as variables, parameters, results, fields and elements, with
+  `null` and `undefined` themselves where one is wanted, and a `let` of one
+  declared with no value;
+- a union of literals of one type, such as `"get" | "post"`, which is that
+  type;
+- narrowing, of a binding or a field, wherever the checker narrows, by
+  `=== undefined`, `!== null`, `== null` and the rest;
+- `===` and `!==` between a maybe and a value or another maybe, and
+  `== null` and `!= null`, the only loose equality;
+- printing, templates, `String()` and `JSON.stringify`, objects and arrays
+  holding maybes included, as Node writes them;
+- `push`, `includes`, `indexOf` and the callback methods over arrays of
+  them.
+
+Refused by name: other unions, a type that is only null or undefined, `?.`,
+`??`, `!` and `?:` (step 4), optional properties (step 5), `join` and `sort`
+over maybes, a `filter` that narrows its elements' type, calling a function
+that may be null or undefined, `===` on maybes of functions,
+`JSON.stringify` of a value that may be undefined or with a space that may
+be, and a request handler reading a const maybe of a function.
+
 Names TypeScript allows and Go doesn't are escaped (`backend/mangle.go`):
 `$`, combining marks (an `é` written as `e` and U+0301), the joiners U+200C
 and U+200D, and letter-numbers such as `Ⅻ`. A name holding any of them
@@ -882,8 +936,8 @@ as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
 The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
-Not yet: `null`/`undefined` as values (no nullable representation), mixed-type
-`+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+Not yet: optional properties, `?.`, `??`, `!` and `?:` (M5's next steps),
+truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
@@ -1193,6 +1247,7 @@ not listed here that behaves differently is a bug.
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce` or `findIndex` (D9) | skips the indices it removed (`findIndex` reads them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
+| A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
