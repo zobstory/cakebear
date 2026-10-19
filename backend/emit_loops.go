@@ -94,6 +94,8 @@ func (e *emitter) simple(s ir.Stmt) string {
 		return e.appendStmt(s)
 	case *ir.FieldSet:
 		return e.fieldSet(s)
+	case *ir.FieldDelete:
+		return e.fieldDelete(s)
 	case *ir.ExprStmt:
 		switch s.Expr.(type) {
 		case *ir.Cond, *ir.Let: // a literal called, which may be void (emit_cond.go)

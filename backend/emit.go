@@ -59,6 +59,9 @@ type emitter struct {
 	shapeUse    map[*ir.Shape]ir.Span
 	layouts     map[string]string
 	layoutDecls []string
+	// optionals holds the setters and deleters of optional fields the
+	// program uses (emit_optional.go).
+	optionals map[optionalOp]bool
 	// held holds what the source calls the value of each Let in scope, by
 	// the Let's name (emit_cond.go).
 	held map[string]heldName
@@ -203,6 +206,9 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 	case *ir.FieldSet:
 		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.fieldSet(s))
 
+	case *ir.FieldDelete:
+		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.fieldDelete(s))
+
 	case *ir.IndexSet:
 		fmt.Fprintf(&e.buf, "%s%s\n", pad, e.indexSet(s))
 
@@ -317,6 +323,9 @@ func (e *emitter) expr(x ir.Expr) string {
 
 	case *ir.FieldGet:
 		return e.fieldGet(x)
+
+	case *ir.HasField:
+		return e.hasField(x)
 
 	case *ir.ArrayLit:
 		return e.arrayLit(x)

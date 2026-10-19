@@ -151,6 +151,8 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 
 	// The copy is remembered before any field is copied, so a field leading
 	// back to o finds it rather than starting another: a cycle stays a cycle.
+	// It starts as o, its table too, so it has the optional properties o has
+	// at the time: tables are never changed, only replaced.
 	fmt.Fprintf(b, "func (o *%s) CloneObject(c *%s.Cloner) %s.Object {\n", name, rtPkg, rtPkg)
 	fmt.Fprintf(b, "\tcopied := new(%s)\n\tc.Remember(o, copied)\n\t*copied = *o\n", name)
 	for _, f := range s.Fields {
@@ -159,6 +161,7 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 		}
 	}
 	b.WriteString("\treturn copied\n}\n\n")
+	e.optionalMethods(b, s)
 }
 
 // commentSafe returns s as it can stand in a line comment: as it is, or
@@ -278,19 +281,18 @@ func (e *emitter) path(x *ir.FieldGet) string {
 // fieldSet emits obj.f = v. JavaScript evaluates obj before v, and Go orders
 // only the calls in an assignment, so a call in either side orders the reads
 // of both: `ts_read(p).x = g()` writes to the object p held before g ran.
+// An optional f's write is a call of its setter, which gives an object that
+// lacks f its key (emit_optional.go): a plain write would leave the key out
+// of the object's table, so the value would never print or serialise.
 func (e *emitter) fieldSet(s *ir.FieldSet) string {
-	if f := s.Object.ExprType().Shape.Fields[s.Field]; f.Optional {
-		// An object that lacks the property gains its key here, last, as
-		// Node orders it (M5 plan D3). A plain write would leave the key out
-		// of the object's table, so the value would never print or
-		// serialise. Moving the object to the table with it is step 5's.
-		return e.cannot(s.Span, "the backend cannot write the optional property "+f.Name+" yet")
-	}
 	saved := e.order
 	e.order = isCall(s.Object) || innerCall(s.Object) || isCall(s.Value) || innerCall(s.Value)
 	defer func() { e.order = saved }()
-	target := e.object(s.Object, writing(keyOf(s.Object, s.Field))) + "." + fieldOf(s.Object, s.Field)
-	return target + " = " + e.expr(s.Value)
+	object := e.object(s.Object, writing(keyOf(s.Object, s.Field)))
+	if s.Object.ExprType().Shape.Fields[s.Field].Optional {
+		return e.optionalSet(s, object)
+	}
+	return object + "." + fieldOf(s.Object, s.Field) + " = " + e.expr(s.Value)
 }
 
 // object emits an expression whose field is selected, the receiver of a. A

@@ -136,6 +136,8 @@ func operands(x ir.Expr) []ir.Expr {
 		return values
 	case *ir.FieldGet:
 		return []ir.Expr{x.Object}
+	case *ir.HasField:
+		return []ir.Expr{x.Object}
 	case *ir.ArrayLit:
 		return x.Elems
 	case *ir.IndexGet:

@@ -76,15 +76,22 @@ func (e *emitter) operand(x ir.Expr) string {
 // fails saying Node throws, and how (runtime/maybe.go). The zero access is
 // a use.
 type access struct {
-	kind string // the suffix of the runtime's method: Read, Write or Iterate
+	kind string // the suffix of the runtime's method: Read, Write, Delete, In or Iterate
 	key  string // the property, as Node's TypeError names it
 }
 
-var iterating = access{kind: "Iterate"}
+// iterating is for…of's access, and deleting delete's: Node's TypeError for
+// either names no property.
+var (
+	iterating = access{kind: "Iterate"}
+	deleting  = access{kind: "Delete"}
+)
 
-// reading and writing are accesses of the property named key.
-func reading(key string) access { return access{"Read", quoteKey(key)} }
-func writing(key string) access { return access{"Write", quoteKey(key)} }
+// reading, writing and searching are accesses of the property named key,
+// searching being `"key" in x`'s.
+func reading(key string) access   { return access{"Read", quoteKey(key)} }
+func writing(key string) access   { return access{"Write", quoteKey(key)} }
+func searching(key string) access { return access{"In", quoteKey(key)} }
 
 // quoteKey quotes a property as Node's TypeError does: 'x', 'a'b'.
 func quoteKey(key string) string { return "'" + key + "'" }
