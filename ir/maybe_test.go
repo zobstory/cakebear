@@ -63,6 +63,7 @@ func TestValidateChecksMaybes(t *testing.T) {
 	}
 	for _, e := range []Expr{
 		&Wrap{Value: n(1), Typ: maybe},
+		&Wrap{Value: &Ident{Name: "b", Typ: Base64}, Typ: MaybeOf(String)},
 		&Unwrap{Value: v, Typ: Number},
 		&Empty{Null: true, Typ: maybe},
 		&IsEmpty{Value: v, Undefined: true, Null: true},

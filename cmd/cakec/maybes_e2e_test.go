@@ -202,3 +202,30 @@ const b: string | null = await spawn((): string | null => "s");
 console.log(a, b);
 `), "undefined s\n", 20)
 }
+
+// TestMaybeConversionsMatchNode: a base64 and an i32 into maybes, of a string
+// and a number, as a value, an argument and a result, and null and undefined
+// returned as written. A shim for base64 and i32, `s => s` and `x => x | 0`,
+// ran the same file under Node 24.18 and printed the same lines.
+func TestMaybeConversionsMatchNode(t *testing.T) {
+	t.Parallel()
+	matchesNode(t, buildProgram(t, "conversions", `function show(s: string | undefined): void {
+  console.log("show", s);
+}
+const b: base64 = base64("aGk=");
+const s: string | undefined = b;
+show(b);
+const n: i32 = i32(3);
+const m: number | undefined = n;
+function back(): number | undefined {
+  return n;
+}
+function none(): string | null {
+  return null;
+}
+function u(): number | undefined {
+  return undefined;
+}
+console.log("probe", s, m, back(), none(), u());
+`), "show aGk=\nprobe aGk= 3 3 null undefined\n", 20)
+}

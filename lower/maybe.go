@@ -102,7 +102,7 @@ func intoMaybe(v ir.Expr, slot ir.Type) ir.Expr {
 	case *slot.Elem == ir.Number && vt.IsNumeric() && vt != ir.Number:
 		v = asNumber(v)
 	}
-	if v.ExprType().Equal(*slot.Elem) {
+	if vt := v.ExprType(); vt.Equal(*slot.Elem) || *slot.Elem == ir.String && vt == ir.Base64 {
 		return &ir.Wrap{Value: v, Typ: slot, Span: v.ExprSpan()}
 	}
 	return v
