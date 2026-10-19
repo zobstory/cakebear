@@ -1,6 +1,18 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"fmt"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
 
 // optionalProgram covers M5 step 5, optional properties:
 //   - literals leaving one out, setting one, and setting one to undefined,
@@ -81,4 +93,85 @@ me { name: 'me', limit: 13 }
 func TestOptionalPropertiesMatchNode(t *testing.T) {
 	t.Parallel()
 	matchesNode(t, buildProgram(t, "optional", optionalProgram), nodeOptional, 20)
+}
+
+// visitsServer writes, deletes and adds again optional properties of an
+// object each request makes, in an order its path decides.
+const visitsServer = `import { createServer } from "node:http";
+
+interface Visit { path: string; seen?: number; tag?: string }
+
+const port: number = PORT;
+const server = createServer((req, res) => {
+  const v: Visit = { path: req.url };
+  v.seen = 1;
+  delete v.seen;
+  if (v.path === "/b") {
+    v.seen = 2;
+  }
+  v.tag = "t";
+  v.seen = 3;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(v));
+});
+server.listen(port, () => {
+  console.log("listening on http://localhost:" + String(port));
+});
+`
+
+// TestOptionalWritesUnderRace (M5 plan risk 5): a layout's steps are shared
+// by every request's goroutine, so a handler giving its own object optional
+// properties is served 200 times, 8 at a time, from a race-detector build,
+// which it checks is one. Node 24.18 gave these replies.
+func TestOptionalWritesUnderRace(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("sends SIGINT, which a Windows process cannot receive")
+	}
+	port := strconv.Itoa(freePort(t))
+	path := writeTS(t, "visits.ts", strings.ReplaceAll(visitsServer, "PORT", port))
+	bin := filepath.Join(filepath.Dir(path), "visits")
+	var stderr bytes.Buffer
+	if code := runBuild(buildOptions{files: []string{path}, output: bin, race: true}, &stderr); code != exitOK {
+		t.Fatalf("build failed (%d):\n%s", code, stderr.String())
+	}
+	if info, err := exec.Command("go", "version", "-m", bin).Output(); err != nil || !strings.Contains(string(info), "-race=true") {
+		t.Fatalf("the server wasn't built with the race detector (%v):\n%s", err, info)
+	}
+	server := startServer(t, bin)
+	server.waitForLine(t, "listening on http://localhost:"+port, 30*time.Second)
+	reply := func(p string) string {
+		if p == "/b" {
+			return `{"path":"/b","seen":3,"tag":"t"}`
+		}
+		return `{"path":"` + p + `","tag":"t","seen":3}`
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	var wg sync.WaitGroup
+	errs := make(chan error, 8*25)
+	for w := range 8 {
+		wg.Go(func() {
+			for i := range 25 {
+				p := []string{"/a", "/b", "/r" + strconv.Itoa(w*25+i)}[i%3]
+				status, typ, body, err := request(client, "GET", "http://127.0.0.1:"+port+p)
+				switch {
+				case err != nil:
+					errs <- err
+				case status != 200 || typ != "application/json" || body != reply(p):
+					errs <- fmt.Errorf("GET %s = %d %q %q, want 200 application/json %q", p, status, typ, body, reply(p))
+				}
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	if code := server.interrupt(t); code != 130 {
+		t.Errorf("exit code after SIGINT = %d, want 130", code)
+	}
+	if strings.Contains(server.stderr.String(), "DATA RACE") {
+		t.Errorf("the race detector found a race:\n%s", server.stderr.String())
+	}
 }
