@@ -14,10 +14,13 @@ function count(n: number): number {
 function user(): User | undefined {
   return undefined;
 }
+function maybe(): number | undefined {
+  return 2;
+}
 const n: number = count(1);
 const s: string = "x";
 const flag: boolean = n > 0;
-const m: number | undefined = count(2);
+const m: number | undefined = maybe();
 const u: User | undefined = user();
 `
 
