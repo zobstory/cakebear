@@ -176,19 +176,10 @@ func (l *lowerer) failUpdateValue(n *ast.Node, text string) {
 	l.failf(n, "%s as a value is not supported yet; use it as a statement of its own", text)
 }
 
-// condition lowers the condition of an if, a while or a for. It must be a
-// boolean: TypeScript also accepts any value and tests its truthiness, which
-// the backend does not do yet, and which Go's own if would reject.
+// condition lowers the condition of an if, a while, a for or a ?:: a
+// boolean, or any other value's truthiness (truthy.go).
 func (l *lowerer) condition(n *ast.Node) ir.Expr {
-	cond := l.expr(n)
-	if cond == nil {
-		return nil
-	}
-	if t := cond.ExprType(); t != ir.Boolean {
-		l.failf(n, "a condition must be a boolean; testing a %s for truthiness is not supported yet", t)
-		return nil
-	}
-	return cond
+	return l.truthy(n)
 }
 
 // forStmt lowers `for (init; cond; post) body`. A let in the first clause

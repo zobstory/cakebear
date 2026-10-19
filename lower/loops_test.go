@@ -94,9 +94,6 @@ func TestLoopRefusals(t *testing.T) {
 		{"+= mixing a string and a number", "let s: string = \"a\";\ns += 1;\n", "+= with a string and a number is not supported yet"},
 		{"postfix ++ as a value", "let n: number = 0;\nconst m: number = n++;\n", "++ as a value is not supported yet; use it as a statement of its own"},
 		{"prefix -- as a value", "let n: number = 0;\nconsole.log(--n);\n", "-- as a value is not supported yet"},
-		{"a number as a condition", "const n: number = 1;\nif (n) {\n  console.log(n);\n}\n", "a condition must be a boolean; testing a number for truthiness is not supported yet"},
-		{"a string as a while condition", "const s: string = \"x\";\nwhile (s) {\n}\n", "a condition must be a boolean; testing a string"},
-		{"a number as a for condition", "for (let i: number = 3; i; i--) {\n}\n", "a condition must be a boolean; testing a number"},
 	} {
 		_, errs := lowerSource(t, tt.src)
 		if msgs := joinMsgs(errs); !strings.Contains(msgs, tt.want) {

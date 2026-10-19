@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -126,6 +127,39 @@ func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 	return ir.ObjectOf(l.p.shapes.Intern(typeName(t), fields)), ""
 }
 
+// literalField lowers p, a property of a literal of shape: `k: v` or the
+// shorthand `k`.
+func (l *lowerer) literalField(p *ast.Node, shape *ir.Shape) (ir.FieldInit, bool) {
+	switch p.Kind {
+	case ast.KindPropertyAssignment, ast.KindShorthandPropertyAssignment:
+	case ast.KindMethodDeclaration:
+		l.failf(p, "a method in an object literal is not supported yet; use a property holding an arrow function")
+		return ir.FieldInit{}, false
+	default:
+		l.failf(p, "%s in an object literal is not supported yet", describeKind(p.Kind))
+		return ir.FieldInit{}, false
+	}
+	name, ok := l.literalKey(p.Name())
+	if !ok {
+		return ir.FieldInit{}, false
+	}
+	i := shape.Index(name)
+	if i < 0 {
+		l.invalidf(p, "%s has no property %s", shape, name)
+		return ir.FieldInit{}, false
+	}
+	var value ir.Expr
+	if p.Kind == ast.KindShorthandPropertyAssignment {
+		value = l.fitField(p, l.shorthand(p), shape.Fields[i].Type)
+	} else {
+		value = l.expr(p.AsPropertyAssignment().Initializer)
+	}
+	if value == nil {
+		return ir.FieldInit{}, false
+	}
+	return ir.FieldInit{Field: i, Value: value, Span: l.span(p)}, true
+}
+
 // keyRefusal says why name can't be a property's name in M4, or returns "".
 // Node prints integer-like keys first, in numeric order, whatever order they
 // were written in (R6), which a shape's static key table can't follow; and
@@ -181,39 +215,17 @@ func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 		return nil
 	}
 	shape := t.Shape
+	props := n.AsObjectLiteralExpression().Properties.Nodes
+	if slices.ContainsFunc(props, func(p *ast.Node) bool { return p.Kind == ast.KindSpreadAssignment }) {
+		return l.spreadLit(n, t, props) // spread.go
+	}
 	out := &ir.ObjectLit{Typ: t, Span: l.span(n)}
-	for _, p := range n.AsObjectLiteralExpression().Properties.Nodes {
-		switch p.Kind {
-		case ast.KindPropertyAssignment, ast.KindShorthandPropertyAssignment:
-		case ast.KindSpreadAssignment:
-			l.failf(p, "spreading into an object literal is not supported yet")
-			return nil
-		case ast.KindMethodDeclaration:
-			l.failf(p, "a method in an object literal is not supported yet; use a property holding an arrow function")
-			return nil
-		default:
-			l.failf(p, "%s in an object literal is not supported yet", describeKind(p.Kind))
-			return nil
-		}
-		name, ok := l.literalKey(p.Name())
+	for _, p := range props {
+		f, ok := l.literalField(p, shape)
 		if !ok {
 			return nil
 		}
-		i := shape.Index(name)
-		if i < 0 {
-			l.invalidf(p, "%s has no property %s", shape, name)
-			return nil
-		}
-		var value ir.Expr
-		if p.Kind == ast.KindShorthandPropertyAssignment {
-			value = l.fitField(p, l.shorthand(p), shape.Fields[i].Type)
-		} else {
-			value = l.expr(p.AsPropertyAssignment().Initializer)
-		}
-		if value == nil {
-			return nil
-		}
-		out.Fields = append(out.Fields, ir.FieldInit{Field: i, Value: value, Span: l.span(p)})
+		out.Fields = append(out.Fields, f)
 	}
 	// TypeScript refuses a literal leaving out a required property, so this
 	// is a backstop.

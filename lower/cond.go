@@ -31,6 +31,10 @@ func (l *lowerer) condExpr(n *ast.Node) (ir.Expr, bool) {
 		case ast.KindQuestionQuestionEqualsToken:
 			l.failf(n, "??= used as a value is not supported yet; write it as a statement of its own")
 			return nil, true
+		case ast.KindAmpersandAmpersandToken, ast.KindBarBarToken:
+			if !l.booleanOperands(n.AsBinaryExpression()) {
+				return l.logical(n), true // truthy.go
+			}
 		}
 	}
 	return nil, false
@@ -197,14 +201,32 @@ func (l *lowerer) hold(x ir.Expr, body func(held func() ir.Expr) ir.Expr) ir.Exp
 }
 
 // reread is a second read of x, a copy, when reading it again right after
-// the first is the same as using the first: a binding, or a field of one, as
-// nothing runs between a Cond's test and the branch it chooses. It is nil for
-// anything else.
+// the first is the same as using the first: a literal, a binding, or a field
+// of one, as nothing runs between a Cond's test and the branch it chooses.
+// It is nil for anything else.
 func reread(x ir.Expr) ir.Expr {
 	switch x := x.(type) {
 	case *ir.Ident:
 		again := *x
 		return &again
+	case *ir.NumberLit:
+		again := *x
+		return &again
+	case *ir.StringLit:
+		again := *x
+		return &again
+	case *ir.BoolLit:
+		again := *x
+		return &again
+	case *ir.Empty:
+		again := *x
+		return &again
+	case *ir.Wrap:
+		if v := reread(x.Value); v != nil {
+			again := *x
+			again.Value = v
+			return &again
+		}
 	case *ir.FieldGet:
 		if obj := reread(x.Object); obj != nil {
 			again := *x
