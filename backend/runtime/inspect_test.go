@@ -52,6 +52,7 @@ type goldenValue struct {
 	S   *string              `json:"s"`
 	U   []uint16             `json:"u"`
 	B   *bool                `json:"b"`
+	E   *string              `json:"e"` // "undefined" or "null"
 	A   []json.RawMessage    `json:"a"`
 	O   [][2]json.RawMessage `json:"o"`
 	ID  *int                 `json:"id"`
@@ -79,6 +80,11 @@ func (d *decoder) value(raw json.RawMessage) any {
 		return wtf8(g.U)
 	case g.B != nil:
 		return *g.B
+	case g.E != nil:
+		if *g.E == "null" {
+			return NullOf[any]()
+		}
+		return Maybe[any]{}
 	case g.Ref != nil:
 		v, ok := d.ids[*g.Ref]
 		if !ok {
@@ -114,20 +120,44 @@ func (d *decoder) value(raw json.RawMessage) any {
 
 // array makes the Go array the subset would: number[] as *Array[float64],
 // which inspect aligns right, and the same for strings and booleans. An
-// array of containers holds them as any.
+// array of containers holds them as any. An array holding undefined or null
+// is of maybes (M5): (number | undefined)[] is *Array[Maybe[float64]].
 func (d *decoder) array(g goldenValue) any {
-	kind := ""
-	if len(g.A) > 0 {
-		var first goldenValue
-		_ = json.Unmarshal(g.A[0], &first)
+	kind, empties := "", false
+	for _, raw := range g.A {
+		var e goldenValue
+		_ = json.Unmarshal(raw, &e)
 		switch {
-		case first.N != nil:
+		case e.E != nil:
+			empties = true
+			continue
+		case kind != "":
+		case e.N != nil:
 			kind = "n"
-		case first.S != nil, first.U != nil:
+		case e.S != nil, e.U != nil:
 			kind = "s"
-		case first.B != nil:
+		case e.B != nil:
 			kind = "b"
+		default:
+			kind = "container"
 		}
+	}
+	if empties {
+		switch kind {
+		case "n":
+			return d.register(g.ID, maybeArray[float64](d, g.A))
+		case "s":
+			return d.register(g.ID, maybeArray[string](d, g.A))
+		case "b":
+			return d.register(g.ID, maybeArray[bool](d, g.A))
+		}
+		// Registered before its elements, which may refer back to it.
+		arr := NewArray[Maybe[any]]()
+		d.register(g.ID, arr)
+		for _, raw := range g.A {
+			arr.Push(asMaybe[any](d.value(raw)))
+		}
+		return arr
 	}
 	switch kind {
 	case "n":
@@ -155,6 +185,26 @@ func (d *decoder) array(g goldenValue) any {
 		arr.Push(d.value(raw))
 	}
 	return arr
+}
+
+func maybeArray[T any](d *decoder, raws []json.RawMessage) *Array[Maybe[T]] {
+	items := make([]Maybe[T], len(raws))
+	for i, raw := range raws {
+		items[i] = asMaybe[T](d.value(raw))
+	}
+	return NewArray(items...)
+}
+
+// asMaybe is v, a decoded value, as a Maybe of T: empty when it is, and
+// holding v otherwise.
+func asMaybe[T any](v any) Maybe[T] {
+	if m, ok := v.(Maybe[any]); ok {
+		if m.IsNull() {
+			return NullOf[T]()
+		}
+		return Maybe[T]{}
+	}
+	return Some(v.(T))
 }
 
 func (d *decoder) register(id *int, v any) any {

@@ -108,6 +108,16 @@ func (a *Array[T]) numeric() bool {
 	switch any(zero).(type) {
 	case float64, float32, int32, int64, uint32, uint64:
 		return true
+	case Maybe[float64], Maybe[float32], Maybe[int32], Maybe[int64], Maybe[uint32], Maybe[uint64]:
+		// groupArrayElements pads from the left only when every element it
+		// looks at is a number: the ones output has, at most 101, so an
+		// undefined past them changes nothing.
+		for _, item := range a.items[:min(len(a.items), maxArrayLength+1)] {
+			if state, _ := any(item).(maybe).maybeState(); state != stateValue {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

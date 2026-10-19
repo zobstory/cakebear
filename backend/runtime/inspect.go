@@ -37,7 +37,7 @@ func Format(args ...any) string {
 	if len(args) == 0 {
 		return "" // console.log(): an empty line
 	}
-	if first, ok := args[0].(string); ok && len(args) > 1 && strings.Contains(first, "%") {
+	if first, ok := unwrapForLog(args[0]).(string); ok && len(args) > 1 && strings.Contains(first, "%") {
 		panic("cakebear: Format was given a format string")
 	}
 	var b strings.Builder
@@ -45,7 +45,8 @@ func Format(args ...any) string {
 		if i > 0 {
 			b.WriteByte(' ')
 		}
-		if s, ok := arg.(string); ok {
+		// A string a Maybe holds is a string, written as it is (D8).
+		if s, ok := unwrapForLog(arg).(string); ok {
 			b.WriteString(s)
 		} else {
 			b.WriteString(Inspect(arg))
@@ -95,6 +96,15 @@ func (c *inspector) value(v any, recurse int) string {
 		return c.str(x)
 	case Object, array:
 		return c.container(x, recurse)
+	case maybe:
+		switch state, value := x.maybeState(); state {
+		case stateUndefined:
+			return "undefined"
+		case stateNull:
+			return "null"
+		default:
+			return c.value(value, recurse)
+		}
 	}
 	panic(fmt.Sprintf("cakebear: inspect has no way to print a %T", v))
 }

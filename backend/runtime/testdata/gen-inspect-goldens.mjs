@@ -17,6 +17,7 @@
 //   array      {"a":[<value>...]}, plus an optional "id":<int>
 //   object     {"o":[["key",<value>],...]}, keys in creation order, plus an
 //              optional "id":<int>
+//   undefined  {"e":"undefined"}, and null {"e":"null"} (M5)
 //   reference  {"ref":<int>}, naming a container with that id earlier in a
 //              depth-first pre-order walk of the args (an ancestor: a cycle;
 //              anything else: a shared reference)
@@ -29,8 +30,10 @@
 // share one key set), no integer-like or __proto__ keys, no lone
 // surrogates, and a first argument that is a string has no '%'.
 //
-// The index file maps each section (R1..R13, CIRC, RANDOM) to its 1-based
-// line range in the corpus.
+// The index file maps each section (R1..R13, CIRC, RANDOM, MAYBE) to its
+// 1-based line range in the corpus. MAYBE, null and undefined (M5), comes
+// after RANDOM, so that the lines before it, and RANDOM's seeded draws, stay
+// as they were.
 
 import util from 'node:util';
 import fs from 'node:fs';
@@ -58,6 +61,7 @@ const B = (b) => ({ b });
 const A = (items, id) => (id === undefined ? { a: items } : { a: items, id });
 const O = (pairs, id) => (id === undefined ? { o: pairs } : { o: pairs, id });
 const R = (id) => ({ ref: id });
+const E = (x) => ({ e: x === null ? 'null' : 'undefined' });
 
 // v describes an acyclic plain JS value. Its objects' keys must not be
 // integer-like, or Object.keys would reorder them.
@@ -66,7 +70,9 @@ function v(x) {
     case 'number': return N(x);
     case 'string': return S(x);
     case 'boolean': return B(x);
+    case 'undefined': return E(undefined);
     case 'object':
+      if (x === null) return E(null);
       if (Array.isArray(x)) return A(x.map(v));
       return O(Object.keys(x).map((k) => [k, v(x[k])]));
     default:
@@ -1107,6 +1113,63 @@ function sectionRandom(count) {
 }
 
 // ---------------------------------------------------------------------------
+// MAYBE: null and undefined (M5 plan D8), at the top level and inside arrays
+// and objects; arrays of maybes long enough to group, which pads from the
+// left only when every element it looks at is a number; and arrays of
+// objects of one shape that leave optional properties out.
+
+function sectionMAYBE() {
+  const r = 'MAYBE';
+  for (const args of [[undefined], [null], [undefined, null], [null, undefined], ['a', undefined], ['a', null, 'b'],
+    [1, undefined], [undefined, 1], [true, null], [[undefined]], [[null]], [{ a: undefined }], [{ a: null }]]) {
+    add(r, ...args);
+  }
+  const mixes = [
+    [undefined], [null], [undefined, null], [1, undefined, 3], [undefined, 1], [null, 1, 2],
+    ['a', null, 'b'], ['a', undefined], [true, undefined, false], [null, null, null], [undefined, undefined],
+  ];
+  for (const xs of mixes) add(r, xs);
+  // Grouping: longer arrays, an empty at the start, middle and end, or none.
+  const rnd = mulberry32(SEED + 1);
+  const empties = [undefined, null];
+  for (let len = 6; len <= 40; len++) {
+    for (const at of [0, Math.floor(len / 2), len - 1, -1]) {
+      const nums = Array.from({ length: len }, (_, i) => Math.floor(rnd() * (i % 3 === 0 ? 1000 : 10)) - (i % 7 === 0 ? 5 : 0));
+      const strs = Array.from({ length: len }, (_, i) => 'x'.repeat(1 + ((i * 7) % 5)));
+      if (at >= 0) {
+        nums[at] = empties[len % 2];
+        strs[at] = empties[(len + 1) % 2];
+      }
+      add(r, nums);
+      add(r, strs);
+    }
+  }
+  // Past 100 elements, padding looks at the first 101 only.
+  for (const len of [101, 102, 105]) {
+    for (const at of [0, 50, 99, 100, 101, 104]) {
+      if (at >= len) continue;
+      const nums = Array.from({ length: len }, (_, i) => i * 3);
+      nums[at] = undefined;
+      add(r, nums);
+    }
+  }
+  // Objects: present undefined and null, nested, at the depth limit, and long
+  // enough to break lines.
+  for (const o of [
+    { a: undefined }, { a: null }, { a: 1, b: undefined, c: null }, { a: undefined, b: undefined },
+    { x: { y: undefined } }, { x: { y: { z: { w: null } } } }, { a: [undefined, null], b: { c: undefined } },
+    { longPropertyName: undefined, anotherLongProperty: null, third: 'some value here', fourth: undefined, fifth: 12345 },
+    { list: [1, 2, undefined, 4, 5, 6, 7, 8, 9, 10, null, 12, 13], name: null },
+  ]) add(r, o);
+  // Arrays of one shape with optional properties left out.
+  for (const xs of [
+    [{ a: 1, b: 2 }, { a: 3 }], [{ a: 1 }, { a: 2, b: 'x' }, { a: 3, b: undefined }],
+    [{ id: 1, tag: 'tea' }, { id: 2 }, { id: 3, tag: null }, { id: 4 }, { id: 5, tag: 'chai' }, { id: 6 }, { id: 7 }],
+    [undefined, { a: 1 }, null], [[1, undefined], [null], []],
+  ]) add(r, xs);
+}
+
+// ---------------------------------------------------------------------------
 
 sectionR1();
 sectionR2();
@@ -1124,6 +1187,7 @@ sectionR13();
 sectionCIRC();
 const deliberate = entries.length;
 sectionRandom(TOTAL - deliberate);
+sectionMAYBE();
 
 const lines = [];
 const index = {};

@@ -56,6 +56,7 @@ const B = (b) => ({ b });
 const A = (items, id) => (id === undefined ? { a: items } : { a: items, id });
 const O = (pairs, id) => (id === undefined ? { o: pairs } : { o: pairs, id });
 const R = (id) => ({ ref: id });
+const E = (x) => ({ e: x === null ? 'null' : 'undefined' });
 
 // v describes an acyclic plain JS value.
 function v(x) {
@@ -63,7 +64,9 @@ function v(x) {
     case 'number': return N(x);
     case 'string': return S(x);
     case 'boolean': return B(x);
+    case 'undefined': return E(undefined);
     case 'object':
+      if (x === null) return E(null);
       if (Array.isArray(x)) return A(x.map(v));
       return O(Object.keys(x).map((k) => [k, v(x[k])]));
     default:
@@ -436,9 +439,12 @@ function sectionINSPECT() {
   const lines = fs.readFileSync(INSPECT, 'utf8').split('\n');
   if (lines.pop() !== '') throw new Error('the inspect corpus has no trailing newline');
   const random = JSON.parse(fs.readFileSync(INSPECT_INDEX, 'utf8')).sections.RANDOM;
-  if (random.last !== lines.length) throw new Error('the inspect index is not of this corpus');
+  if (random.last > lines.length) throw new Error('the inspect index is not of this corpus');
   for (const [i, text] of lines.entries()) {
     const line = i + 1;
+    // The sections after RANDOM (MAYBE) are this corpus's own MAYBE's
+    // business, and hold top-level undefined, which has no JSON.
+    if (line > random.last) break;
     if (line >= random.first && (line - random.first) % RANDOM_EVERY !== 0) continue;
     // An argument may be a ref to an earlier one, so the entry is rebuilt
     // whole, and each value described again on its own.
@@ -453,6 +459,26 @@ function sectionINSPECT() {
 }
 
 // ---------------------------------------------------------------------------
+// MAYBE: null, and undefined, which an object leaves out and an array writes
+// as null (M5 plan D8), under the gaps that change the layout. An object
+// whose every property is undefined is "{}", gap or not. Top-level
+// undefined is left out: JSON.stringify gives undefined, not a string, and
+// lowering refuses it.
+
+function sectionMAYBE() {
+  const r = 'MAYBE';
+  const spaces = [undefined, N(2), S('\t'), N(0.5), S('--')];
+  for (const x of [
+    null, [undefined], [null], [undefined, null], [1, undefined, 3], ['a', null], { a: undefined }, { a: null },
+    { a: undefined, b: 1 }, { a: 1, b: undefined }, { a: 1, b: undefined, c: null, d: 'x' }, { a: undefined, b: undefined },
+    { x: { y: undefined } }, { x: { y: undefined }, z: [undefined] }, [{ a: undefined }], [{ a: 1 }, { a: undefined }, {}],
+    { list: [undefined, null, 1], o: { p: null, q: undefined } }, [[undefined], [null, undefined]], { k: [] },
+  ]) {
+    for (const space of spaces) addD(r, v(x), space);
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 sectionSTR();
 sectionNUM();
@@ -462,6 +488,7 @@ sectionSPACE();
 sectionCIRC();
 const deliberate = entries.length;
 sectionINSPECT();
+sectionMAYBE();
 
 const lines = [];
 const index = {};

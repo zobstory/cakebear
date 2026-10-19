@@ -55,6 +55,12 @@
       "last": 10600,
       "count": 8695,
       "throws": 175
+    },
+    "MAYBE": {
+      "first": 10601,
+      "last": 10695,
+      "count": 95,
+      "throws": 0
     }
   }
 }
