@@ -376,6 +376,31 @@ Step 4, the conditional expressions, is done (`lower/cond.go`,
   emitter's tests against Node for each position, `??`'s single evaluation,
   chains, awaits in a branch, evaluation order and each failure's message.
 
+Step 5, optional properties, is done (`lower/optional.go`,
+`backend/emit_optional.go`; D3):
+- `p?: T` is an optional field of a maybe, a shape apart from
+  `p: T | undefined`, since Node prints the two differently. A literal may
+  leave it out, and listing it, undefined included, makes it present.
+- Presence is the object's key table, `ts_layout`. A write to an absent one
+  moves the object to the table with the key appended, last, as Node orders
+  it, through a setter generated per optional field the program writes,
+  `o.ts_set1(v)`, so the object and the value are evaluated before the
+  put. `delete o.p` moves it back and resets the value, so an absent field
+  always holds undefined and a read needs no check. `"p" in o` asks the
+  table.
+- The tables are package-level and shared by every request's goroutine, and
+  their steps are copy-on-write (D3, step 2): `TestOptionalWritesUnderRace`
+  serves a handler giving its own object optional properties from a
+  race-detector build, and `With` changing a table in place fails it.
+- A destructuring declaration's value is lowered unfitted: the checker types
+  its slot by the pattern, `{ a?: number }` for `{ a = 2 }`, which is no
+  slot of its own.
+- Fixed: a shorthand property into a field of a maybe, or an extension type
+  into a number's, was refused since step 3.
+- `TestOptionalPropertiesMatchNode` holds a program of them to Node, 20 runs,
+  beside the emitter's tests against Node for key order, evaluation order,
+  nesting, read-only use and a spawn's copy.
+
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
 whatever it returned; an extension type in a `number`'s slot reached Go
@@ -793,8 +818,8 @@ Refused by name: labelled statements, a comma expression in a `for` clause,
 variable's name or a field of one.
 
 Since M4 step 5 (`lower/object.go`), objects:
-- interfaces and object type aliases whose properties are all required and
-  of types the subset holds, and object literals of them. A type is a
+- interfaces and object type aliases whose properties are of types the
+  subset holds (optional ones since M5 step 5), and object literals of them. A type is a
   **shape**, its fields sorted by name, so `interface Point` and
   `type Vec = { y: number; x: number }` are one type, and a value flows
   between them unchanged. A literal takes its slot's shape, from the
@@ -809,7 +834,7 @@ Since M4 step 5 (`lower/object.go`), objects:
 
 Flows are exact (M4 plan D5): a value of one shape can't fill a slot of
 another, even where TypeScript allows an object with more fields. Refused by
-name: optional properties, index signatures and `Record`, unions (but for
+name: index signatures and `Record`, unions (but for
 M5's maybes) and intersections, classes, methods and accessors, computed, numeric and
 integer-like keys, `__proto__`, spread,
 and `console.log` of a value holding a function (a Go
@@ -950,10 +975,16 @@ Since M5 step 4 (`lower/cond.go`), the conditional expressions:
 - `x!`;
 - `x ??= d` as a statement, on a name, a field of one or an element of one.
 
+Since M5 step 5 (`lower/optional.go`), optional properties: `p?: T` in
+interfaces and type aliases, `Partial<T>`, literals leaving them out, reads,
+writes, `??=` and the compound assignments, `delete o.p` as a statement, and
+`"p" in o` for a key written as a string naming one of o's properties.
+
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
-value, `||=` and `&&=` (truthiness, step 7), optional properties (step 5),
-`join` and `sort` over maybes, a `filter` that narrows its elements' type, calling a function
+value, `||=` and `&&=` (truthiness, step 7), `delete` as a value or of
+anything but an object's property, `in` with a key not written as a string
+or not one of the object's properties, `join` and `sort` over maybes, a `filter` that narrows its elements' type, calling a function
 that may be null or undefined, `===` on maybes of functions,
 `JSON.stringify` of a value that may be undefined or with a space that may
 be, and a request handler reading a const maybe of a function.
@@ -966,7 +997,7 @@ as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
 The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
-Not yet: optional properties (M5 step 5), truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+Not yet: truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
@@ -1277,6 +1308,7 @@ not listed here that behaves differently is a bug.
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
+| A write to a property of a value that is null or undefined, `u!.p = f()` | runs `f()`, then throws | stops before `f()` runs, with Node's TypeError (step 4) |
 | `x!` on a value that is null or undefined (M5 step 4) | carries on with it, or throws reading, writing or iterating it | a panic saying which: `cakebear: p is null, though a ! asserted it isn't (Node throws TypeError: Cannot read properties of null (reading 'x'))`, exit 2. The same wording is on a narrowed value read from |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 
