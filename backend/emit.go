@@ -342,6 +342,9 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.Cond, *ir.Let:
 		return e.cond(x)
 
+	case *ir.Truthy:
+		return e.truthy(x)
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)

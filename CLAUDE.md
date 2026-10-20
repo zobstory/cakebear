@@ -278,8 +278,29 @@ the members that return `T | undefined` (`find`, `at`, `pop()` as a value),
 and string- and number-literal unions. Its plan, decided 2026-10-15 at scope
 D, is `~/Desktop/cakebear/m5-nullables-plan.md`, sized by measurements of
 wx-next (`spikes/m5-measure/`) and a hand port of two of its paths. Then
-**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`, not planned yet,
-per the per-phase rule below.
+**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`.
+
+After M6, the roadmap, in a provisional order ranked by how much of wx-next
+each unblocks. The shares are of its clean `.ts` files that check 9 found
+refused for each (`spikes/m4-remeasure/`, 3,195 files), and for unions,
+M5's measurement of their reach (3,372 files):
+- **M7, modules:** `export … from` (11.7%), and non-relative imports of the
+  program's own source, workspace packages and `@/` path aliases (39.7%).
+- **M8, unions of objects:** discriminated (21.4%), untagged (19.6%), and a
+  primitive or an object (26.5%).
+- **M9, RegExp** (16.8%).
+- **M10, `Map` and `Set`** (14.4%).
+- **M11, generics** (6.0%).
+- **M12, classes** (5.6%).
+- **M13, npm packages:** 37.6% import one, and 44.5% use a package's types
+  or values (payload, next, @types/node, mongodb). It starts with a design
+  decision: compile a package's source, or bind to it.
+- **M14, JSX:** none of wx-next's 1,841 `.tsx` files with runtime code
+  lowers. It needs React, so it follows packages.
+
+None is planned yet, per the per-phase rule below: each is planned, and its
+place in the order checked against a fresh measurement, when it becomes the
+active phase.
 
 Step 0, the fixes a port of real code found (D13), is done. `%`, products,
 extension-type arithmetic and literals (PR 47; "Numbers" and the type
@@ -423,6 +444,30 @@ with step 3.
   and index, to 6,984 more outputs recorded from Node, in a section after the
   old ones. `TestMembersMatchNode` and `TestUncheckedIndexReadsMatchNode`, a
   project with the flag on, hold programs to Node, 20 runs each.
+
+Step 7, truthiness, is done (D7; `lower/truthy.go`, `lower/spread.go`,
+`backend/emit_truthy.go`):
+- A condition that isn't a boolean is its truthiness, `ir.Truthy`, in an
+  `if`, a `while`, a `for`, a `?:` and under `!`. False, 0, -0, NaN, `""`,
+  null and undefined are falsy, a maybe holding a value is that value's
+  truthiness, and an object, an array or a function is always truthy, though
+  still evaluated. Narrowing by it is the checker's, as for `=== undefined`:
+  `if (s)` makes a `string | undefined` a string.
+- `&&`, `||` and `!` in a condition are tested part by part, so
+  `if (u && u.name)` builds no value of either.
+- `x || y` and `x && y` as values, an operand not a boolean, are a Cond on x's
+  truthiness, x held where it is a call. A truthy maybe is unwrapped, and a
+  falsy maybe of an object keeps its null or undefined:
+  `user && user.name` is undefined where user is.
+- `filter(Boolean)`, and Boolean for any callback member, is a generated
+  function giving its value's truthiness.
+- Conditional spread, `...(c && { k: v })` and `...(c ? { … } : { … })`, the
+  idiom for an object with optional properties (§2c): a literal for each way
+  the spreads go, chosen by Conds, keys in source order, with the values
+  before a later test held so they run first. Up to 4 spreads in a literal.
+- `TestTruthinessMatchesNode` holds a program to Node, 20 runs, beside the
+  emitter's tests against Node for every kind and maybe, a single evaluation,
+  evaluation order and conditions over `?.` and `??`.
 
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
@@ -829,8 +874,8 @@ Since M4 (`lower/loops.go`):
   extension type they are refused, so the narrowing stays visible:
   `n = i32(n + 1)`;
 - `interface` and `type` declarations, which are erased;
-- a condition (of an `if`, a `while` or a `for`) must be a `boolean`.
-  TypeScript tests any value's truthiness, which is refused for now.
+- a condition (of an `if`, a `while` or a `for`) is a `boolean`, or, since
+  M5 step 7, any value's truthiness.
 
 A function whose end TypeScript knows can't be reached, such as one ending in
 `while (true)`, gets a panic after its last statement: Go's rule for where a
@@ -859,7 +904,7 @@ Flows are exact (M4 plan D5): a value of one shape can't fill a slot of
 another, even where TypeScript allows an object with more fields. Refused by
 name: index signatures and `Record`, unions (but for
 M5's maybes) and intersections, classes, methods and accessors, computed, numeric and
-integer-like keys, `__proto__`, spread,
+integer-like keys, `__proto__`, spread (but for M5's conditional spread),
 and `console.log` of a value holding a function (a Go
 func has no name to print).
 
@@ -1006,6 +1051,15 @@ Since M5 step 6, the members that may be undefined: `find`, `findLast` and
 `at`, `codePointAt` and `s[i]`, and `xs[i]` undefined past the end where the
 checker types it so (`noUncheckedIndexedAccess`) or the array holds maybes.
 
+Since M5 step 7 (`lower/truthy.go`, `lower/spread.go`), truthiness: any
+value as a condition and under `!`, `||` and `&&` on values that aren't
+booleans, `filter(Boolean)` and Boolean as any callback, and conditional
+spread of object literals, `...(c && { k: v })` and `...(c ? { … } : { … })`.
+Refused by name: a callback testing its result's truthiness,
+`xs.filter((x) => x)` (write `!!x`, or pass Boolean), any other spread, a
+key a spread and the literal both set, more than 4 conditional spreads in
+one literal, and a spread whose test TypeScript knows always holds.
+
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
 value, `||=` and `&&=` (truthiness, step 7), `delete` as a value or of
@@ -1023,7 +1077,7 @@ as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
 The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
-Not yet: truthiness, mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+Not yet: mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
@@ -1351,4 +1405,6 @@ rather than an ergonomic one.
 
 cakebear is multi-year and will involve many contributors. Plan only the
 **current** phase in detail; defer later phases until they are the active
-phase. Don't write speculative roadmaps for things that aren't being built yet.
+phase. The roadmap under "Current phase" names them, in order, with the
+measurement that ranks them, and no more: don't write speculative plans for
+things that aren't being built yet.

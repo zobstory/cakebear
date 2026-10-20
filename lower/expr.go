@@ -147,11 +147,7 @@ func (l *lowerer) unary(n *ast.Node) ir.Expr {
 		}
 		operand = l.negOperand(n, operand)
 	case ast.KindExclamationToken:
-		op = ir.OpNot
-		if operand.ExprType() != ir.Boolean {
-			l.failf(n, "! needs a boolean, got %s", operand.ExprType())
-			return nil
-		}
+		op, operand = ir.OpNot, toBoolean(operand) // truthy.go
 	case ast.KindPlusToken:
 		// Unary plus is identity on a number and a coercion otherwise; only
 		// the identity case is representable today.

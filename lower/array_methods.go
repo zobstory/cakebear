@@ -70,8 +70,8 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 		op.Typ = ir.ArrayOf(result)
 		return l.withCallback(op, args[0], visitor(result), false)
 	case ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex, ir.ArrayFind, ir.ArrayFindLast:
-		if r := l.callbackResult(args[0]); r != ir.Boolean {
-			l.failf(args[0], "%s's callback must return a boolean; testing a %s for truthiness is not supported yet", m, r)
+		if r := l.callbackResult(args[0]); r != ir.Boolean && !l.libGlobal(args[0], "Boolean") {
+			l.failf(args[0], "%s's callback must return a boolean; testing a %s for truthiness is not supported yet: return !!x, or pass Boolean", m, r)
 			return nil
 		}
 		op.Typ = map[ir.ArrayMethod]ir.Type{ir.ArrayFilter: t, ir.ArraySome: ir.Boolean, ir.ArrayEvery: ir.Boolean, ir.ArrayFindIndex: ir.Number,
@@ -161,6 +161,9 @@ func (l *lowerer) withCallback(op *ir.ArrayOp, cb *ast.Node, slot ir.Type, drop 
 // takes the slot's signature (closureFor), and a function value of another
 // is adapted to it (adapt). drop discards a result the slot has no use for.
 func (l *lowerer) callback(n *ast.Node, slot ir.Type, drop bool) ir.Expr {
+	if l.libGlobal(n, "Boolean") {
+		return l.booleanCallback(n, slot) // truthy.go
+	}
 	if n.Kind == ast.KindArrowFunction || n.Kind == ast.KindFunctionExpression {
 		if !l.closureShapeOK(n) {
 			return nil

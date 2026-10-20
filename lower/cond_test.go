@@ -198,7 +198,6 @@ func TestCondRefusals(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct{ name, src, want string }{
-		{"a non-boolean condition", "const n: number = 1;\nconst s: string = n ? \"a\" : \"b\";\n", "a condition must be a boolean; testing a number for truthiness is not supported yet"},
 		{"branches of two types", "const c: boolean = true;\nconsole.log(c ? 1 : \"a\");\n", "a union of a"},
 		{"??= as a value", getters + "let z: number | undefined = num();\nconst y: number = (z ??= 1);\n", "??= used as a value is not supported yet"},
 		{"?? of two types", getters + "console.log(m ?? \"none\");\n", "a union of a"},

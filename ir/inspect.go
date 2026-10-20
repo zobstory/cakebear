@@ -131,6 +131,8 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExpr(e.Object, visit)
 	case *HasField:
 		inspectExpr(e.Object, visit)
+	case *Truthy:
+		inspectExpr(e.Value, visit)
 	case *IndexGet:
 		inspectExpr(e.Array, visit)
 		inspectExpr(e.Index, visit)

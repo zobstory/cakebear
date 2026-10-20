@@ -291,7 +291,9 @@ func (s *runningServer) waitForLine(t *testing.T, want string, timeout time.Dura
 
 func freePort(t *testing.T) int {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	// Every interface, as the servers listen: a port free on 127.0.0.1 alone
+	// may be taken on the rest, by another test's server.
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
