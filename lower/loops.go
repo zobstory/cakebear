@@ -192,6 +192,12 @@ func (l *lowerer) forStmt(n *ast.Node) []ir.Stmt {
 	if init := s.Initializer; init != nil {
 		if init.Kind == ast.KindVariableDeclarationList {
 			out.Init = l.declarations(init, init)
+			for _, st := range out.Init {
+				if d, ok := st.(*ir.VarDecl); ok && d.Init == nil {
+					l.failf(init, "a for loop's let with no value is not supported yet; give %s one", d.Name)
+					return nil
+				}
+			}
 		} else {
 			out.Init = l.clause(init)
 		}

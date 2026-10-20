@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/zobstory/cakebear/internal/ast"
@@ -54,9 +55,31 @@ func (l *lowerer) fitField(n *ast.Node, v ir.Expr, t ir.Type) ir.Expr {
 // slotType is the IR type of the slot n fills, or ir.Invalid where there is
 // none, or none the IR can hold.
 func (l *lowerer) slotType(n *ast.Node) ir.Type {
-	ct := l.checker.GetContextualType(n, checker.ContextFlagsNone)
+	ct := l.contextualType(n)
 	if ct == nil {
 		return ir.Invalid
+	}
+	return l.slotOf(ct)
+}
+
+// contextualType is the checker's type for the slot n fills, or nil.
+func (l *lowerer) contextualType(n *ast.Node) *checker.Type {
+	return l.checker.GetContextualType(n, checker.ContextFlagsNone)
+}
+
+// slotOf maps ct, a slot's type, onto the IR. The checker types the slot of
+// what an async function returns as `T | PromiseLike<T>`, the second for a
+// promise the function's would adopt, which cakebear refuses (async.go): the
+// slot is T's.
+func (l *lowerer) slotOf(ct *checker.Type) ir.Type {
+	if ct.Flags()&checker.TypeFlagsUnion != 0 {
+		members := slices.DeleteFunc(slices.Clone(ct.Types()), func(m *checker.Type) bool {
+			sym := m.Symbol()
+			return sym != nil && sym.Name() == "PromiseLike" && sym.Flags()&ast.SymbolFlagsInterface != 0 && onlyInBundledLib(sym, "")
+		})
+		if len(members) < len(ct.Types()) {
+			return l.unionOf(members)
+		}
 	}
 	return l.typeFromType(ct)
 }

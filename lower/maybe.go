@@ -19,8 +19,13 @@ import (
 // refused: unions of objects, or of a number and a string, wait for a later
 // milestone (D1).
 func (l *lowerer) unionType(t *checker.Type) ir.Type {
+	return l.unionOf(t.Types())
+}
+
+// unionOf is unionType of a union's members.
+func (l *lowerer) unionOf(members []*checker.Type) ir.Type {
 	elem, empty := ir.Invalid, false
-	for _, m := range t.Types() {
+	for _, m := range members {
 		if m.Flags()&(checker.TypeFlagsNull|checker.TypeFlagsUndefined) != 0 {
 			empty = true
 			continue

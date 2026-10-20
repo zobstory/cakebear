@@ -56,7 +56,12 @@ func (l *lowerer) shorthand(p *ast.Node) ir.Expr {
 	if module == "" {
 		name = p.Name().Text()
 	}
-	return &ir.Ident{Name: name, Module: module, Stable: !l.p.assigned[sym], Typ: t, Span: l.span(p)}
+	read := &ir.Ident{Name: name, Module: module, Stable: !l.p.assigned[sym], Typ: t, Span: l.span(p)}
+	// Its type there, as a bare read's is: x is a string after
+	// `if (x === undefined) return`. The name's type is the property's, which
+	// is the value's as narrowed; GetTypeOfSymbolAtLocation at the name gives
+	// the declared one, the name being the property's declaration.
+	return narrowed(read, l.typeOf(p.Name()), l.span(p))
 }
 
 // destructure lowers `const { … } = init` (or let), declared at n: init into
