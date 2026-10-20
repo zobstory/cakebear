@@ -235,7 +235,7 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 	}
 
 	fn := &ir.Func{Name: decl.Name().Text(), Span: l.span(n)}
-	var prologue []ir.Stmt // what binds destructured parameters
+	var prologues []func() []ir.Stmt // what opens the body: defaults, patterns (params.go)
 
 	if decl.Parameters != nil {
 		for _, p := range decl.Parameters.Nodes {
@@ -248,27 +248,25 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 				l.failf(p, "array destructuring is not supported yet")
 				continue
 			}
-			t := l.typeOf(p)
+			t := l.signatureParam(p)
 			if t == ir.Invalid {
 				l.failf(p, "parameter %s has a type the backend cannot represent yet%s", bindingText(param.Name()), l.reason())
 				continue
 			}
-			name := bindingText(param.Name())
-			if param.Name().Kind == ast.KindObjectBindingPattern {
-				var bound []ir.Stmt
-				var ok bool
-				if name, bound, ok = l.paramPattern(p, t); !ok {
-					continue
-				}
-				prologue = append(prologue, bound...)
+			name, open, ok := l.param(p, t)
+			if !ok {
+				continue
 			}
-			appended := param.Name().Kind == ast.KindIdentifier && l.appended(param.Name())
+			if open != nil {
+				prologues = append(prologues, open)
+			}
+			appended := open == nil && param.Name().Kind == ast.KindIdentifier && l.appended(param.Name())
 			fn.Params = append(fn.Params, ir.Param{Name: name, Type: t, Appended: appended, Span: l.span(p)})
 		}
 	}
 
 	l.funcResult(n, fn)
-	l.inBody(fn.Async, func() { fn.Body = append(prologue, l.block(decl.Body)...) })
+	l.inBody(fn.Async, func() { fn.Body = append(opening(prologues), l.block(decl.Body)...) })
 	fn.Body = undefinedReturns(fn.Body, returnedType(fn.Result, fn.Async), fn.Span)
 	return fn
 }

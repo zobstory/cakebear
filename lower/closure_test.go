@@ -200,8 +200,6 @@ func TestClosureRefusals(t *testing.T) {
 		{"named", "const h = function named(): number { return 1; };\n", "named function expressions are not supported yet"},
 		{"generic", "const id = <T,>(x: T): T => x;\n", "generic functions are not supported yet"},
 		{"rest", "const r = (...xs: number[]): number => 1;\n", "rest parameters are not supported yet"},
-		{"optional", "const o = (x?: number): number => 1;\n", "optional and default parameters are not supported yet"},
-		{"default", "const d = (x: number = 1): number => x;\n", "optional and default parameters are not supported yet"},
 		{"array-destructured", "const s = ([a]: number[]): number => a;\n", "array destructuring is not supported yet"},
 		// A recursive function type must be refused, not recursed into forever.
 		{"recursive type", "type F = (next: F) => void;\nconst loop: F = (next) => {};\n", "loop has a type the backend cannot represent yet"},

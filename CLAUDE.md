@@ -469,6 +469,20 @@ Step 7, truthiness, is done (D7; `lower/truthy.go`, `lower/spread.go`,
   emitter's tests against Node for every kind and maybe, a single evaluation,
   evaluation order and conditions over `?.` and `??`.
 
+Step 7b, optional and default parameters and defaults in destructuring, is
+done (`lower/params.go`; scope D, which the plan's steps had left out). It
+needed no backend change.
+- `x?: T`, or `x = d`, is a maybe in the function's signature, since a caller
+  may leave it out or pass undefined. `funcType` maps such signatures, and a
+  call that leaves arguments out passes undefined for them.
+- A default opens the body: the argument, or d where it is undefined (null
+  is a value, as in JavaScript), evaluated at the call, after the parameters
+  before it, so it may read them.
+- The same for an arrow's parameters, a pattern parameter's own default, and
+  `{ a = d }` in a parameter's, a declaration's or a `for…of`'s pattern. A
+  nested pattern's default is held, so its names read one value.
+- `TestParamsMatchNode` holds a program of them to Node, 20 runs.
+
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
 whatever it returned; an extension type in a `number`'s slot reached Go
@@ -946,8 +960,7 @@ Since M4 step 8 (`lower/destructure.go`):
   `for…of` loop's variable, and a `for` loop's first clause. The value is
   evaluated once, and each name reads its field from it.
 
-Refused by name: array destructuring, rest elements, defaults, computed
-keys, destructuring assignment (`({ a } = o)`), and destructuring anything
+Refused by name: array destructuring, rest elements, computed keys, destructuring assignment (`({ a } = o)`), and destructuring anything
 but an object (a string, an array, a `node:http` value: read `req.url`
 instead).
 
@@ -1060,6 +1073,11 @@ Refused by name: a callback testing its result's truthiness,
 key a spread and the literal both set, more than 4 conditional spreads in
 one literal, and a spread whose test TypeScript knows always holds.
 
+Since M5 step 7b (`lower/params.go`), optional and default parameters of
+functions and arrows, a call leaving them out, and defaults in destructuring
+patterns. Refused by name: rest parameters, and a function with optional
+parameters where a slot passes required ones (`xs.map((x, i?) => …)`).
+
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
 value, `||=` and `&&=` (truthiness, step 7), `delete` as a value or of
@@ -1082,7 +1100,7 @@ generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
 calling anything but a name or a `node:http` member (`f()()`); named function
-expressions; optional, default or rest parameters; overloaded or
+expressions; rest parameters; overloaded or
 generic function types; `===` or `console.log` on a function, a host value or
 a promise; the standard library's other globals (`NaN`, `Math`,
 `setInterval`, …), which lowering refuses by name because only TypeScript's
