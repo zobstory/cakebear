@@ -203,7 +203,8 @@ server.ts:11:3: cannot compile yet: this handler runs on many requests at once, 
 
 [`examples/route-server`](examples/route-server) is a small JSON API in four
 modules: a menu, query parsing, routes and the server. Every handler reads
-one route table, declared once at the top level:
+one route table, declared once at the top level. An item may have a note, and
+a sale price:
 
 ```ts
 export interface Item {
@@ -211,23 +212,48 @@ export interface Item {
   readonly name: string;
   readonly price: number;
   readonly tags: readonly string[];
+  readonly note?: string;
+  readonly sale?: number | null;
 }
 
 export const items: readonly Item[] = [
-  { id: 1, name: "Green tea", price: 4.5, tags: ["hot", "tea"] },
-  { id: 2, name: "Straße cake", price: 2.25, tags: ["sweet"] },
+  { id: 1, name: "Green tea", price: 4.5, tags: ["hot", "tea"], note: "loose leaf" },
+  { id: 2, name: "Straße cake", price: 2.25, tags: ["sweet"], sale: 1.75 },
   // …
 ];
+```
+
+The API shows an item at its sale price, with the full one as `was`, and its
+note only where it has one:
+
+```ts
+function summary(it: Item): Summary {
+  const sale: number | null | undefined = it.sale;
+  return {
+    id: it.id,
+    name: it.name,
+    price: sale ?? it.price,
+    ...(it.note ? { note: it.note } : {}),
+    ...(sale != null && { was: it.price }),
+  };
+}
 ```
 
 ```console
 $ cakec build -p examples/route-server && examples/route-server/bin/server
 listening on http://localhost:3000
-$ curl 'localhost:3000/items?tag=hot&q=chai'
-[{"id":4,"name":"Chai 😀","price":4,"tags":["hot","tea","spiced"]}]
+$ curl 'localhost:3000/items?tag=hot'
+[{"id":1,"name":"Green tea","price":4.5,"note":"loose leaf"},{"id":4,"name":"Chai 😀","price":4}]
+$ curl localhost:3000/items/2
+{
+  "id": 2,
+  "name": "Straße cake",
+  "price": 1.75,
+  "was": 2.25
+}
 $ curl localhost:3000/menu
-Green tea      $4.50
-Straße cake    $2.25
+Green tea      $4.50 (loose leaf)
+Straße cake    $1.75
 …
 ```
 
@@ -284,6 +310,12 @@ Supported today:
   `slice`, `replace` with a string pattern, `toUpperCase`, `trim`, `padStart`,
   …), all counting in UTF-16 units as JavaScript does; `Number()`,
   `parseInt`, `parseFloat`, `isNaN` and the URI functions;
+- **`null` and `undefined`**: `T | undefined` and `T | null` of any of the
+  above, optional properties, `?:`, `??` and `??=`, optional chains, `!`,
+  narrowing wherever the checker narrows, any value tested for truthiness,
+  `||` and `&&` on values, conditional spread, `delete` and `in`, `find`,
+  `at` and `pop()` as values, optional and default parameters, and unions of
+  literals such as `"get" | "post"`;
 - `import` from `node:http`, and the members its bundled declarations list;
   `async` functions and arrows, `await`, including at the top level of a
   module, `Promise<T>`, `new Promise((resolve) => …)`, `setTimeout` /
@@ -291,14 +323,13 @@ Supported today:
 - programs of several modules, with named imports and exports of top-level
   functions and `const`s, renamed or not, and import cycles.
 
-Not yet: `null` and `undefined` as values, and so optional properties and
-`T | undefined` (next, M5); `throw`, `try` and `reject` (M6); unions,
-classes, generics, RegExp, `URL`, mixed-type `+` (a template literal does
-it), `var`, loose equality, imports from anything but `node:http` and the
+Not yet: `throw`, `try` and `reject` (next, M6); other unions, classes,
+generics, RegExp, `URL`, mixed-type `+` (a template literal does it), `var`,
+loose equality but `== null`, imports from anything but `node:http` and the
 program's own modules, default exports, `import * as` a module of your own,
-re-exports, exporting a `let`, testing a non-boolean for truthiness, bitwise
-operators, `.then` and `Promise.all`, and the standard library's other
-globals (`Math`, `Date`, `setInterval`, …).
+re-exports, exporting a `let`, rest parameters, bitwise operators, `.then`
+and `Promise.all`, and the standard library's other globals (`Math`, `Date`,
+`setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers

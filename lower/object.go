@@ -204,8 +204,8 @@ func typeName(t *checker.Type) string {
 // checked the literal sets exactly its slot's properties.
 func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 	t := ir.Invalid
-	if ct := l.checker.GetContextualType(n, checker.ContextFlagsNone); ct != nil {
-		t = elemOfMaybe(l.typeFromType(ct)) // a maybe's slot takes it wrapped
+	if ct := l.contextualType(n); ct != nil {
+		t = elemOfMaybe(l.slotOf(ct)) // a maybe's slot takes it wrapped
 	}
 	if t.Kind != ir.KindObject {
 		t = l.typeOf(n)
@@ -227,15 +227,15 @@ func (l *lowerer) objectLit(n *ast.Node) ir.Expr {
 		}
 		out.Fields = append(out.Fields, f)
 	}
-	// TypeScript refuses a literal leaving out a required property, so this
-	// is a backstop.
 	set := make([]bool, len(shape.Fields))
 	for _, f := range out.Fields {
 		set[f.Field] = true
 	}
 	for i, f := range shape.Fields {
 		if !set[i] && !f.Optional {
-			l.invalidf(n, "this literal leaves out %s's property %s", shape, f.Name)
+			// TypeScript allows it where the literal isn't of the slot's
+			// type, as the {} in `t ?? {}` isn't.
+			l.failf(n, "a literal leaving out %s's property %s is not supported yet: it is of another type than its slot's", shape, f.Name)
 			return nil
 		}
 	}

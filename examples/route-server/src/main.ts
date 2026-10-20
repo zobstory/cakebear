@@ -1,6 +1,7 @@
-// A JSON API in four modules: a frozen menu (data.ts), query parsing with the
-// string methods (query.ts), and the routes (routes.ts). Built from this
-// directory's tsconfig.json into one native binary, it serves what Node
+// A JSON API in four modules: a frozen menu with optional properties
+// (data.ts), query parsing with the string methods (query.ts), and the routes
+// (routes.ts), which use ?., ??, truthiness and conditional spread. Built from
+// this directory's tsconfig.json into one native binary, it serves what Node
 // serves from these same sources, unmodified:
 //
 //   cakec build -p examples/route-server && examples/route-server/bin/server
@@ -10,7 +11,9 @@
 //   curl localhost:3000/items               # every item
 //   curl 'localhost:3000/items?tag=hot'     # filtered by tag
 //   curl 'localhost:3000/items?q=CAKE'      # searched by name
+//   curl 'localhost:3000/items?limit=2'     # the first two
 //   curl localhost:3000/items/2             # one item, indented
+//   curl 'localhost:3000/first?tag=cold'    # the first item's name with a tag
 //   curl localhost:3000/menu                # a plain-text menu
 //   curl -X POST localhost:3000/            # 405
 import { createServer } from "node:http";

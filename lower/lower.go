@@ -409,18 +409,20 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 		}
 		name := decl.Name().Text()
 		t := l.typeOf(decl.Name())
-		if decl.Initializer == nil && t.Kind != ir.KindMaybe {
-			l.failf(d, "%s needs an initialiser; declarations without one are not supported yet", name)
-			continue
-		}
 		if t == ir.Invalid {
-			if why := l.reason(); !l.explainInitializer(decl.Initializer) {
+			if why := l.reason(); decl.Initializer == nil || !l.explainInitializer(decl.Initializer) {
 				l.failf(d, "%s has a type the backend cannot represent yet%s", name, why)
 			}
 			continue
 		}
-		// A maybe declared with no value is undefined until it is given one.
-		var init ir.Expr = &ir.Empty{Typ: t, Span: l.span(d)}
+		// A declaration with no value: a maybe is undefined until it is given
+		// one, and anything else holds Go's zero value (Init nil), which
+		// TypeScript makes sure nothing reads before an assignment, but for a
+		// closure called before it (see the accepted differences).
+		var init ir.Expr
+		if t.Kind == ir.KindMaybe {
+			init = &ir.Empty{Typ: t, Span: l.span(d)}
+		}
 		if decl.Initializer != nil {
 			if init = l.expr(decl.Initializer); init == nil {
 				continue

@@ -109,7 +109,12 @@ func (l *lowerer) asyncResult(n *ast.Node, fn *ir.Func) {
 			fn.Result = l.typeFromType(l.checker.GetReturnTypeOfSignature(sigs[0]))
 		}
 	}
-	if fn.Result.Kind != ir.KindPromise && fn.Result != ir.Invalid {
+	switch {
+	case fn.Result == ir.Invalid && decl.Type == nil:
+		// Inferred, as Promise<null> is from `return null`: refused here, as
+		// a function's is (result.go), or nothing would.
+		l.failf(n, "async function %s returns a type the backend cannot represent yet%s; annotating its result may help", fn.Name, l.reason())
+	case fn.Result.Kind != ir.KindPromise && fn.Result != ir.Invalid:
 		l.failf(n, "async function %s returns a type the backend cannot represent yet", fn.Name)
 	}
 }

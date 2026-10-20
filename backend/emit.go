@@ -151,28 +151,7 @@ func (e *emitter) stmt(s ir.Stmt, depth int) {
 
 	switch s := s.(type) {
 	case *ir.VarDecl:
-		if e.hoisted[s] {
-			// Declared at package level already; see program.
-			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(e.cur, s.Name), e.full(s.Init))
-			return
-		}
-		if s.Type.Kind == ir.KindFunc {
-			// Declared before it is assigned, so a function literal can call
-			// itself. Go's scope for `var f = …` starts after the initialiser;
-			// JavaScript's starts at the declaration.
-			fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, mangle(s.Name), e.typ(s.Type, s.Span))
-			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, mangle(s.Name), e.full(s.Init))
-		} else {
-			// An explicit type rather than := because TypeScript's annotation
-			// is the authority here, and := would let Go's inference disagree.
-			fmt.Fprintf(&e.buf, "%svar %s %s = %s\n", pad, mangle(s.Name), e.typ(s.Type, s.Span), e.full(s.Init))
-		}
-		// Go rejects unused locals; TypeScript does not. Referencing the
-		// variable keeps a legal TypeScript program from failing to build.
-		fmt.Fprintf(&e.buf, "%s_ = %s\n", pad, mangle(s.Name))
-		if s.Appended {
-			e.buf.WriteString(e.accDecl(pad, mangle(s.Name)))
-		}
+		e.varDecl(s, pad) // emit_decl.go
 
 	case *ir.Assign:
 		fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.top(s.Module, s.Name), e.full(s.Value))

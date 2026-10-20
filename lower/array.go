@@ -35,8 +35,8 @@ func (l *lowerer) arrayType(t *checker.Type) ir.Type {
 // can only take its element type from where it goes.
 func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 	t := ir.Invalid
-	if ct := l.checker.GetContextualType(n, checker.ContextFlagsNone); ct != nil {
-		t = elemOfMaybe(l.typeFromType(ct)) // a maybe's slot takes it wrapped
+	if ct := l.contextualType(n); ct != nil {
+		t = elemOfMaybe(l.slotOf(ct)) // a maybe's slot takes it wrapped
 	}
 	if t.Kind != ir.KindArray {
 		t = l.typeOf(n)
