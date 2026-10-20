@@ -4,10 +4,9 @@ import "testing"
 
 // fixesProgram holds the fixes M5's re-measurement of wx-next found (check
 // 9): lets declared with no value, at the top level and in a function, a
-// shorthand of a narrowed binding, and
-// async functions returning into a maybe and into an object holding an empty
-// array, all refused before. Node 24.18 ran this same file and printed
-// nodeFixes, the same in 5 of 5 runs.
+// shorthand of a narrowed binding, and async functions returning into a maybe
+// and into an object holding an empty array, all refused before. Node 24.18
+// ran this same file and printed nodeFixes, the same in 5 of 5 runs.
 const fixesProgram = `interface Box { label: string; size?: number }
 interface Ids { ids: string[]; first?: string }
 
