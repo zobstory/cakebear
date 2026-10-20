@@ -188,13 +188,8 @@ func TestResponseMisuseMatchesNode(t *testing.T) {
 		{"setHeader after writeHead", func(r *ServerResponse) { r.WriteHead(200).SetHeader("a", "b") }, "ERR_HTTP_HEADERS_SENT"},
 		{"setHeader after end", func(r *ServerResponse) { r.End().SetHeader("a", "b") }, "ERR_HTTP_HEADERS_SENT"},
 		{"writeHead twice", func(r *ServerResponse) { r.WriteHead(200).WriteHead(201) }, "ERR_HTTP_HEADERS_SENT"},
-		{"status too low", func(r *ServerResponse) { r.WriteHead(99) }, "Invalid status code: 99"},
-		{"status too high", func(r *ServerResponse) { r.WriteHead(1000) }, "Invalid status code: 1000"},
-		{"status fractional", func(r *ServerResponse) { r.WriteHead(200.5) }, "Invalid status code: 200.5"},
-		{"status NaN", func(r *ServerResponse) { r.WriteHead(math.NaN()) }, "Invalid status code: NaN"},
 		{"write after end", func(r *ServerResponse) { r.End().End("x") }, "ERR_STREAM_WRITE_AFTER_END"},
 		{"end twice, empty", func(r *ServerResponse) { r.End("a").End() }, ""},
-		{"status bounds", func(r *ServerResponse) { r.WriteHead(999).End() }, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -211,6 +206,57 @@ func TestResponseMisuseMatchesNode(t *testing.T) {
 	r := fresh()
 	if r.SetHeader("a", "b") != r || r.WriteHead(200) != r || r.End() != r {
 		t.Error("a method that returns `this` in TypeScript must return its receiver")
+	}
+}
+
+// writeHead converts its status as Node's `statusCode |= 0` does, ToInt32,
+// and refuses what that leaves outside 100 to 999, naming the status as it
+// was passed. Each row is what Node 24.18 sent or threw for that status.
+func TestWriteHeadStatusMatchesNode(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		status float64
+		sent   int    // the status Node sent, or 0 where it threw
+		thrown string // the message after "RangeError [ERR_HTTP_INVALID_STATUS_CODE]: "
+	}{
+		{200, 200, ""},
+		{200.5, 200, ""},
+		{999.9, 999, ""},
+		{4294967496, 200, ""}, // 2^32 + 200
+		{999, 999, ""},
+		{99, 0, "Invalid status code: 99"},
+		{99.99, 0, "Invalid status code: 99.99"},
+		{1000, 0, "Invalid status code: 1000"},
+		{-0.5, 0, "Invalid status code: -0.5"},
+		{math.Copysign(0, -1), 0, "Invalid status code: -0"},
+		{1e10, 0, "Invalid status code: 10000000000"},
+		{2147483848, 0, "Invalid status code: 2147483848"}, // wraps negative
+		{4294967295.5, 0, "Invalid status code: 4294967295.5"},
+		{math.Inf(1), 0, "Invalid status code: Infinity"},
+		{math.Inf(-1), 0, "Invalid status code: -Infinity"},
+		{math.NaN(), 0, "Invalid status code: NaN"},
+		{1e21, 0, "Invalid status code: 1e+21"},
+		{1e-7, 0, "Invalid status code: 1e-7"},
+	} {
+		t.Run(numberForDisplay(tt.status), func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			r := &ServerResponse{w: rec, status: 200}
+			got := panicked(func() { r.WriteHead(tt.status).End() })
+			if tt.thrown != "" {
+				if want := "RangeError [ERR_HTTP_INVALID_STATUS_CODE]: " + tt.thrown; got != want {
+					t.Errorf("panic = %q, want %q", got, want)
+				}
+				return
+			}
+			if got != "" {
+				t.Fatalf("panicked with %q; Node sent %d", got, tt.sent)
+			}
+			if rec.Code != tt.sent {
+				t.Errorf("sent %d, want %d, as Node sent", rec.Code, tt.sent)
+			}
+		})
 	}
 }
 
@@ -247,7 +293,8 @@ func TestListenPortInUse(t *testing.T) { //nolint:paralleltest // isolate swaps 
 }
 
 func TestListenRejectsBadPorts(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
-	for _, port := range []float64{70000, 3000.5, -1, math.NaN()} { //nolint:paralleltest // isolate swaps process-wide runtime state
+	// Each is refused as Node 24.18 refuses it, in its words; -0 is port 0.
+	for _, port := range []float64{70000, 65536, 3000.5, -1, math.NaN(), math.Inf(1), 1e21, 4294967296, 1e-7} { //nolint:paralleltest // isolate swaps process-wide runtime state
 		t.Run(NumberToString(port), func(t *testing.T) {
 			_, stderr, exits := isolate(t)
 			s := CreateServer(func(*Domain, *IncomingMessage, *ServerResponse) {}).Listen(port)
@@ -257,7 +304,7 @@ func TestListenRejectsBadPorts(t *testing.T) { //nolint:paralleltest // isolate 
 			if got := exitCode(t, exits); got != 1 {
 				t.Errorf("exit code = %d, want 1", got)
 			}
-			want := "ERR_SOCKET_BAD_PORT]: port should be >= 0 and < 65536. Received " + NumberToString(port)
+			want := "RangeError [ERR_SOCKET_BAD_PORT]: options.port should be >= 0 and < 65536. Received type number (" + NumberToString(port) + ").\n"
 			if !strings.Contains(stderr.String(), want) {
 				t.Errorf("stderr = %q, want %q", stderr.String(), want)
 			}

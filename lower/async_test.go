@@ -365,7 +365,7 @@ func TestAsyncRefusals(t *testing.T) {
 			"await needs a promise; awaiting a number is not supported yet"},
 		{"returning a promise from async", g + "async function f(): Promise<number> {\n  return g();\n}\n",
 			"an async function returning a promise is not supported yet"},
-		{"reject", "const p: Promise<void> = new Promise((resolve, reject) => {});\n", "reject is not supported yet"},
+		{"reject", "const p: Promise<void> = new Promise((resolve, reject) => {});\n", "reject is not supported yet; it comes with errors, in M6"},
 		{"resolve with a promise", g + "const p: Promise<number> = new Promise((resolve) => {\n  resolve(g());\n});\n",
 			"resolving a promise with another promise is not supported yet"},
 		{"executor not inline", "function ex(resolve: () => void): void {}\nconst p: Promise<void> = new Promise(ex);\n",
