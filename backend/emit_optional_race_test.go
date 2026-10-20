@@ -83,53 +83,7 @@ func TestOptionalPropertiesServeUnderRace(t *testing.T) {
 		t.Skip("the race detector needs cgo, which this toolchain has disabled")
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
-	var shapes ir.Shapes
-	bin := filepath.Join(t.TempDir(), "server")
-	if src, err := Build(withShapes(optionalServer(&shapes, port), &shapes), Options{Output: bin, Race: true}); err != nil {
-		t.Fatalf("Build: %v\n%s", err, src)
-	}
-	// A clean run proves nothing unless the detector was on: Go records it
-	// in the binary's build settings.
-	if info, err := exec.Command("go", "version", "-m", bin).Output(); err != nil || !strings.Contains(string(info), "-race=true") {
-		t.Fatalf("the server was not built with the race detector (go version -m: %v):\n%s", err, info)
-	}
-
-	cmd := exec.Command(bin)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	exited := make(chan error, 1)
-	listening := make(chan bool, 1)
-	go func() {
-		sc := bufio.NewScanner(stdout)
-		for sc.Scan() {
-			if sc.Text() == "listening" {
-				listening <- true
-			}
-		}
-		_, _ = io.Copy(io.Discard, stdout)
-		exited <- cmd.Wait()
-	}()
-	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	select {
-	case <-listening:
-	case err := <-exited:
-		t.Fatalf("the server exited before listening: %v\n%s", err, stderr.String())
-	case <-time.After(30 * time.Second):
-		t.Fatalf("the server wasn't listening after 30s\n%s", stderr.String())
-	}
+	port, cmd, stderr, exited := serveOptional(t)
 
 	replies := map[string]string{
 		"/a": `{"path":"/a","tag":"t","seen":3}`,
@@ -182,5 +136,69 @@ func TestOptionalPropertiesServeUnderRace(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "DATA RACE") {
 		t.Errorf("the race detector found a race:\n%s", stderr.String())
+	}
+}
+
+// serveOptional builds optionalServer with the race detector and starts it,
+// listening. The port is chosen before the build, which takes seconds, and
+// another test's server can take it meanwhile: a server that finds it in use
+// is built again on another, up to three times. The port is probed on every
+// interface, as the server listens, since one free on 127.0.0.1 alone may be
+// taken on the rest.
+func serveOptional(t *testing.T) (int, *exec.Cmd, *bytes.Buffer, chan error) {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		ln, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		_ = ln.Close()
+		var shapes ir.Shapes
+		bin := filepath.Join(t.TempDir(), "server")
+		if src, err := Build(withShapes(optionalServer(&shapes, port), &shapes), Options{Output: bin, Race: true}); err != nil {
+			t.Fatalf("Build: %v\n%s", err, src)
+		}
+		// A clean run proves nothing unless the detector was on: Go records it
+		// in the binary's build settings.
+		if info, err := exec.Command("go", "version", "-m", bin).Output(); err != nil || !strings.Contains(string(info), "-race=true") {
+			t.Fatalf("the server was not built with the race detector (go version -m: %v):\n%s", err, info)
+		}
+
+		cmd := exec.Command(bin)
+		stderr := &bytes.Buffer{}
+		cmd.Stderr = stderr
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		exited := make(chan error, 1)
+		listening := make(chan bool, 1)
+		go func() {
+			sc := bufio.NewScanner(stdout)
+			for sc.Scan() {
+				if sc.Text() == "listening" {
+					listening <- true
+				}
+			}
+			_, _ = io.Copy(io.Discard, stdout)
+			exited <- cmd.Wait()
+		}()
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		select {
+		case <-listening:
+			return port, cmd, stderr, exited
+		case err := <-exited:
+			if strings.Contains(stderr.String(), "EADDRINUSE") && attempt < 3 {
+				t.Logf("port %d was taken before the server listened; building again on another", port)
+				continue
+			}
+			t.Fatalf("the server exited before listening: %v\n%s", err, stderr.String())
+		case <-time.After(30 * time.Second):
+			t.Fatalf("the server wasn't listening after 30s\n%s", stderr.String())
+		}
 	}
 }
