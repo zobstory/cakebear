@@ -74,6 +74,11 @@ func innerCall(x ir.Expr) bool {
 // matters if the literal can change what the read reads: with no call
 // under it, it can't, and with one, innerCall has found that call, and the
 // read is ordered.
+//
+// Nor are an IsEmpty and a Truthy, though either may be emitted as a call
+// of the runtime's (emit_maybe.go, emit_truthy.go): what that runs reads
+// the value it was given and nothing else, so no read beside it can see a
+// change.
 func isCall(x ir.Expr) bool {
 	switch x.(type) {
 	case *ir.Call, *ir.HostCall, *ir.HostProp, *ir.Await, *ir.NewPromise, *ir.ConsoleLog, *ir.ArrayOp, *ir.JSONStringify, *ir.BuiltinCall:
@@ -113,6 +118,8 @@ func operands(x ir.Expr) []ir.Expr {
 	case *ir.Empty:
 		return nil
 	case *ir.IsEmpty:
+		return []ir.Expr{x.Value}
+	case *ir.Truthy:
 		return []ir.Expr{x.Value}
 	case *ir.Cond:
 		// Only one branch runs, but a call in either may, so both count.
