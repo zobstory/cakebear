@@ -10,11 +10,12 @@ export function pathOf(url: string): string {
   return url.slice(0, q);
 }
 
-// param is the decoded value of name in url's query, or "" when it has none.
-export function param(url: string, name: string): string {
+// param is the decoded value of name in url's query, or undefined when it has
+// none.
+export function param(url: string, name: string): string | undefined {
   const q: number = url.indexOf("?");
   if (q < 0) {
-    return "";
+    return undefined;
   }
   for (const pair of url.slice(q + 1).split("&")) {
     const eq: number = pair.indexOf("=");
@@ -22,5 +23,15 @@ export function param(url: string, name: string): string {
       return decodeURIComponent(pair.slice(eq + 1).replaceAll("+", " "));
     }
   }
-  return "";
+}
+
+// count is name's value in url's query as a whole number, or fallback when it
+// is missing, empty or not one.
+export function count(url: string, name: string, fallback: number = 0): number {
+  const v: string | undefined = param(url, name);
+  if (!v) {
+    return fallback;
+  }
+  const n: number = Number(v);
+  return Number.isInteger(n) ? n : fallback;
 }

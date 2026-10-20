@@ -15,11 +15,14 @@ import (
 	"time"
 )
 
-// M4's check 8, zob's live test: examples/route-server, a JSON API in four
-// modules, builds from its tsconfig.json and answers as Node does. It reads
-// a frozen menu (step 10) in every request, parses req.url with the string
-// methods and parseInt's kin (the strings step), and answers with
-// JSON.stringify (step 9), objects and arrays (steps 5 to 7) throughout.
+// M4's check 8, zob's live test, and M5's: examples/route-server, a JSON API
+// in four modules, builds from its tsconfig.json and answers as Node does. It
+// reads a frozen menu (step 10) in every request, parses req.url with the
+// string methods and parseInt's kin (the strings step), and answers with
+// JSON.stringify (step 9), objects and arrays (steps 5 to 7) throughout. Since
+// M5 it reads optional properties, a sale price that may be null, a query
+// parameter that may be undefined, find's maybe, ?., ??, truthiness, a default
+// parameter and conditional spread, and JSON leaves out what is absent.
 
 // routeReplies is what Node 24.18 answered, running the same sources, to
 // each request: status, Content-Type and body.
@@ -29,17 +32,25 @@ var routeReplies = []struct {
 	contentType  string
 	body         string
 }{
-	{"GET", "/", 200, "application/json", "{\"service\":\"cakebear menu\",\"version\":\"1.0\",\"items\":4}\n"},
+	{"GET", "/", 200, "application/json", "{\"service\":\"cakebear menu\",\"version\":\"1.1\",\"items\":4}\n"},
 	{"GET", "/health", 200, "text/plain", "ok\n"},
-	{"GET", "/items", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"tags\":[\"hot\",\"tea\"]},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":2.25,\"tags\":[\"sweet\"]},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75,\"tags\":[\"cold\",\"coffee\"]},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4,\"tags\":[\"hot\",\"tea\",\"spiced\"]}]\n"},
-	{"GET", "/items?tag=hot", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"tags\":[\"hot\",\"tea\"]},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4,\"tags\":[\"hot\",\"tea\",\"spiced\"]}]\n"},
-	{"GET", "/items?q=CAKE", 200, "application/json", "[{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":2.25,\"tags\":[\"sweet\"]}]\n"},
-	{"GET", "/items?tag=tea&q=chai", 200, "application/json", "[{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4,\"tags\":[\"hot\",\"tea\",\"spiced\"]}]\n"},
-	{"GET", "/items?q=stra%C3%9Fe", 200, "application/json", "[{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":2.25,\"tags\":[\"sweet\"]}]\n"},
-	{"GET", "/items/2", 200, "application/json", "{\n  \"id\": 2,\n  \"name\": \"Stra\u00dfe cake\",\n  \"price\": 2.25,\n  \"tags\": [\n    \"sweet\"\n  ]\n}\n"},
+	{"GET", "/items", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?tag=hot", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?q=CAKE", 200, "application/json", "[{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25}]\n"},
+	{"GET", "/items?tag=tea&q=chai", 200, "application/json", "[{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?q=stra%C3%9Fe", 200, "application/json", "[{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25}]\n"},
+	{"GET", "/items?limit=2", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25}]\n"},
+	{"GET", "/items?limit=abc", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?tag=", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items/1", 200, "application/json", "{\n  \"id\": 1,\n  \"name\": \"Green tea\",\n  \"price\": 4.5,\n  \"note\": \"loose leaf\"\n}\n"},
+	{"GET", "/items/2", 200, "application/json", "{\n  \"id\": 2,\n  \"name\": \"Stra\u00dfe cake\",\n  \"price\": 1.75,\n  \"was\": 2.25\n}\n"},
+	{"GET", "/items/3", 200, "application/json", "{\n  \"id\": 3,\n  \"name\": \"Iced coffee\",\n  \"price\": 3.75\n}\n"},
 	{"GET", "/items/9", 404, "application/json", "{\"error\":\"no item 9\"}\n"},
 	{"GET", "/items/abc", 404, "application/json", "{\"error\":\"no item abc\"}\n"},
-	{"GET", "/menu", 200, "text/plain; charset=utf-8", "Green tea      $4.50\nStra\u00dfe cake    $2.25\nIced coffee    $3.75\nChai \U0001f600        $4.00\n"},
+	{"GET", "/first?tag=cold", 200, "text/plain", "Iced coffee\n"},
+	{"GET", "/first?tag=none", 200, "text/plain", "none\n"},
+	{"GET", "/first", 200, "text/plain", "none\n"},
+	{"GET", "/menu", 200, "text/plain; charset=utf-8", "Green tea      $4.50 (loose leaf)\nStra\u00dfe cake    $1.75\nIced coffee    $3.75\nChai \U0001f600        $4.00\n"},
 	{"GET", "/nope", 404, "application/json", "{\"error\":\"no route /nope\"}\n"},
 	{"POST", "/items", 405, "application/json", "{\"error\":\"POST is not allowed\"}\n"},
 	{"DELETE", "/items/1", 405, "application/json", "{\"error\":\"DELETE is not allowed\"}\n"},
