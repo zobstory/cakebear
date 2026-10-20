@@ -270,13 +270,32 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M6**, errors, to plan
+## Current phase: **M6**, errors
 
-P0–P5 and M1–M5 are done. Next is **M6**, errors: `throw`,
-`try`/`catch`/`finally`, `reject`, not planned yet, per the per-phase rule
-below. M5's re-measurement of wx-next (check 9, below) is the first input to
-its plan: errors are in 24.1% of the clean `.ts` files, but almost never
-their only blocker, so M6 alone lowers 7 more of them.
+P0–P5 and M1–M5 are done. **M6** is errors: `throw`,
+`try`/`catch`/`finally`, `Error` and its built-in kinds as values, rejection
+through `async` and `await`, and `unknown`, which is what a `catch` binds.
+Its plan, decided 2026-10-20 at scope B, is
+`~/Desktop/cakebear/m6-errors-plan.md`, sized by a measurement of wx-next
+(`spikes/m6-measure/`), Node's behaviour measured case by case
+(`spikes/m6-node/`) and a spike of the Go it compiles to (`spikes/m6-go/`).
+On its own M6 lowers few more files, 7, since error handling lives in the
+I/O code packages and imports block first; once M7 to M13 land, scope B is
+worth 122 files to scope A's 64.
+
+Step 0, what the research found in passing, is done (M6 plan D11):
+- `res.writeHead` converts its status as Node's `statusCode |= 0` does,
+  ToInt32, and refuses only what that leaves outside 100 to 999, naming the
+  status as it was passed: `200.5` sends 200, and so does 2^32 + 200, where
+  cakebear refused every fraction since M1. `TestWriteHeadStatusMatchesNode`
+  holds 18 statuses to what Node 24.18 sent or threw.
+- A bad port is refused in Node 24.18's words, `options.port should be >= 0
+  and < 65536. Received type number (70000).`, which it wasn't.
+- The refusals of `reject` and `JSON.parse` said errors come in M3 and that
+  `JSON.parse` waits for M5; they say what is true now, and their tests hold
+  the whole message.
+- A 1xx status is an accepted difference: Node sends it as the whole
+  response, and net/http only as an informational one.
 
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
@@ -1025,8 +1044,8 @@ specification says compact. `JSON` is recognised as the global TypeScript's libs
 so a program's own `JSON` is an ordinary binding.
 
 Refused by name: a replacer (`null` or `undefined` in its place is how a call
-reaches the space), `JSON.parse` (it returns `any`, and decoding into a type
-needs checks that wait for M5 and M6), JSON's other members, and
+reaches the space), `JSON.parse` (it returns `any`, which cakebear doesn't
+lower), JSON's other members, and
 serialising a function, a promise or a host value, or an object or array
 holding one: Node leaves the first out, or gives `undefined` for one alone,
 and serialises the others as objects of its own.
@@ -1436,6 +1455,7 @@ not listed here that behaves differently is a bug.
 | A header value with spaces at either end | sent as written | trimmed, as `net/http` writes every header |
 | A request line holding raw bytes from 0x80 up | a 400 | served: each such byte is one U+FFFD in `req.url` |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
+| `writeHead` with a status from 100 to 199 | that status line as the whole response, with no body | an informational response with that status, then `200` with the body: net/http sends a 1xx only as informational |
 | `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
 | Reading a `let` declared with no value before it is assigned, from a closure called first (M5 step 8; TypeScript refuses it anywhere else) | `undefined` | Go's zero value, as above |

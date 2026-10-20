@@ -17,7 +17,7 @@ import (
 // must be in a bundled lib. The interface is spread across five of them, and a
 // program that augments it has added members with nothing behind them.
 //
-// What M2 leaves out is refused by name: reject and errors (M3), adopting one
+// What M2 leaves out is refused by name: reject and errors (M6), adopting one
 // promise into another, .then and the other promise methods, top-level await,
 // and a timer callback that is anything but `() => void`.
 
@@ -185,7 +185,7 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 	}
 	params := exec.Parameters()
 	if len(params) > 1 {
-		l.failf(params[1], "reject is not supported yet; cakebear has no errors until M3")
+		l.failf(params[1], "reject is not supported yet; it comes with errors, in M6")
 		return nil
 	}
 	if !l.closureShapeOK(exec) {
