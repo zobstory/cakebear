@@ -366,9 +366,7 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	// A slot the checker types as no maybe, as resolve's `T | PromiseLike<T>`
 	// is, still takes the callee's parameter type.
 	if ft := l.typeOf(c.Expression); ft.Kind == ir.KindFunc && ft.Sig != nil {
-		for i := range min(len(call.Args), len(ft.Sig.Params)) {
-			call.Args[i] = intoMaybe(call.Args[i], ft.Sig.Params[i])
-		}
+		call.Args = fillArgs(call.Args, ft.Sig.Params, l.span(n)) // params.go
 	}
 	if l.resolvesWithPromise(n, call) {
 		return nil

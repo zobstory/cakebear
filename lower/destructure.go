@@ -108,9 +108,6 @@ func (l *lowerer) bindPattern(pattern *ast.Node, source ir.Expr, mutable bool) [
 		case el.DotDotDotToken != nil:
 			l.failf(e, "a rest element in destructuring is not supported yet")
 			return nil
-		case el.Initializer != nil:
-			l.failf(e, "a default in destructuring is not supported yet")
-			return nil
 		}
 		keyNode := el.PropertyName
 		if keyNode == nil {
@@ -125,12 +122,24 @@ func (l *lowerer) bindPattern(pattern *ast.Node, source ir.Expr, mutable bool) [
 			l.invalidf(e, "%s has no property %s", shape, key)
 			return nil
 		}
-		field := &ir.FieldGet{Object: source, Field: i, Typ: shape.Fields[i].Type, Span: l.span(e)}
+		var value ir.Expr = &ir.FieldGet{Object: source, Field: i, Typ: shape.Fields[i].Type, Span: l.span(e)}
+		if el.Initializer != nil {
+			// `{ a = d }`: d where the field is undefined (params.go).
+			if value = l.defaulted(value, el.Initializer, l.typeOf(e)); value == nil {
+				return nil
+			}
+		}
 		if name := el.Name(); name.Kind == ast.KindIdentifier {
-			out = append(out, &ir.VarDecl{Name: name.Text(), Type: field.Typ, Init: field, Mutable: mutable, Span: l.span(e)})
+			out = append(out, &ir.VarDecl{Name: name.Text(), Type: value.ExprType(), Init: value, Mutable: mutable, Span: l.span(e)})
 			continue
 		}
-		nested := l.bindPattern(el.Name(), field, mutable)
+		if el.Initializer != nil {
+			// A nested pattern reads its value once per name: hold it.
+			held := &ir.VarDecl{Name: l.tempName("destructured"), Type: value.ExprType(), Init: value, Span: l.span(e)}
+			out = append(out, held)
+			value = &ir.Ident{Name: held.Name, Stable: true, Typ: held.Type, Span: held.Span}
+		}
+		nested := l.bindPattern(el.Name(), value, mutable)
 		if nested == nil {
 			return nil
 		}
@@ -167,14 +176,4 @@ func isConstDecl(decl *ast.Node) bool {
 	root := bindingRoot(decl)
 	return root != nil && root.Kind == ast.KindVariableDeclaration && root.Parent != nil &&
 		root.Parent.Flags&ast.NodeFlagsConst != 0
-}
-
-// paramPattern lowers a parameter written as a pattern, `({ x, y }: Point)`:
-// the parameter gets a name of its own, and the statements it returns, which
-// open the function's body, bind the pattern's names from it.
-func (l *lowerer) paramPattern(p *ast.Node, t ir.Type) (string, []ir.Stmt, bool) {
-	name := l.tempName("param")
-	source := &ir.Ident{Name: name, Stable: true, Typ: t, Span: l.span(p)}
-	bound := l.bindPattern(p.Name(), source, true)
-	return name, bound, bound != nil
 }

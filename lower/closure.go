@@ -15,8 +15,9 @@ const maxFuncTypeDepth = 16
 //
 // Only a plain function type is representable: exactly one call signature, no
 // construct signatures, no properties, no type parameters, no `this`, and no
-// optional or rest parameters. Anything callable with more to it (an overloaded
-// function, a callable object, a generic) has no single Go func type.
+// rest parameters. Anything callable with more to it (an overloaded function,
+// a callable object, a generic) has no single Go func type. A parameter a
+// caller may leave out, optional or with a default, is a maybe (params.go).
 func (l *lowerer) funcType(t *checker.Type) ir.Type {
 	if t.Flags()&checker.TypeFlagsObject == 0 || l.funcDepth >= maxFuncTypeDepth {
 		return ir.Invalid
@@ -32,16 +33,18 @@ func (l *lowerer) funcType(t *checker.Type) ir.Type {
 	}
 	sig := sigs[0]
 	params := sig.Parameters()
-	if len(sig.TypeParameters()) != 0 || sig.ThisParameter() != nil ||
-		sig.HasRestParameter() || sig.MinArgumentCount() != len(params) {
+	if len(sig.TypeParameters()) != 0 || sig.ThisParameter() != nil || sig.HasRestParameter() {
 		return ir.Invalid
 	}
 
 	paramTypes := make([]ir.Type, 0, len(params))
-	for _, p := range params {
+	for i, p := range params {
 		pt := l.typeFromType(l.checker.GetTypeOfSymbol(p))
 		if !storable(pt) {
 			return ir.Invalid
+		}
+		if i >= sig.MinArgumentCount() {
+			pt = ir.OrUndefined(pt)
 		}
 		paramTypes = append(paramTypes, pt)
 	}
@@ -109,26 +112,25 @@ func (l *lowerer) closureFor(n *ast.Node, own, slot *ir.Signature, drop bool) ir
 	async := isAsync(n)
 	lit := &ir.FuncLit{Result: sig.Result, Async: async, Typ: ir.FuncType(sig.Params, sig.Result), Span: l.span(n)}
 	declared := n.Parameters()
-	var prologue []ir.Stmt
+	var prologues []func() []ir.Stmt // defaults and patterns (params.go)
 	for i, pt := range sig.Params {
 		param := ir.Param{Type: pt, Span: lit.Span}
 		if i < len(declared) {
-			param.Name = bindingText(declared[i].Name())
+			name, open, ok := l.param(declared[i], pt)
+			if !ok {
+				return nil
+			}
+			param.Name = name
 			param.Span = l.span(declared[i])
-			param.Appended = declared[i].Name().Kind == ast.KindIdentifier && l.appended(declared[i].Name())
-			if declared[i].Name().Kind == ast.KindObjectBindingPattern {
-				name, bound, ok := l.paramPattern(declared[i], pt)
-				if !ok {
-					return nil
-				}
-				param.Name = name
-				prologue = append(prologue, bound...)
+			param.Appended = open == nil && declared[i].Name().Kind == ast.KindIdentifier && l.appended(declared[i].Name())
+			if open != nil {
+				prologues = append(prologues, open)
 			}
 		}
 		lit.Params = append(lit.Params, param)
 	}
 	l.inBody(async, func() {
-		lit.Body = append(prologue, l.closureBody(n.Body(), bodyResult(sig.Result, async), discard)...)
+		lit.Body = append(opening(prologues), l.closureBody(n.Body(), bodyResult(sig.Result, async), discard)...)
 		lit.Body = undefinedReturns(lit.Body, returnedType(sig.Result, async), lit.Span)
 	})
 	lit.Captures = l.captures(n)
@@ -165,9 +167,6 @@ func (l *lowerer) closureShapeOK(n *ast.Node) bool {
 			ok = false
 		case param.DotDotDotToken != nil:
 			l.failf(p, "rest parameters are not supported yet")
-			ok = false
-		case param.QuestionToken != nil || param.Initializer != nil:
-			l.failf(p, "optional and default parameters are not supported yet")
 			ok = false
 		}
 	}

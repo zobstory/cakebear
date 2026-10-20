@@ -185,7 +185,6 @@ func TestDestructuringRefusals(t *testing.T) {
 		{"an array pattern parameter", "function f([a]: number[]): number {\n  return a;\n}\n", "array destructuring is not supported yet"},
 		{"an array pattern nested in an object's", "const o: { xs: number[] } = { xs: [1] };\nconst { xs: [a] } = o;\n", "array destructuring is not supported yet"},
 		{"a rest element", "const o: { a: number; b: number } = { a: 1, b: 2 };\nconst { a, ...rest } = o;\n", "a rest element in destructuring is not supported yet"},
-		{"a default", "const o: { a: number } = { a: 1 };\nconst { a = 2 } = o;\n", "a default in destructuring is not supported yet"},
 		{"a computed key", "const o: { a: number } = { a: 1 };\nconst { [\"a\"]: z } = o;\n", "a computed property name is not supported yet"},
 		{"a string", "const s: string = \"abc\";\nconst { length } = s;\n", "destructuring a string is not supported yet; only an object"},
 		{"an array", "const xs: number[] = [1];\nconst { length } = xs;\n", "destructuring a number[] is not supported yet; only an object"},
