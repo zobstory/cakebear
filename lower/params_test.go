@@ -54,6 +54,7 @@ function h(x: number | null = 7): number | null {
   return x;
 }
 g(1);
+g(1, 3);
 h(null);
 `)
 	m := p.EntryModule()
@@ -75,8 +76,14 @@ h(null);
 	if _, ok := cond.Else.(*ir.Unwrap); !ok {
 		t.Errorf("b given is %#v, want the argument unwrapped", cond.Else)
 	}
-	if calls := callsTo(m.Main, "g"); len(calls) != 1 || len(calls[0].Args) != 2 {
-		t.Errorf("g(1) is %v, want b passed as undefined", calls)
+	calls := callsTo(m.Main, "g")
+	if len(calls) != 2 || len(calls[0].Args) != 2 || !isEmptyValue(calls[0].Args[1]) {
+		t.Fatalf("g(1) is %v, want b passed as undefined", calls)
+	}
+	// The checker types the argument a number, the parameter's own type:
+	// only the call makes it the signature's maybe.
+	if !isWrap(calls[1].Args[1]) {
+		t.Errorf("g(1, 3) passes b as %#v, want 3 wrapped", calls[1].Args[1])
 	}
 	hx := funcNamed(t, m, "h").Body[0].(*ir.VarDecl)
 	if test := hx.Init.(*ir.Cond).Test.(*ir.IsEmpty); test.Null || !hx.Type.Equal(ir.MaybeOf(ir.Number)) {
@@ -160,6 +167,32 @@ function whole({ size }: Opts = { size: 3 }): number {
 	whole := funcNamed(t, m, "whole")
 	if pt := whole.Params[0].Type; pt.Kind != ir.KindMaybe || pt.Elem.Kind != ir.KindObject {
 		t.Errorf("whole's pattern parameter is %s, want a maybe of Opts", whole.Params[0].Type)
+	}
+}
+
+// TestNestedPatternDefault: a nested pattern's default is held, so the
+// names it binds read one value, made once.
+func TestNestedPatternDefault(t *testing.T) {
+	t.Parallel()
+
+	p := lowerProgramClean(t, `interface In { v: number; w: number }
+interface Out { inner?: In }
+function make(): In {
+  return { v: 1, w: 2 };
+}
+const o: Out = {};
+const { inner: { v, w } = make() } = o;
+`)
+	for _, s := range p.EntryModule().Main {
+		d, ok := s.(*ir.VarDecl)
+		if !ok || (d.Name != "v" && d.Name != "w") {
+			continue
+		}
+		if get, ok := d.Init.(*ir.FieldGet); !ok {
+			t.Errorf("%s is %#v, want a field read", d.Name, d.Init)
+		} else if _, ok := get.Object.(*ir.Ident); !ok {
+			t.Errorf("%s reads a field of %#v, want the held value", d.Name, get.Object)
+		}
 	}
 }
 
