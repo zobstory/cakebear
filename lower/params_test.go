@@ -80,8 +80,6 @@ h(null);
 	if len(calls) != 2 || len(calls[0].Args) != 2 || !isEmptyValue(calls[0].Args[1]) {
 		t.Fatalf("g(1) is %v, want b passed as undefined", calls)
 	}
-	// The checker types the argument a number, the parameter's own type:
-	// only the call makes it the signature's maybe.
 	if !isWrap(calls[1].Args[1]) {
 		t.Errorf("g(1, 3) passes b as %#v, want 3 wrapped", calls[1].Args[1])
 	}
