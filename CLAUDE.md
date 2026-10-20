@@ -270,15 +270,21 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M5**, `null` and `undefined`
+## Current phase: **M6**, errors, to plan
 
-P0–P5 and M1–M4 are done. **M5** is `null` and `undefined`: optional
-properties, `T | undefined`, `?.` and `??`, narrowing (by truthiness too),
-the members that return `T | undefined` (`find`, `at`, `pop()` as a value),
-and string- and number-literal unions. Its plan, decided 2026-10-15 at scope
-D, is `~/Desktop/cakebear/m5-nullables-plan.md`, sized by measurements of
-wx-next (`spikes/m5-measure/`) and a hand port of two of its paths. Then
-**M6**, errors: `throw`, `try`/`catch`/`finally`, `reject`.
+P0–P5 and M1–M5 are done. Next is **M6**, errors: `throw`,
+`try`/`catch`/`finally`, `reject`, not planned yet, per the per-phase rule
+below. M5's re-measurement of wx-next (check 9, below) is the first input to
+its plan: errors are in 24.1% of the clean `.ts` files, but almost never
+their only blocker, so M6 alone lowers 7 more of them.
+
+M5, decided 2026-10-15 and done 2026-10-19, was `null` and `undefined`:
+optional properties, `T | undefined`, `?.` and `??`, narrowing (by
+truthiness too), the members that return `T | undefined` (`find`, `at`,
+`pop()` as a value), string- and number-literal unions, and optional and
+default parameters. Its plan, decided at scope D, is
+`~/Desktop/cakebear/m5-nullables-plan.md`, sized by measurements of wx-next
+(`spikes/m5-measure/`) and a hand port of two of its paths.
 
 After M6, the roadmap, in a provisional order ranked by how much of wx-next
 each unblocks. The shares are of its clean `.ts` files that check 9 found
@@ -301,6 +307,22 @@ M5's measurement of their reach (3,372 files):
 None is planned yet, per the per-phase rule below: each is planned, and its
 place in the order checked against a fresh measurement, when it becomes the
 active phase.
+
+M5's re-measurement (check 9, `spikes/m5-remeasure/`, at `dbd8a82ba7`) found
+categories as large that the roadmap above doesn't have, not yet placed in
+its order. Each is the share of wx-next's clean `.ts` files it refuses, and
+in brackets the files it would still be the only blocker of once M6 to M14
+land:
+- index signatures and `Record`: 29.7% (100);
+- `any` and `unknown`: 25.8% (48);
+- intersections: 21.0% (260), the largest gap;
+- `as` and `satisfies`: 18.4% (36);
+- `typeof`: 18.0% (17);
+- `fetch`'s types: 15.8% (79);
+- `Date`: 13.2%; tuples: 12.5%; methods in object types: 8.8% (71).
+
+On that curve, M7 is the largest step before packages: of the 232 files
+lowering then, M6 adds 7 and M7 207 more.
 
 Step 0, the fixes a port of real code found (D13), is done. `%`, products,
 extension-type arithmetic and literals (PR 47; "Numbers" and the type
@@ -482,6 +504,24 @@ needed no backend change.
   `{ a = d }` in a parameter's, a declaration's or a `for…of`'s pattern. A
   nested pattern's default is held, so its names read one value.
 - `TestParamsMatchNode` holds a program of them to Node, 20 runs.
+
+Step 8, M5's end to end, is done:
+- `examples/route-server` grew M5's features: items with optional
+  properties, a sale price that may be null, a query parameter that may be
+  undefined, `find`, `?.`, `??`, truthiness, a default parameter and
+  conditional spread. `TestRouteServerServes` holds 22 replies to Node's, and
+  `TestRouteServerUnderRace` serves them from a race build.
+- Check 9 re-measured wx-next with the real lowering
+  (`spikes/m5-remeasure/`): the clean `.ts` files that lower went from 182
+  (5.5%) just before M5 to 232 (7.0%), the plan's conservative projection.
+  Of the 2,995 with runtime code, not only types, 104 lower, from 54 (1.8%
+  to 3.5%). No lowering panicked, and every file that lowers builds.
+- It found five things, fixed: a `let` with no value was refused unless it
+  was a maybe (219 files), a shorthand `{ x }` didn't see narrowing (77), an
+  async function's returns didn't see their slot (`T | PromiseLike<T>`), an
+  async function with no result type, inferred as one the subset can't hold,
+  reached Validate as invalid IR, and `t ?? {}` was reported as `error:`.
+  None changed the count: every file they touched has another blocker.
 
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
@@ -719,7 +759,10 @@ the language server, and programs of several modules, lowered under a
 program-wide race rule and run in ES order. **M4** objects and arrays: exact
 shapes, arrays and their methods, destructuring, printing and
 `JSON.stringify` as Node does, frozen consts a handler may share, and the
-strings step's template literals, string methods and number parsers.
+strings step's template literals, string methods and number parsers. **M5**
+null and undefined: maybes, narrowing, `?.`, `??` and `!`, optional
+properties, the members that may give undefined, truthiness and
+conditional spread, and optional and default parameters.
 
 The repository is on GitHub. Actions is disabled there, so pushes and PRs run
 nothing. The only workflows in the tree are cakebear's own:
@@ -1078,6 +1121,10 @@ functions and arrows, a call leaving them out, and defaults in destructuring
 patterns. Refused by name: rest parameters, and a function with optional
 parameters where a slot passes required ones (`xs.map((x, i?) => …)`).
 
+Since M5 step 8, a `let` of any type declared with no value (a maybe is
+undefined until assigned, anything else Go's zero), but for a `for` loop's
+first clause.
+
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
 value, `||=` and `&&=` (truthiness, step 7), `delete` as a value or of
@@ -1383,6 +1430,7 @@ not listed here that behaves differently is a bug.
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
 | `req.url`, `req.method` | `string \| undefined` (`@types/node`) | `string`: a server request always has both |
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
+| Reading a `let` declared with no value before it is assigned, from a closure called first (M5 step 8; TypeScript refuses it anywhere else) | `undefined` | Go's zero value, as above |
 | Reading an imported binding across an import cycle, before its module has run | `ReferenceError` | Go's zero value |
 | A top-level `await` in a module other than the entry | the modules importing it wait for it | refused at compile time (M3 plan D8) |
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
