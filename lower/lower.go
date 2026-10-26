@@ -86,7 +86,7 @@ type lowerer struct {
 
 // module lowers the lowerer's file into a module of the program.
 func (l *lowerer) module() *ir.Module {
-	m := &ir.Module{Name: l.name, File: string(l.file.FileName())}
+	m := &ir.Module{Name: l.name, File: string(l.file.FileName()), Lines: stripTypes(l.file)}
 	if await := firstTopLevelAwait(l.file); await != nil {
 		m.Async = true
 		// M3 plan D8: an importer of a module with a top-level await waits for
