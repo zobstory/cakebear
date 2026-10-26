@@ -13,8 +13,9 @@ import (
 // with that message among Go's trace. Anything else is String() of the
 // Error Node throws, uncaught: exit 1, and on stderr the report Node prints
 // under --stack-trace-limit=0, with cakebear's version for Node's (M6 plan
-// D6, runtime/uncaught.go). Every site is nil until lowering provides the
-// source excerpt (emit_site.go), so the report has none, and no Go trace.
+// D6, runtime/uncaught.go). The report points at the test's span, t.ts:1, a
+// place with no line to quote, since a module built from IR has no
+// ir.Module.Lines: its location, a blank line, the error, and no Go trace.
 // Nothing is printed to stdout before either.
 func checkFailure(t *testing.T, err error, stdout, stderr, want string) {
 	t.Helper()
@@ -29,8 +30,8 @@ func checkFailure(t *testing.T, err error, stdout, stderr, want string) {
 		}
 		return
 	}
-	report := "[" + want + "]\n\ncakebear "
-	if code != 1 || stdout != "" || !strings.HasPrefix(stderr, report) || strings.Count(stderr, "\n") != 3 {
+	report := "file://t.ts:1\n\n[" + want + "]\n\ncakebear "
+	if code != 1 || stdout != "" || !strings.HasPrefix(stderr, report) || strings.Count(stderr, "\n") != 5 {
 		t.Errorf("%v, stdout %q, stderr\n%s\nwant exit 1, nothing printed, and the report %q and a version", err, stdout, stderr, report)
 	}
 }

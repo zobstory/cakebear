@@ -117,7 +117,7 @@ func RunModule(p *Promise[struct{}], file string) {
 	Run()
 	if !p.settled {
 		Flush()
-		warnf("Warning: Detected unsettled top-level await at file://%s", file)
+		warnf("Warning: Detected unsettled top-level await at %s", fileURL(file)) // as Node writes the file
 		exit(13)
 	}
 }

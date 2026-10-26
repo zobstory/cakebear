@@ -323,6 +323,8 @@ func TestErrorRefusals(t *testing.T) {
 			"comparing typeof with anything but a string literal is not supported yet"},
 		{"a function as an unknown", "const f: unknown = (): number => 1;\n", "a () => number as an unknown is not supported"},
 		{"any", "const a: any = 1;\n", "any is not supported yet"},
+		{"an unknown first among console.log's arguments", "const u: unknown = \"%d\";\nconsole.log(u, 1);\n",
+			"a string before console.log's other arguments is a format to Node"},
 		{"nothing returned for an unknown", "function apply(f: () => unknown): void {\n}\napply(() => {\n  console.log(1);\n});\n",
 			"this function returns nothing where unknown is expected"},
 	} {

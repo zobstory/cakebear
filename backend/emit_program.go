@@ -43,6 +43,10 @@ func (e *emitter) program(p *ir.Program) string {
 	// side effects keep their order. A package-level initialiser would run
 	// before main, ahead of any top-level code written earlier in the file.
 	e.hoisted = map[*ir.VarDecl]bool{}
+	e.lines = make(map[string][]string, len(p.Modules)) // for the site table (emit_site.go)
+	for _, m := range p.Modules {
+		e.lines[m.File] = m.Lines
+	}
 	var globals, funcs, inits strings.Builder
 	for i, m := range p.Modules {
 		e.cur = m.File
@@ -106,6 +110,7 @@ func (e *emitter) program(p *ir.Program) string {
 	}
 	out.WriteString(funcs.String())
 	out.WriteString(inits.String())
+	out.WriteString(e.siteDecl())
 	if e.usesRead {
 		out.WriteString(readDecl)
 	}

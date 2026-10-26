@@ -69,10 +69,10 @@ func TestEmitHostServer(t *testing.T) {
 		"import " + rtPkg + " ",
 		"var server *" + rtPkg + ".Server\n",
 		"\tserver = " + rtPkg + ".CreateServer(func(ts_domain *" + rtPkg + ".Domain, req *" + rtPkg + ".IncomingMessage, res *" + rtPkg + ".ServerResponse) {\n",
-		"\t\tres.SetHeader(\"a\", \"b\", nil).End(\"c\")\n", // a chained call, emitted bare, with each site
+		"\t\tres.SetHeader(\"a\", \"b\", &ts_sites[0]).End(\"c\")\n", // a chained call, emitted bare, with each site
 		"\t\tif (req.URL() == \"/x\") {\n",
-		"\t\t\tres.WriteHead(404.0, nil)\n",
-		"\tserver.Listen(3000.0, nil, func(ts_domain *" + rtPkg + ".Domain) {\n",
+		"\t\t\tres.WriteHead(404.0, &ts_sites[0])\n",
+		"\tserver.Listen(3000.0, &ts_sites[0], func(ts_domain *" + rtPkg + ".Domain) {\n",
 		"\t" + rtPkg + ".Run()\n}\n", // the last statement of main
 	} {
 		if !strings.Contains(got, want) {

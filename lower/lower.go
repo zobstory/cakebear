@@ -190,7 +190,9 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		return ir.String
 	case flags&checker.TypeFlagsBooleanLike != 0:
 		return ir.Boolean
-	case flags&checker.TypeFlagsVoid != 0:
+	case flags&(checker.TypeFlagsVoid|checker.TypeFlagsNever) != 0:
+		// never is what a function that ends in a throw returns: nothing a
+		// caller can use (M6 plan D1). A binding of either is refused.
 		return ir.Void
 	case flags&(checker.TypeFlagsNull|checker.TypeFlagsUndefined) != 0:
 		// A binding of null alone has nothing to hold; null and undefined as

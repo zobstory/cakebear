@@ -84,6 +84,14 @@ func (e *emitter) toString(a ir.Expr) string {
 	if t.Kind == ir.KindMaybe && t.Elem != nil {
 		return e.maybeToString(v, t, a.ExprSpan())
 	}
+	switch t { // `Name: message`, and what an unknown holds (M6 D4, D5)
+	case ir.Error:
+		e.usesRuntime = true
+		return rtPkg + ".ErrorToString(" + v + ")"
+	case ir.Unknown:
+		e.usesRuntime = true
+		return rtPkg + ".UnknownToString(" + v + ")"
+	}
 	s, ok := primitiveToString(t, v)
 	if !ok {
 		return e.cannot(a.ExprSpan(), "the backend cannot convert a "+t.String()+" to a string yet")

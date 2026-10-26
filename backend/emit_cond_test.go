@@ -104,10 +104,10 @@ func TestEmitCond(t *testing.T) {
 		// The held value is named as the source writes it, for Must.
 		"\tn = func() float64 {\n\t\tvar ts_x_ts_u20_held1 cakebearrt.Maybe[float64] = g(ts_domain)\n\t\t_ = ts_x_ts_u20_held1\n" +
 			"\t\tif ts_x_ts_u20_held1.IsEmpty() {\n\t\t\treturn 0.0\n\t\t}\n\t\treturn ts_x_ts_u20_held1.Must(\"g()\")\n\t}()\n",
-		"\t\treturn cakebearrt.Some[float64](ts_x_ts_u20_held1.MustRead(\"p\", \"'x'\", nil).x)\n",
+		"\t\treturn cakebearrt.Some[float64](ts_x_ts_u20_held1.MustRead(\"p\", \"'x'\", &ts_sites[0]).x)\n",
 		"\tfunc() {\n\t\tif c {\n\t\t\tsay(ts_domain)\n\t\t\treturn\n\t\t}\n\t\tsay(ts_domain)\n\t}()\n",
-		"\tcakebearrt.LogNumber(p.AssertRead(\"p\", \"'x'\", nil).x)\n",
-		"\treturn req.AssertRead(\"req\", \"'url'\", nil).URL()\n",
+		"\tcakebearrt.LogNumber(p.AssertRead(\"p\", \"'x'\", &ts_sites[0]).x)\n",
+		"\treturn req.AssertRead(\"req\", \"'url'\", &ts_sites[0]).URL()\n",
 		// A second ts held1 in the chain would be declared twice.
 		"\t\tif c {\n\t\t\treturn 1.0\n\t\t}\n\t\treturn func() float64 {\n\t\t\tvar ts_x_ts_u20_held1 float64 = f(ts_domain)\n",
 	} {

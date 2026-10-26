@@ -53,6 +53,9 @@ func (e *emitter) maybe(x ir.Expr) string {
 		case !x.Undefined:
 			test = "IsNull"
 		}
+		if x.Value.ExprType() == ir.Unknown { // tested as it is (runtime/unknown.go)
+			return fmt.Sprintf("%s.%sUnknown(%s)", rtPkg, test, e.expr(x.Value))
+		}
 		return e.operand(x.Value) + "." + test + "()"
 	}
 	return e.cannot(x.ExprSpan(), describeUnsupported(x))

@@ -83,7 +83,8 @@ func logFunc(t ir.Type) (string, bool) {
 func inspectable(t ir.Type, seen map[*ir.Shape]bool) bool {
 	switch t.Kind {
 	case ir.KindNumber, ir.KindString, ir.KindBoolean,
-		ir.KindInt32, ir.KindInt64, ir.KindUint32, ir.KindUint64, ir.KindFloat32, ir.KindBase64:
+		ir.KindInt32, ir.KindInt64, ir.KindUint32, ir.KindUint64, ir.KindFloat32, ir.KindBase64,
+		ir.KindUnknown, ir.KindError: // an unknown holds only data (ir.Box)
 		return true
 	case ir.KindArray, ir.KindMaybe:
 		return t.Elem != nil && inspectable(*t.Elem, seen)
