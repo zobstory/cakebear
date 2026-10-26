@@ -213,6 +213,9 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 	if v, ok := l.fieldGet(n); ok {
 		return v
 	}
+	if v, ok := l.errorProperty(n); ok {
+		return v
+	}
 	if v, ok := l.stringProperty(n); ok {
 		return v
 	}

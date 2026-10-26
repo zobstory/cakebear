@@ -148,10 +148,16 @@ func (l *lowerer) await(n *ast.Node) ir.Expr {
 	return &ir.Await{Value: value, Typ: *t.Elem, Span: l.span(n)}
 }
 
-// newExpr lowers `new Promise((resolve) => …)`, the only constructor so far.
+// newExpr lowers `new Promise((resolve) => …)` and `new Error(message)` and its
+// kinds (errors.go), the only constructors so far.
 func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 	ne := n.AsNewExpression()
 	callee := ne.Expression
+	if callee.Kind == ast.KindIdentifier {
+		if k, ok := errorKindOf(l.checker.GetSymbolAtLocation(callee)); ok {
+			return l.newError(n, k, n.Arguments())
+		}
+	}
 	if callee.Kind != ast.KindIdentifier || callee.Text() != "Promise" ||
 		!onlyInBundledLib(l.checker.GetSymbolAtLocation(callee), "") {
 		if callee.Kind == ast.KindIdentifier {

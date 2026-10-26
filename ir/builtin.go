@@ -151,6 +151,15 @@ func IsPrimitive(t Type) bool {
 	return t == String || t == Number || t == Boolean || t.IsExtension()
 }
 
+// ToStringable reports whether ToString takes a value of type t: a
+// primitive, a maybe of one, an Error (`Name: message`), or an unknown,
+// whatever it holds (M6 plan D4, D5). None calls into the program: the
+// built-in kinds have no toString of a program's, and nor have the objects
+// an unknown may hold, which give `[object Object]`.
+func ToStringable(t Type) bool {
+	return IsPrimitive(primitiveOf(t)) || t == Error || t == Unknown
+}
+
 // checkBuiltin holds a builtin call to its signature. A string argument may
 // be a base64, which is a string.
 func checkBuiltin(x *BuiltinCall) error {
@@ -163,8 +172,8 @@ func checkBuiltin(x *BuiltinCall) error {
 	}
 	if x.Fn == ToString {
 		// A maybe of one is "undefined" or "null" when it is empty (M5 D8).
-		if len(x.Args) != 1 || !IsPrimitive(primitiveOf(x.Args[0].ExprType())) {
-			return errors.New("String takes one primitive, or a maybe of one")
+		if len(x.Args) != 1 || !ToStringable(x.Args[0].ExprType()) {
+			return errors.New("String takes one primitive, or a maybe of one, an Error or an unknown")
 		}
 		return nil
 	}

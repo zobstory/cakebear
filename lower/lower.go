@@ -182,6 +182,8 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 
 	flags := t.Flags()
 	switch {
+	case flags&checker.TypeFlagsAnyOrUnknown != 0:
+		return l.anyOrUnknown(flags) // errors.go
 	case flags&checker.TypeFlagsNumberLike != 0:
 		return ir.Number
 	case flags&checker.TypeFlagsStringLike != 0:
@@ -203,6 +205,9 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		}
 		if h := l.hostType(t); h != ir.HostNone {
 			return ir.HostOf(h)
+		}
+		if isErrorType(t) {
+			return ir.Error // errors.go (M6 plan D4)
 		}
 		switch {
 		case flags&checker.TypeFlagsUnion != 0:
@@ -336,6 +341,9 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 
 	case ast.KindBreakStatement, ast.KindContinueStatement:
 		return l.jump(n)
+
+	case ast.KindThrowStatement, ast.KindTryStatement:
+		return l.errorStmt(n) // errors.go
 
 	case ast.KindInterfaceDeclaration, ast.KindTypeAliasDeclaration:
 		// Types alone: erased at runtime, so there is nothing to lower.

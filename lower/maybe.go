@@ -74,11 +74,40 @@ func (l *lowerer) storedMaybe(n *ast.Node) (ir.Type, bool) {
 
 // narrowed is a read of a maybe, stored, as its use needs it (D4): unwrapped
 // where the checker has narrowed it to its element, and as it is otherwise.
+// A read of an unknown the checker has narrowed is unboxed, checked, to the
+// type it narrowed it to (M6 plan D5).
 func narrowed(read ir.Expr, use ir.Type, span ir.Span) ir.Expr {
-	if t := read.ExprType(); t.Kind == ir.KindMaybe && use.Equal(*t.Elem) {
+	t := read.ExprType()
+	switch {
+	case t.Kind == ir.KindMaybe && use.Equal(*t.Elem):
 		return &ir.Unwrap{Value: read, Typ: use, Span: span}
+	case t == ir.Unknown && use != ir.Unknown && use != ir.Invalid && use != ir.Void:
+		return &ir.Unbox{Value: read, Typ: use, Span: span}
 	}
 	return read
+}
+
+// stored is the type the binding n names is stored as, when that is a maybe
+// or an unknown, which a read is narrowed from (narrowed).
+func (l *lowerer) stored(n *ast.Node) (ir.Type, bool) {
+	if t, ok := l.storedMaybe(n); ok {
+		return t, true
+	}
+	return l.storedUnknown(n)
+}
+
+// storedUnknown is ir.Unknown when the binding n names is declared one, as
+// storedMaybe is a maybe's type: a use's own type is what the checks before
+// it narrowed it to.
+func (l *lowerer) storedUnknown(n *ast.Node) (ir.Type, bool) {
+	sym := l.p.resolve(l.valueSymbol(n))
+	if sym == nil {
+		return ir.Invalid, false
+	}
+	if l.typeFromType(l.checker.GetTypeOfSymbol(sym)) == ir.Unknown {
+		return ir.Unknown, true
+	}
+	return ir.Invalid, false
 }
 
 // wrapped holds v to a maybe's slot, when n's is one (D6): null and
@@ -171,7 +200,7 @@ func (l *lowerer) nullishCompare(n *ast.Node, op ast.Kind, left, right ir.Expr) 
 		l.failf(n, "comparing null or undefined with null or undefined is not supported yet")
 		return nil, true
 	}
-	if vt.Kind != ir.KindMaybe {
+	if vt.Kind != ir.KindMaybe && vt != ir.Unknown { // an unknown is tested as it is (M6 plan D5)
 		value = &ir.Wrap{Value: value, Typ: ir.MaybeOf(vt), Span: value.ExprSpan()}
 	}
 	var test ir.Expr = &ir.IsEmpty{Value: value, Undefined: loose || empty == ir.Undefined, Null: loose || empty == ir.Null, Span: l.span(n)}
@@ -199,7 +228,7 @@ func (l *lowerer) maybeOperands(n *ast.Node, op ir.BinaryOp, left, right ir.Expr
 		l.failf(n, "%s on a %s is not supported yet", op, t)
 		return nil, nil, false
 	}
-	return left, right, true
+	return l.unknownOperands(n, op, left, right) // errors.go
 }
 
 // undefinedReturns gives every bare `return` in body, and the end of it, the
@@ -228,6 +257,12 @@ func undefinedReturns(body []ir.Stmt, result ir.Type, span ir.Span) []ir.Stmt {
 				fill(s.Body)
 			case *ir.ForOf:
 				fill(s.Body)
+			case *ir.Try:
+				fill(s.Body)
+				if s.Catch != nil {
+					fill(s.Catch.Body)
+				}
+				fill(s.Finally)
 			}
 		}
 	}

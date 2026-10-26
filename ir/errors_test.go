@@ -103,6 +103,8 @@ func TestValidateChecksErrors(t *testing.T) {
 		{"instanceof no kind", expr(&InstanceOf{Value: u, Kind: 9}), "instanceof ErrorKind(9)"},
 		{"typeof of a string", expr(&TypeOf{Value: str("a"), Tag: TagString}), "typeof of a string, which is known while compiling"},
 		{"typeof against no tag", expr(&TypeOf{Value: u, Tag: 9}), "typeof against TypeTag(9)"},
+		{"an Error tested for null", expr(&IsEmpty{Value: e, Null: true}), "a Error tested for null or undefined"},
+		{"ToString of a function", expr(&BuiltinCall{Fn: ToString, Args: []Expr{fn}, Typ: String}), "String takes one primitive"},
 		// Inspect must look inside each of them.
 		{"a bad node thrown", &Throw{Value: bad}, badMsg},
 		{"a bad node in a try", &Try{Body: []Stmt{expr(bad)}, Finally: []Stmt{}}, badMsg},
@@ -139,6 +141,11 @@ func TestValidateChecksErrors(t *testing.T) {
 		expr(&InstanceOf{Value: e, Kind: ErrorBase}),
 		expr(&InstanceOf{Value: ref("em", errM), Kind: ErrorBase}),
 		expr(&TypeOf{Value: u, Tag: TagObject}),
+		// An unknown is tested for null as it is, and an Error and an unknown
+		// convert to a string (M6 step 3).
+		expr(&IsEmpty{Value: u, Null: true}),
+		expr(&BuiltinCall{Fn: ToString, Args: []Expr{u}, Typ: String}),
+		expr(&BuiltinCall{Fn: ToString, Args: []Expr{e}, Typ: String}),
 	} {
 		if err := prog(s).Validate(); err != nil {
 			t.Errorf("a well-formed %T: %v", s, err)

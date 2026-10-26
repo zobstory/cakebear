@@ -57,7 +57,7 @@ func (l *lowerer) jsonStringify(n *ast.Node, c *ast.CallExpression) ir.Expr {
 	if value == nil || !l.serializable(args[0], value.ExprType()) {
 		return nil
 	}
-	if admitsUndefined(l.checker.GetTypeAtLocation(args[0])) {
+	if admitsUndefined(l.checker.GetTypeAtLocation(args[0])) || value.ExprType() == ir.Unknown {
 		l.failf(args[0], "JSON.stringify of a value that may be undefined is not supported: for undefined it returns undefined, not a string")
 		return nil
 	}

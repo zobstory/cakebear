@@ -20,6 +20,9 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 	}
 	v = l.widened(n, v)
 	v = l.wrapped(n, v)
+	if v = l.boxed(n, v); v == nil { // errors.go
+		return nil
+	}
 	if t := v.ExprType(); t.Kind == ir.KindFunc {
 		if slot := l.slotType(n); slot.Kind == ir.KindFunc && !slot.Equal(t) {
 			return l.adapt(n, v, slot)
@@ -59,7 +62,11 @@ func (l *lowerer) slotType(n *ast.Node) ir.Type {
 	if ct == nil {
 		return ir.Invalid
 	}
-	return l.slotOf(ct)
+	t := l.slotOf(ct)
+	if mentionsUnknown(t) && l.libraryTyped(n) { // errors.go
+		return ir.Invalid
+	}
+	return t
 }
 
 // contextualType is the checker's type for the slot n fills, or nil.

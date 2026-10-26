@@ -204,7 +204,13 @@ func (l *lowerer) fitsSlot(n *ast.Node, own, slot *ir.Signature) bool {
 			return false
 		}
 	}
-	if slot.Result != ir.Void && !own.Result.Equal(slot.Result) {
+	// An unknown takes whatever it returns, boxed (errors.go), as void takes
+	// it dropped; one ending with nothing to return has no undefined yet.
+	if slot.Result == ir.Unknown && own.Result == ir.Void {
+		l.failf(n, "this function returns nothing where unknown is expected, which is not supported yet; return a value")
+		return false
+	}
+	if slot.Result != ir.Void && slot.Result != ir.Unknown && !own.Result.Equal(slot.Result) {
 		l.failf(n, "this function returns %s where %s is expected; converting between them is not supported yet",
 			own.Result, slot.Result)
 		return false

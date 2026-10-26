@@ -80,8 +80,9 @@ func (l *lowerer) stringOf(n *ast.Node, v ir.Expr, what string) ir.Expr {
 	switch t := v.ExprType(); {
 	case t == ir.String || t == ir.Base64:
 		return v
-	case ir.IsPrimitive(t), t.Kind == ir.KindMaybe && ir.IsPrimitive(*t.Elem):
-		// A maybe writes "undefined" or "null" when it is empty (D8).
+	case ir.ToStringable(t):
+		// A maybe writes "undefined" or "null" when it is empty (D8), an
+		// Error `Name: message`, and an unknown what it holds (M6 D4, D5).
 		return &ir.BuiltinCall{Fn: ir.ToString, Args: []ir.Expr{v}, Typ: ir.String, Span: l.span(n)}
 	default:
 		l.failf(n, "%s can hold a string, a number or a boolean; a %s is not supported yet (Node writes %s)", what, t, nodeWrites(t))
