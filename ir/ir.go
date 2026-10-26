@@ -57,6 +57,12 @@ type Module struct {
 	// evaluates its module, as under Node, whether or not what it names is
 	// used.
 	Imports []string
+	// Lines are the file's source lines with its types blanked as Node's
+	// type stripping blanks them, each without its terminator: what the
+	// report of an uncaught error quotes at the place it names (M6 plan D6).
+	// Nil until lowering strips the file; a place on a line past the end is
+	// reported without one.
+	Lines []string
 }
 
 // Func is a top-level function declaration.
