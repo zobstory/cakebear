@@ -121,8 +121,9 @@ func TestLowerSleep(t *testing.T) {
 	}
 	np := must[*ir.NewPromise](t, must[*ir.Return](t, sleep.Body[0], "sleep's statement").Value, "sleep's return value")
 	exec := must[*ir.FuncLit](t, np.Executor, "the executor")
-	if len(exec.Params) != 1 || exec.Params[0].Name != "resolve" || !exec.Params[0].Type.Equal(ir.ResolveType(ir.Void)) {
-		t.Errorf("executor params = %+v, want resolve: () => void", exec.Params)
+	if len(exec.Params) != 2 || exec.Params[0].Name != "resolve" || !exec.Params[0].Type.Equal(ir.ResolveType(ir.Void)) ||
+		exec.Params[1].Name != "" || !exec.Params[1].Type.Equal(ir.RejectType()) {
+		t.Errorf("executor params = %+v, want resolve: () => void, then reject, unnamed: the slot's, padded", exec.Params)
 	}
 	timer := hostCallOf(t, must[*ir.ExprStmt](t, exec.Body[0], "the executor's statement").Expr, ir.HostSetTimeout)
 	if cb := must[*ir.Ident](t, timer.Args[0], "the timer's callback"); cb.Name != "resolve" || !cb.Typ.Equal(voidCallback) {

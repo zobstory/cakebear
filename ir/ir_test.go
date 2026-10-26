@@ -393,10 +393,10 @@ func TestResolveAndExecutorTypes(t *testing.T) {
 	}{
 		// Promise<void>: resolve takes nothing, which is what lets a timer
 		// call it, as in `setTimeout(resolve, ms)`.
-		{Void, "() => void", "(() => void) => void"},
-		{Number, "(number) => void", "((number) => void) => void"},
-		{Int64, "(i64) => void", "((i64) => void) => void"},
-		{PromiseOf(Void), "(Promise<void>) => void", "((Promise<void>) => void) => void"},
+		{Void, "() => void", "(() => void, (unknown) => void) => void"},
+		{Number, "(number) => void", "((number) => void, (unknown) => void) => void"},
+		{Int64, "(i64) => void", "((i64) => void, (unknown) => void) => void"},
+		{PromiseOf(Void), "(Promise<void>) => void", "((Promise<void>) => void, (unknown) => void) => void"},
 	} {
 		if got := ResolveType(tt.elem).String(); got != tt.resolve {
 			t.Errorf("ResolveType(%v) = %s, want %s", tt.elem, got, tt.resolve)

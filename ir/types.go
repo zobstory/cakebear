@@ -192,10 +192,19 @@ func ResolveType(elem Type) Type {
 	return FuncType([]Type{elem}, Void)
 }
 
+// RejectType is the type of a Promise executor's reject parameter:
+// `(reason: unknown) => void`. TypeScript types the reason `any`, which the
+// subset doesn't hold; whatever it is, the promise is rejected with it, as
+// an unknown holds it (M6 plan D7).
+func RejectType() Type {
+	return FuncType([]Type{Unknown}, Void)
+}
+
 // ExecutorType is the type of the function `new Promise` takes, for a promise
-// of elem: `(resolve) => void`.
+// of elem: `(resolve, reject) => void`. An executor declaring only resolve
+// is padded to it, as any function literal is to its slot.
 func ExecutorType(elem Type) Type {
-	return FuncType([]Type{ResolveType(elem)}, Void)
+	return FuncType([]Type{ResolveType(elem), RejectType()}, Void)
 }
 
 // Equal reports whether t and u are the same type, comparing structurally.

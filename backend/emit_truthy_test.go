@@ -173,7 +173,7 @@ func TestTruthyEvaluatesOnce(t *testing.T) {
 		return &ir.Func{Name: name, Result: result, Span: span,
 			Body: []ir.Stmt{assign("calls", binary(ir.OpAdd, calls, num(1), ir.Number)), ret(v)}}
 	}
-	executor := &ir.FuncLit{Params: []ir.Param{{Name: "resolve", Type: ir.ResolveType(ir.Number), Span: span}},
+	executor := &ir.FuncLit{Params: []ir.Param{{Name: "resolve", Type: ir.ResolveType(ir.Number), Span: span}, {Type: ir.RejectType(), Span: span}},
 		Result: ir.Void, Typ: ir.ExecutorType(ir.Number), Span: span, Body: []ir.Stmt{do(callOf("resolve", ir.Void, num(1)))}}
 	req, res := ir.HostOf(ir.HostIncomingMessage), ir.HostOf(ir.HostServerResponse)
 	server := ir.HostOf(ir.HostHTTPServer)

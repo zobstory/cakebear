@@ -64,28 +64,35 @@ func (p *Promise[T]) checkDomain(d *Domain) {
 	}
 }
 
-// NewPromise is `new Promise<T>((resolve) => …)`. The executor runs at once,
-// before NewPromise returns, as in JavaScript. resolve is an ordinary function
-// value, so it takes the domain of whoever calls it.
-func NewPromise[T any](d *Domain, executor func(*Domain, func(*Domain, T))) *Promise[T] {
+// NewPromise is `new Promise<T>((resolve, reject) => …)`. The executor runs
+// at once, before NewPromise returns, as in JavaScript. resolve and reject
+// are ordinary function values, so each takes the domain of whoever calls
+// it. reject takes the reason as an unknown holds it (unknown.go).
+func NewPromise[T any](d *Domain, executor func(*Domain, func(*Domain, T), func(*Domain, any))) *Promise[T] {
 	p := &Promise[T]{d: d}
 	executor(d, func(caller *Domain, v T) {
 		p.checkDomain(caller)
 		p.resolve(v)
-	})
+	}, rejectNotYet)
 	return p
 }
 
 // NewPromiseVoid is NewPromise for Promise<void>, whose resolve takes no
 // value (ir.ResolveType). That is what lets `setTimeout(resolve, ms)` pass
 // resolve as a timer callback.
-func NewPromiseVoid(d *Domain, executor func(*Domain, func(*Domain))) *Promise[struct{}] {
+func NewPromiseVoid(d *Domain, executor func(*Domain, func(*Domain), func(*Domain, any))) *Promise[struct{}] {
 	p := &Promise[struct{}]{d: d}
 	executor(d, func(caller *Domain) {
 		p.checkDomain(caller)
 		p.resolve(struct{}{})
-	})
+	}, rejectNotYet)
 	return p
+}
+
+// rejectNotYet stands in for reject until rejection lands (M6 step 4):
+// lowering refuses any use of it, so nothing calls it.
+func rejectNotYet(*Domain, any) {
+	panic("cakebear: reject is not implemented yet")
 }
 
 // Co is one async call in progress: the goroutine Async started for it, and
