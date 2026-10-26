@@ -381,29 +381,63 @@ Step 3, throw and try lowered and emitted, is done (`lower/errors.go`,
   block is a literal run by `Try`, or `TryK` when it can leave by `return`,
   `break` or `continue`: it returns a code for how, acted on in the try's
   own place once the finally has run, and a return's value waits in a
-  variable declared before the outermost try, so it is taken before the
+  variable the first try it can leave declares, so it is taken before the
   finally runs (R20). The finally, and a catch with none after it, are
-  emitted in place, so their own exits replace the pending one (R21); a
-  catch before a finally is a literal too, so a throw from it still runs
-  the finally. A function literal inside a try has its own returns.
+  emitted in place, so their own exits replace the pending one (R21), and a
+  try inside one uses the outer's variable; a catch before a finally is a
+  literal too, so a throw from it still runs the finally. A function
+  literal inside a try has its own returns.
 - `unknown` is a type everywhere: a value into an unknown's slot is boxed,
   and a read the checker narrowed is unboxed, checked, as a maybe is. A slot
-  TypeScript's libs type `unknown` where cakebear has a type of its own
-  (`some`'s predicate, `Number.isInteger`'s argument) is no slot the IR
-  holds, so nothing is boxed into it, as M5's `emptyOutside` does for
-  maybes; before, every callback's result was boxed.
+  a library's own declaration types `unknown` where cakebear has a type of
+  its own (`some`'s predicate, `Number.isInteger`'s argument) is no slot the
+  IR holds, so nothing is boxed into it, as M5's `emptyOutside` does for
+  maybes. One only an instantiation makes unknown, `unknown[]`'s push, is a
+  slot like any.
 - Every place an error's report may point at is one entry of a site
   table, `&ts_sites[N]`, its column converted to UTF-16 units. Its line is
-  `ir.Module.Lines`, the source with its types blanked as Node strips
-  them.
-- `never`, which a function ending in a throw returns, is void.
-- Found and fixed: `console.log(u, …)` with an unknown first could print a
-  `%` in it as a format, and is refused as a string first is; the
-  unsettled-await warning named the file as `file://` and the raw path,
+  `ir.Module.Lines`: the source with its types blanked as Node's strip mode
+  blanks them (`lower/strip.go`), byte for byte on 703 recorded cases and on
+  8,693 of the 8,731 conformance files Node strips (the rest TypeScript
+  reports errors in, but one clean file swc parses otherwise).
+- A report's caret is where V8 records the operation that threw, not where
+  its expression starts (`lower/caret.go`, measured on Node 24.18): a read
+  or a method call at the property's name, an element at its `[`, a write
+  at its operator, `in` at its operator, `for…of` at the iterable, `delete`
+  at the object or, for a name, at the `delete`, and `--x` at x. Lowering
+  puts it in `ir.Span.Caret`, a `Pos`, since a call can put the name on a
+  line of its own, and an access's failure points where the node making it
+  does.
+- `never`, which a function ending in a throw returns, is void, and
+  `return fail()` of one is the call, which doesn't come back.
+- Found and fixed, while lowering: `console.log(u, …)` with an unknown first
+  could print a `%` in it as a format, and is refused as a string first is;
+  the unsettled-await warning named the file as `file://` and the raw path,
   where Node writes `pathToFileURL`'s href.
-- `TestErrorsMatchNode` holds a program of every way out of a try, each
-  kind, unknowns, a rethrow and an await in a try to Node, 20 runs, and
-  `TestUncaughtThrowsEndAsNode` four uncaught throws' ends.
+- Found and fixed by the end-to-end tests and agent m6-sweep, which held 104
+  programs to Node:
+  - silently wrong: `x ?? d` and `x ??= d` on an unknown never used d; a
+    `const` unknown from a call counted as frozen, so a handler or a spawn
+    could read an object another domain wrote, a data race `-race` caught;
+  - invalid IR or a failed go build: a bare return in a function returning
+    an unknown, `p?: unknown`, an unknown parameter left out, push,
+    includes and indexOf on an `unknown[]`, a literal returning its own
+    type in a `=> unknown` slot, `return fail()`, a try in a finally or in
+    a lone catch of a try that returns, and `res.end(c ? a : b)`, whose
+    branches took the maybe of end's optional chunk (since M5);
+  - refused though supported, or in words that misled: `await` into an
+    unknown's slot, `e?.message`, `String()` of an `Error | null`, join over
+    unknowns and Errors, an array literal in an unknown's slot, a
+    `number[]` into an `unknown[]` (now refused by name), and `x!.toString()`
+    on an empty x, which said Node carries on where it throws reading
+    toString;
+  - an `unknown[]` read past its end panicked; it is undefined there, as for
+    an array of maybes.
+- `TestErrorsMatchNode`, `TestNestedTrysMatchNode`, `TestUnknownsMatchNode`
+  and `TestUnknownFlowsMatchNode` hold programs to Node, 20 runs each;
+  `TestUncaughtThrowsEndAsNode` four uncaught throws' ends, and
+  `TestUncaughtReportsQuoteAsNode` 35 whole reports, byte for byte but the
+  path and the version.
 
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
@@ -1271,11 +1305,14 @@ Since M6 step 3 (`lower/errors.go`), errors:
   too): `new K(message)`, `K(message)`, `.message`, `.name`, `.stack`,
   `.cause`, `.toString()`, `String()`, templates, printing and
   `JSON.stringify`;
-- `unknown`, which a catch binds, as a type everywhere, narrowed by
-  `instanceof` a kind, `typeof v === "tag"` (and `!==`, `==`, `!=`), `===`
-  and `== null`, and truthiness, and converted, printed and serialised as
-  what it holds;
-- a function returning `never`, which is void.
+- `unknown`, which a catch binds, as a type everywhere (an optional
+  property or parameter, and an `unknown[]`, which reads undefined past its
+  end), narrowed by `instanceof` a kind, `typeof v === "tag"` (and `!==`,
+  `==`, `!=`), `===` and `== null`, and truthiness, tested by `??` and
+  `??=`, and converted, printed, joined and serialised as what it holds;
+- `e?.message` and the rest through an `Error | null`, and `String()` and
+  templates of one;
+- a function returning `never`, which is void, and `return fail()` of one.
 
 Refused by name: throwing a function, a promise or a host value, or
 anything holding one (a catch would print it); a destructured catch
@@ -1285,8 +1322,13 @@ on anything but an unknown, an Error or a maybe of one; `typeof` of
 anything but an unknown, or compared with anything but a string literal; a
 function, a promise or a host value as an unknown; `JSON.stringify` of a
 bare unknown, which may be undefined; a callback returning nothing where
-`() => unknown` is wanted; and `console.log` with an unknown first among
-several arguments.
+`() => unknown` is wanted; `console.log` with an unknown first among
+several arguments; an array of another type where an `unknown[]` is wanted;
+`||` and `&&` on an unknown as a value, which TypeScript types `{} | …`;
+`typeof` as a value; assigning an Error's `message` or `name`; a call
+returning never as the default of `??` or a branch of `?:`; and a request
+handler or a spawned function using an unknown created outside it, which
+may hold an object that can change.
 
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
@@ -1621,9 +1663,9 @@ not listed here that behaves differently is a bug.
 | `xs![i]` read or written with `xs` null or undefined and `i` not a literal (M5 step 6) | evaluates `i`, then throws `Cannot read properties of undefined (reading '3')` | throws before `i` is evaluated, the same TypeError with `(reading an index)` |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 | An Error's stack (M6 D4) | `Name: message`, then V8's frames | `Name: message` alone: no frames are kept, so `console.log(err)` prints `[Error: m]`, as Node prints under `--stack-trace-limit=0` |
-| The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code for a non-Error at an ES module's top level and for node:http's errors | ends `cakebear <version>`; names the source's path at build time; prints the error with none (above); gives no advice; points at the program's throw, or its call. A string made too long by `+`, a pad or a replace has no source excerpt |
+| The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs, by its bare path for a file with no import or export, which it runs as CommonJS; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code (`node:internal/…`) for node:http's errors, and at an ES module's top level for a non-Error, for an error a builtin throws, and for an Error whose stack was read before the throw | ends `cakebear <version>`; names the source's path at build time, always as a `file://` URL; prints the error with none (above); gives no advice; points at the program's throw, its call or the Error's creation, the caret where V8 would record it. A string made too long by `+`, a pad or a replace has no source excerpt |
 | A recursion that never ends (M6 D3) | a `RangeError: Maximum call stack size exceeded` a try can catch | Go's `fatal error: stack overflow`, past every catch, exit 2 |
-| A throw leaving an async function, until M6 step 4 (D7) | rejects the function's promise; the caller carries on, and `await` throws it | raised in the caller at once, as a synchronous throw is (a throw caught inside the async function is fine) |
+| A throw leaving an async function or a spawned one, until M6 step 4 (D7) | rejects the function's promise; the caller carries on, and `await` throws it, which a try around the await catches | before the function's first `await`, raised in the caller at once, as a synchronous throw is; after one, or from a spawned function, reported as uncaught past every try, exit 1. A throw caught inside the function is fine |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a
