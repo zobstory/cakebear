@@ -297,6 +297,29 @@ Step 0, what the research found in passing, is done (M6 plan D11):
 - A 1xx status is an accepted difference: Node sends it as the whole
   response, and net/http only as an informational one.
 
+Step 1, the IR, is done, with nothing lowered to it yet (`ir/errors.go`):
+- `ir.Unknown` (`KindUnknown`) is `unknown`: a value of any type the subset
+  holds, undefined and null included. Anything flows in through a `Box`,
+  and out only through an `Unbox`, a narrowing, checked as an `Unwrap` is
+  (D5). A `Box`, and a `Throw`, take only data, nothing holding a function,
+  a promise or a host value: what an unknown holds is printed and
+  serialised as it is at run time, where nothing could refuse it.
+- `ir.Error` (`KindError`) is an Error of one of the built-in kinds,
+  `Error`, `TypeError`, `RangeError`, `URIError`, `SyntaxError`,
+  `ReferenceError` and `EvalError`: one type for all of them, since
+  TypeScript's libs declare each as an Error with nothing added, and the
+  value carries its kind (D4).
+- The nodes: `Throw`; `Try`, a body, a catch binding an unknown (or
+  `catch {}`) and a finally; `NewError`; `ErrorGet`, of `message`, `name`,
+  `stack` and `cause`, typed as the libs declare them; `Box` and `Unbox`;
+  `InstanceOf`, of an unknown, an Error or a maybe of one; and `TypeOf`, of
+  an unknown, since anything else's tag is known while compiling.
+- `Program.Validate` holds each to its types, looks inside every block of a
+  try, and holds a return in any of them to its function's result. The
+  backend refuses all of it by name until steps 2 and 3
+  (`TestErrorsAreRefusedForNow`), and the order pass knows the new
+  expressions' operands, where it would have panicked.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
