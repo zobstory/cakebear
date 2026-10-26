@@ -66,8 +66,12 @@ func (s *Shape) String() string {
 	// out here never reaches itself.
 	parts := make([]string, len(s.Fields))
 	for i, f := range s.Fields {
-		if f.Optional && f.Type.Kind == KindMaybe && f.Type.Elem != nil {
+		switch {
+		case f.Optional && f.Type.Kind == KindMaybe && f.Type.Elem != nil:
 			parts[i] = f.Name + "?: " + f.Type.Elem.String()
+			continue
+		case f.Optional && f.Type == Unknown: // which holds undefined itself
+			parts[i] = f.Name + "?: " + f.Type.String()
 			continue
 		}
 		parts[i] = f.Name + ": " + f.Type.String()

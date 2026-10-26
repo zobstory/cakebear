@@ -38,7 +38,8 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 	if ct := l.contextualType(n); ct != nil {
 		t = elemOfMaybe(l.slotOf(ct)) // a maybe's slot takes it wrapped
 	}
-	if t.Kind != ir.KindArray {
+	own := t.Kind != ir.KindArray // an unknown's slot, say: the literal's own type
+	if own {
 		t = l.typeOf(n)
 	}
 	elems := n.AsArrayLiteralExpression().Elements.Nodes
@@ -60,7 +61,16 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 			l.failf(n, "an array literal with a hole is not supported")
 			return nil
 		}
-		v := l.expr(e)
+		var v ir.Expr
+		if own {
+			// Its elements' slots are the outer slot's, no element type,
+			// so each is held to the literal's own.
+			if v = l.exprOf(e); v != nil {
+				v = into(v, *t.Elem)
+			}
+		} else {
+			v = l.expr(e)
+		}
 		if v == nil {
 			return nil
 		}
@@ -76,7 +86,8 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 // elementGet lowers `xs[i]`, an array's element, or a string's (stringIndex).
 // Where the checker types the read as one that may be undefined, under
 // noUncheckedIndexedAccess, it is undefined past the end, as Node reads it
-// (D9); so is any read of an array of maybes, which can hold the undefined.
+// (D9); so is any read of an array of maybes or unknowns, which can hold
+// the undefined.
 // A read typed as the element, the flag off or the read narrowed, panics
 // there instead (M4 D8).
 func (l *lowerer) elementGet(n *ast.Node) ir.Expr {
@@ -89,10 +100,10 @@ func (l *lowerer) elementGet(n *ast.Node) ir.Expr {
 		return nil
 	}
 	elem, use := *arr.ExprType().Elem, l.typeOf(n)
-	if elem.Kind != ir.KindMaybe && !use.Equal(ir.MaybeOf(elem)) {
-		return &ir.IndexGet{Array: arr, Index: index, Typ: elem, Span: l.span(n)}
+	if elem.Kind != ir.KindMaybe && elem != ir.Unknown && !use.Equal(ir.MaybeOf(elem)) {
+		return &ir.IndexGet{Array: arr, Index: index, Typ: elem, Span: l.elementCaret(l.span(n), n)}
 	}
-	get := &ir.IndexGet{Array: arr, Index: index, Typ: ir.OrUndefined(elem), OrUndefined: true, Span: l.span(n)}
+	get := &ir.IndexGet{Array: arr, Index: index, Typ: ir.OrUndefined(elem), OrUndefined: true, Span: l.elementCaret(l.span(n), n)}
 	return narrowed(get, use, l.span(n))
 }
 
@@ -110,9 +121,9 @@ func (l *lowerer) stringIndex(n *ast.Node, access *ast.ElementAccessExpression) 
 		return nil
 	}
 	if l.typeOf(n).Kind == ir.KindMaybe {
-		return &ir.BuiltinCall{Fn: ir.StrIndexOrUndefined, Args: []ir.Expr{s, i}, Typ: ir.MaybeOf(ir.String), Span: l.span(n)}
+		return &ir.BuiltinCall{Fn: ir.StrIndexOrUndefined, Args: []ir.Expr{s, i}, Typ: ir.MaybeOf(ir.String), Span: l.elementCaret(l.span(n), n)}
 	}
-	return &ir.BuiltinCall{Fn: ir.StrIndex, Args: []ir.Expr{s, i}, Typ: ir.String, Span: l.span(n)}
+	return &ir.BuiltinCall{Fn: ir.StrIndex, Args: []ir.Expr{s, i}, Typ: ir.String, Span: l.elementCaret(l.span(n), n)}
 }
 
 // element lowers an element access's array and index, refusing one that
@@ -176,7 +187,7 @@ func (l *lowerer) arrayProperty(n *ast.Node) (ir.Expr, bool) {
 	if arr == nil {
 		return nil, true
 	}
-	return &ir.ArrayOp{Method: ir.ArrayLength, Array: arr, Typ: ir.Number, Span: l.span(n)}, true
+	return &ir.ArrayOp{Method: ir.ArrayLength, Array: arr, Typ: ir.Number, Span: l.caretAt(l.span(n), access.Name())}, true
 }
 
 // arrayCall lowers a call of an array's member, `xs.push(a, b)`, as a value,
@@ -202,7 +213,7 @@ func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 			return nil, true
 		}
 		method := map[string]ir.ArrayMethod{"pop": ir.ArrayPop, "shift": ir.ArrayShift}[name]
-		return &ir.ArrayOp{Method: method, Array: arr, Typ: ir.OrUndefined(*arr.ExprType().Elem), Span: l.span(n)}, true
+		return &ir.ArrayOp{Method: method, Array: arr, Typ: ir.OrUndefined(*arr.ExprType().Elem), Span: l.calleeCaret(l.span(n), n)}, true
 	default:
 		if m, ok := arrayMethods[name]; ok {
 			return l.arrayMethod(n, c, access, m), true
@@ -218,7 +229,7 @@ func (l *lowerer) arrayCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 	if arr == nil {
 		return nil, true
 	}
-	op := &ir.ArrayOp{Method: ir.ArrayPush, Array: arr, Typ: ir.Number, Span: l.span(n)}
+	op := &ir.ArrayOp{Method: ir.ArrayPush, Array: arr, Typ: ir.Number, Span: l.calleeCaret(l.span(n), n)}
 	for _, a := range c.Arguments.Nodes {
 		if a.Kind == ast.KindSpreadElement {
 			l.failf(a, "spreading arguments into push is not supported yet")
@@ -259,7 +270,7 @@ func (l *lowerer) popStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		return nil, true
 	}
 	method := map[string]ir.ArrayMethod{"pop": ir.ArrayPop, "shift": ir.ArrayShift}[name]
-	op := &ir.ArrayOp{Method: method, Array: arr, Typ: ir.Void, Span: l.span(expr)}
+	op := &ir.ArrayOp{Method: method, Array: arr, Typ: ir.Void, Span: l.calleeCaret(l.span(expr), expr)}
 	return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
 }
 
@@ -276,7 +287,7 @@ func (l *lowerer) arrayAssign(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
 		if v == nil {
 			return nil, true
 		}
-		return []ir.Stmt{&ir.IndexSet{Array: arr, Index: index, Value: v, Span: l.span(stmt)}}, true
+		return []ir.Stmt{&ir.IndexSet{Array: arr, Index: index, Value: v, Span: l.caretAfter(l.span(stmt), target)}}, true
 	case ast.KindPropertyAccessExpression:
 		access := target.AsPropertyAccessExpression()
 		if name, ok := l.arrayMember(access); !ok || (name != "length" && name != "") {
@@ -289,7 +300,7 @@ func (l *lowerer) arrayAssign(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
 		if arr == nil || v == nil {
 			return nil, true
 		}
-		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: arr, Args: []ir.Expr{v}, Typ: ir.Void, Span: l.span(stmt)}
+		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: arr, Args: []ir.Expr{v}, Typ: ir.Void, Span: l.caretAfter(l.span(stmt), target)}
 		return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
 	}
 	return nil, false
@@ -338,6 +349,6 @@ func (l *lowerer) forOf(n *ast.Node) []ir.Stmt {
 	}
 	body := append(prologue, l.statementBody(s.Statement)...)
 	return []ir.Stmt{&ir.ForOf{
-		Name: name, Type: *t.Elem, Mutable: mutable, Array: arr, Body: body, Span: l.span(n),
+		Name: name, Type: *t.Elem, Mutable: mutable, Array: arr, Body: body, Span: l.recordedCaret(l.span(n), s.Expression),
 	}}
 }

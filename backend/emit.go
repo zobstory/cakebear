@@ -65,6 +65,8 @@ type emitter struct {
 	// held holds what the source calls the value of each Let in scope, by
 	// the Let's name (emit_cond.go).
 	held map[string]heldName
+	// errorState is throw's and try's, and the site table's (emit_try.go).
+	errorState
 }
 
 // Emit renders a program as the contents of a Go main package. IR the backend
@@ -148,8 +150,18 @@ func (e *emitter) stmts(stmts []ir.Stmt, depth int) {
 func (e *emitter) stmt(s ir.Stmt, depth int) {
 	pad := strings.Repeat("\t", depth)
 	e.depth = depth
+	if e.leaves(s, pad) { // out of a try's literal (emit_try.go)
+		return
+	}
+	if isLoop(s) {
+		e.loops++
+		defer func() { e.loops-- }()
+	}
 
 	switch s := s.(type) {
+	case *ir.Throw, *ir.Try:
+		e.errorStmt(s, pad, depth)
+
 	case *ir.VarDecl:
 		e.varDecl(s, pad) // emit_decl.go
 
@@ -324,6 +336,9 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.Truthy:
 		return e.truthy(x)
 
+	case *ir.NewError, *ir.ErrorGet, *ir.Box, *ir.Unbox, *ir.InstanceOf, *ir.TypeOf:
+		return e.errorExpr(x) // emit_errors.go
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)
@@ -424,6 +439,8 @@ func goType(t ir.Type) (string, bool) {
 		return goArrayType(t)
 	case ir.KindMaybe:
 		return goMaybeType(t)
+	case ir.KindUnknown, ir.KindError:
+		return goErrorType(t)
 	}
 	switch t {
 	case ir.Number:

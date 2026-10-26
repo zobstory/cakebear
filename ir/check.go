@@ -33,8 +33,8 @@ func (p *Program) validateShapes() []error {
 			if err := p.checkType(f.Type); err != nil {
 				errs = append(errs, fmt.Errorf("field %s of %s: %w", f.Name, s, err))
 			}
-			if f.Optional && f.Type.Kind != KindMaybe {
-				errs = append(errs, fmt.Errorf("optional field %s of %s is a %s, where an optional property is a maybe", f.Name, s, f.Type))
+			if f.Optional && f.Type.Kind != KindMaybe && f.Type != Unknown {
+				errs = append(errs, fmt.Errorf("optional field %s of %s is a %s, where an optional property is a maybe or an unknown", f.Name, s, f.Type))
 			}
 		}
 		key := shapeKey(s.Fields)

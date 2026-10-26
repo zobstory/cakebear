@@ -86,7 +86,7 @@ type lowerer struct {
 
 // module lowers the lowerer's file into a module of the program.
 func (l *lowerer) module() *ir.Module {
-	m := &ir.Module{Name: l.name, File: string(l.file.FileName())}
+	m := &ir.Module{Name: l.name, File: string(l.file.FileName()), Lines: stripTypes(l.file)}
 	if await := firstTopLevelAwait(l.file); await != nil {
 		m.Async = true
 		// M3 plan D8: an importer of a module with a top-level await waits for
@@ -182,13 +182,17 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 
 	flags := t.Flags()
 	switch {
+	case flags&checker.TypeFlagsAnyOrUnknown != 0:
+		return l.anyOrUnknown(flags) // errors.go
 	case flags&checker.TypeFlagsNumberLike != 0:
 		return ir.Number
 	case flags&checker.TypeFlagsStringLike != 0:
 		return ir.String
 	case flags&checker.TypeFlagsBooleanLike != 0:
 		return ir.Boolean
-	case flags&checker.TypeFlagsVoid != 0:
+	case flags&(checker.TypeFlagsVoid|checker.TypeFlagsNever) != 0:
+		// never is what a function that ends in a throw returns: nothing a
+		// caller can use (M6 plan D1). A binding of either is refused.
 		return ir.Void
 	case flags&(checker.TypeFlagsNull|checker.TypeFlagsUndefined) != 0:
 		// A binding of null alone has nothing to hold; null and undefined as
@@ -203,6 +207,9 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 		}
 		if h := l.hostType(t); h != ir.HostNone {
 			return ir.HostOf(h)
+		}
+		if isErrorType(t) {
+			return ir.Error // errors.go (M6 plan D4)
 		}
 		switch {
 		case flags&checker.TypeFlagsUnion != 0:
@@ -313,20 +320,7 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		return []ir.Stmt{&ir.While{Cond: cond, Body: l.statementBody(s.Statement), Span: l.span(n)}}
 
 	case ast.KindReturnStatement:
-		s := n.AsReturnStatement()
-		out := &ir.Return{Span: l.span(n)}
-		if s.Expression != nil {
-			if out.Value = l.expr(s.Expression); out.Value == nil || !l.returnable(n, out.Value) {
-				return nil
-			}
-		}
-		if l.discard && out.Value != nil {
-			// A void slot: evaluate the value for its effects, then return.
-			value := out.Value
-			out.Value = nil
-			return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
-		}
-		return []ir.Stmt{out}
+		return l.returnStmt(n)
 
 	case ast.KindForStatement:
 		return l.forStmt(n)
@@ -336,6 +330,9 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 
 	case ast.KindBreakStatement, ast.KindContinueStatement:
 		return l.jump(n)
+
+	case ast.KindThrowStatement, ast.KindTryStatement:
+		return l.errorStmt(n) // errors.go
 
 	case ast.KindInterfaceDeclaration, ast.KindTypeAliasDeclaration:
 		// Types alone: erased at runtime, so there is nothing to lower.
@@ -469,6 +466,10 @@ func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stm
 	}
 	if out, ok := l.arrayAssign(stmt, bin.Left, bin.Right); ok {
 		return out
+	}
+	if bin.Left.Kind == ast.KindPropertyAccessExpression && isErrorType(l.checker.GetTypeAtLocation(bin.Left.Expression())) {
+		l.failf(stmt, "assigning an Error's %s is not supported yet: cakebear's Errors don't change once made", bin.Left.Name().Text())
+		return nil
 	}
 	if bin.Left.Kind != ast.KindIdentifier {
 		l.failf(stmt, "only assignment to a simple variable is supported yet")

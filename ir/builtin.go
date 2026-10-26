@@ -1,9 +1,6 @@
 package ir
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 // Builtin is one of the standard library's string and number functions the
 // subset compiles (the M4 strings step): a string method, a conversion, a
@@ -41,16 +38,17 @@ const (
 	StrIndex // s[i] typed string, which panics past the end, as xs[i] does (M4 D8)
 	StrIndexOrUndefined
 
-	ToString     // String(x), x.toString(), a template's ${x}: x a primitive
-	NumToFixed   // n.toFixed(digits)
-	NumFromStr   // Number(s)
-	NumParseInt  // parseInt(s, radix?)
-	NumParseFlt  // parseFloat(s)
-	NumIsFinite  // Number.isFinite(n), isFinite(n)
-	NumIsNaN     // Number.isNaN(n), isNaN(n)
-	NumIsInteger // Number.isInteger(n)
-	URIEncode    // encodeURIComponent(s)
-	URIDecode    // decodeURIComponent(s)
+	ToString       // String(x), a template's ${x}: x a primitive
+	ToStringMethod // x.toString(): ToString, x read as a receiver, so an empty x throws where String(x) doesn't
+	NumToFixed     // n.toFixed(digits)
+	NumFromStr     // Number(s)
+	NumParseInt    // parseInt(s, radix?)
+	NumParseFlt    // parseFloat(s)
+	NumIsFinite    // Number.isFinite(n), isFinite(n)
+	NumIsNaN       // Number.isNaN(n), isNaN(n)
+	NumIsInteger   // Number.isInteger(n)
+	URIEncode      // encodeURIComponent(s)
+	URIDecode      // decodeURIComponent(s)
 )
 
 // BuiltinSig is a builtin's signature: its required parameters, a string
@@ -96,6 +94,7 @@ var builtinSigs = map[Builtin]BuiltinSig{
 	StrIndex:            {"[i]", []Type{String, Number}, nil, String},
 	StrIndexOrUndefined: {"[i]", []Type{String, Number}, nil, MaybeOf(String)},
 	ToString:            {"String", nil, nil, String}, // one primitive, checked on its own
+	ToStringMethod:      {"toString", nil, nil, String},
 	NumToFixed:          {"toFixed", []Type{Number, Number}, nil, String},
 	NumFromStr:          {"Number", str1, nil, Number},
 	NumParseInt:         {"parseInt", str1, num1, Number},
@@ -151,6 +150,15 @@ func IsPrimitive(t Type) bool {
 	return t == String || t == Number || t == Boolean || t.IsExtension()
 }
 
+// ToStringable reports whether ToString takes a value of type t: a
+// primitive or an Error (`Name: message`), or a maybe of either, or an
+// unknown, whatever it holds (M6 plan D4, D5). None calls into the program:
+// the built-in kinds have no toString of a program's, and nor have the
+// objects an unknown may hold, which give `[object Object]`.
+func ToStringable(t Type) bool {
+	return IsPrimitive(primitiveOf(t)) || primitiveOf(t) == Error || t == Unknown
+}
+
 // checkBuiltin holds a builtin call to its signature. A string argument may
 // be a base64, which is a string.
 func checkBuiltin(x *BuiltinCall) error {
@@ -161,10 +169,10 @@ func checkBuiltin(x *BuiltinCall) error {
 	if !x.Typ.Equal(sig.Result) {
 		return fmt.Errorf("%s gives a %s, not a %s", sig.Name, sig.Result, x.Typ)
 	}
-	if x.Fn == ToString {
+	if x.Fn == ToString || x.Fn == ToStringMethod {
 		// A maybe of one is "undefined" or "null" when it is empty (M5 D8).
-		if len(x.Args) != 1 || !IsPrimitive(primitiveOf(x.Args[0].ExprType())) {
-			return errors.New("String takes one primitive, or a maybe of one")
+		if len(x.Args) != 1 || !ToStringable(x.Args[0].ExprType()) {
+			return fmt.Errorf("%s takes one primitive, or a maybe of one, an Error or an unknown", sig.Name)
 		}
 		return nil
 	}

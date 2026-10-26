@@ -256,7 +256,7 @@ func arrayIndex(key string) (uint64, bool) {
 // the whole path, `ts_read(p.a.b)`, is read in call order.
 func (e *emitter) fieldGet(x *ir.FieldGet) string {
 	if !e.order {
-		return e.object(x.Object, reading(keyOf(x.Object, x.Field))) + "." + fieldOf(x.Object, x.Field)
+		return e.object(x.Object, reading(keyOf(x.Object, x.Field), x.Span)) + "." + fieldOf(x.Object, x.Field)
 	}
 	e.usesRead = true
 	return readFunc + "(" + e.path(x) + ")"
@@ -273,7 +273,7 @@ func (e *emitter) path(x *ir.FieldGet) string {
 	case *ir.FieldGet:
 		object = e.path(o)
 	default:
-		object = e.object(o, reading(keyOf(o, x.Field)))
+		object = e.object(o, reading(keyOf(o, x.Field), x.Span))
 	}
 	return object + "." + fieldOf(x.Object, x.Field)
 }
@@ -288,7 +288,7 @@ func (e *emitter) fieldSet(s *ir.FieldSet) string {
 	saved := e.order
 	e.order = isCall(s.Object) || innerCall(s.Object) || isCall(s.Value) || innerCall(s.Value)
 	defer func() { e.order = saved }()
-	object := e.object(s.Object, writing(keyOf(s.Object, s.Field)))
+	object := e.object(s.Object, writing(keyOf(s.Object, s.Field), s.Span))
 	if s.Object.ExprType().Shape.Fields[s.Field].Optional {
 		return e.optionalSet(s, object)
 	}

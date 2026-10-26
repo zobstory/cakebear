@@ -55,7 +55,7 @@ type Empty struct {
 	Span Span
 }
 
-// IsEmpty is true when Value, a Maybe, is undefined (with Undefined set),
+// IsEmpty is true when Value, a Maybe or an unknown, is undefined (with Undefined set),
 // null (with Null set), or either (both): `x === undefined`, `x === null` and
 // `x == null` (D12). Its negation is `!==` and `!= null`.
 type IsEmpty struct {
@@ -99,9 +99,10 @@ func (e *Let) ExprSpan() Span     { return e.Span }
 
 // OrUndefined is t, or a maybe of it: the type of a read that is undefined
 // where there is no t to read, past an array's end, say (D9). A maybe is one
-// already, its undefined the read's.
+// already, its undefined the read's, and so is an unknown, which holds
+// undefined itself.
 func OrUndefined(t Type) Type {
-	if t.Kind == KindMaybe {
+	if t.Kind == KindMaybe || t == Unknown {
 		return t
 	}
 	return MaybeOf(t)
@@ -143,7 +144,9 @@ func checkMaybeNode(node any) error {
 			return fmt.Errorf("an empty %s", n.Typ)
 		}
 	case *IsEmpty:
-		if vt := n.Value.ExprType(); vt.Kind != KindMaybe {
+		// An unknown is tested as it is: it holds undefined and null as
+		// values of their own (M6 plan D5).
+		if vt := n.Value.ExprType(); vt.Kind != KindMaybe && vt != Unknown {
 			return fmt.Errorf("a %s tested for null or undefined", vt)
 		}
 		if !n.Undefined && !n.Null {

@@ -73,13 +73,19 @@ func (l *lowerer) logical(n *ast.Node) ir.Expr {
 	if x == nil || y == nil {
 		return nil
 	}
+	if x.ExprType() == ir.Unknown {
+		// TypeScript types `u || d` as `{} | D`: what the truthy unknown
+		// holds, which no type of the subset's is.
+		l.failf(n, "%s on an unknown as a value is not supported yet: narrow it first, or test it with ?? if null and undefined are what it guards", op)
+		return nil
+	}
 	t := l.typeOf(n)
 	if t == ir.Invalid {
 		l.failf(n, "this %s has a type the backend cannot represent yet%s", op, l.reason())
 		return nil
 	}
 	if y = into(y, t); !y.ExprType().Equal(t) {
-		l.failf(n, "%s of a %s and a %s is not supported yet", op, x.ExprType(), y.ExprType())
+		l.failf(n, "%s of %s and %s is not supported yet", op, aType(x.ExprType()), aType(y.ExprType()))
 		return nil
 	}
 	return l.hold(x, func(held func() ir.Expr) ir.Expr {

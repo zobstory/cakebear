@@ -57,11 +57,11 @@ func (l *lowerer) jsonStringify(n *ast.Node, c *ast.CallExpression) ir.Expr {
 	if value == nil || !l.serializable(args[0], value.ExprType()) {
 		return nil
 	}
-	if admitsUndefined(l.checker.GetTypeAtLocation(args[0])) {
+	if admitsUndefined(l.checker.GetTypeAtLocation(args[0])) || value.ExprType() == ir.Unknown {
 		l.failf(args[0], "JSON.stringify of a value that may be undefined is not supported: for undefined it returns undefined, not a string")
 		return nil
 	}
-	out := &ir.JSONStringify{Value: value, Span: l.span(n)}
+	out := &ir.JSONStringify{Value: value, Span: l.calleeCaret(l.span(n), n)}
 	if len(args) > 1 && !isNullish(args[1]) {
 		l.failf(args[1], "a replacer is not supported yet; pass null to give a space")
 		return nil

@@ -82,7 +82,7 @@ func TestStringBuiltins(t *testing.T) {
 		{"s.padEnd(4, \"-\")", ir.StrPadEnd, 3},
 		{"s.repeat(2)", ir.StrRepeat, 2},
 		{"String(n)", ir.ToString, 1},
-		{"n.toString()", ir.ToString, 1},
+		{"n.toString()", ir.ToStringMethod, 1},
 		{"n.toFixed(2)", ir.NumToFixed, 2},
 		{"n.toFixed()", ir.NumToFixed, 2},
 		{"Number(s)", ir.NumFromStr, 1},

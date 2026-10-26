@@ -78,7 +78,7 @@ func (l *lowerer) defaulted(v ir.Expr, d *ast.Node, t ir.Type) ir.Expr {
 		return nil
 	}
 	if dv = into(dv, t); !dv.ExprType().Equal(t) {
-		l.failf(d, "a default of a %s for a %s is not supported yet", dv.ExprType(), t)
+		l.failf(d, "a default of %s for %s is not supported yet", aType(dv.ExprType()), aType(t))
 		return nil
 	}
 	given := reread(v)
@@ -103,6 +103,8 @@ func fillArgs(args []ir.Expr, params []ir.Type, span ir.Span) []ir.Expr {
 			args[i] = intoMaybe(args[i], pt)
 		} else if pt.Kind == ir.KindMaybe {
 			args = append(args, &ir.Empty{Typ: pt, Span: span})
+		} else if pt == ir.Unknown { // which holds undefined itself
+			args = append(args, &ir.Box{Value: &ir.UndefinedLit{Span: span}, Span: span})
 		}
 	}
 	return args

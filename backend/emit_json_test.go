@@ -33,7 +33,7 @@ func TestJSONSpaceOfEveryKind(t *testing.T) {
 	if got := buildAndRun(t, p); got != want {
 		t.Errorf("the program printed %q, want %q", got, want)
 	}
-	if src := Emit(p); !strings.Contains(src, "JSONGapNumber(float64(") || !strings.Contains(src, ".JSONGap{}, nil)") {
+	if src := Emit(p); !strings.Contains(src, "JSONGapNumber(float64(") || !strings.Contains(src, ".JSONGap{}, &ts_sites[0])") {
 		t.Errorf("want an extension space converted, and a call with none given the zero gap:\n%s", src)
 	}
 }

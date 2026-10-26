@@ -135,6 +135,7 @@ func conversion(typ, value string) string {
 //     reports TS2366 for any other function whose end it can reach: the
 //     panic only runs if that analysis was wrong.
 func (e *emitter) body(stmts []ir.Stmt, depth int, result ir.Type) {
+	defer e.enterFunction(result)() // its own trys and loops (emit_try.go)
 	e.stmts(stmts, depth)
 	if result == ir.Void {
 		return

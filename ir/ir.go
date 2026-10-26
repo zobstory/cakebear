@@ -29,6 +29,17 @@ type Span struct {
 	End   int
 	Line  int // 1-based
 	Col   int // 1-based
+	// Caret is where the report of an error thrown here points, when that
+	// isn't Line and Col: where V8 records the operation, such as a method
+	// call at the method's name, which may be on a line of its own (M6 plan
+	// D6). The zero Pos is Line and Col.
+	Caret Pos
+}
+
+// Pos is a place in a source file: a 1-based line and column.
+type Pos struct {
+	Line int
+	Col  int
 }
 
 func (s Span) String() string {
@@ -57,6 +68,12 @@ type Module struct {
 	// evaluates its module, as under Node, whether or not what it names is
 	// used.
 	Imports []string
+	// Lines are the file's source lines with its types blanked as Node's
+	// type stripping blanks them, each without its terminator: what the
+	// report of an uncaught error quotes at the place it names (M6 plan D6).
+	// Nil until lowering strips the file; a place on a line past the end is
+	// reported without one.
+	Lines []string
 }
 
 // Func is a top-level function declaration.

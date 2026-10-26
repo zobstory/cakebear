@@ -80,8 +80,9 @@ func (l *lowerer) stringOf(n *ast.Node, v ir.Expr, what string) ir.Expr {
 	switch t := v.ExprType(); {
 	case t == ir.String || t == ir.Base64:
 		return v
-	case ir.IsPrimitive(t), t.Kind == ir.KindMaybe && ir.IsPrimitive(*t.Elem):
-		// A maybe writes "undefined" or "null" when it is empty (D8).
+	case ir.ToStringable(t):
+		// A maybe writes "undefined" or "null" when it is empty (D8), an
+		// Error `Name: message`, and an unknown what it holds (M6 D4, D5).
 		return &ir.BuiltinCall{Fn: ir.ToString, Args: []ir.Expr{v}, Typ: ir.String, Span: l.span(n)}
 	default:
 		l.failf(n, "%s can hold a string, a number or a boolean; a %s is not supported yet (Node writes %s)", what, t, nodeWrites(t))
@@ -124,7 +125,7 @@ func (l *lowerer) stringProperty(n *ast.Node) (ir.Expr, bool) {
 	if s == nil {
 		return nil, true
 	}
-	return &ir.BuiltinCall{Fn: ir.StrLength, Args: []ir.Expr{s}, Typ: ir.Number, Span: l.span(n)}, true
+	return &ir.BuiltinCall{Fn: ir.StrLength, Args: []ir.Expr{s}, Typ: ir.Number, Span: l.caretAt(l.span(n), access.Name())}, true
 }
 
 // stringMember is the name of access's member when its receiver is a string,
@@ -183,7 +184,7 @@ func (l *lowerer) builtin(n *ast.Node, fn ir.Builtin, recv *ast.Node, args []*as
 		l.invalidf(n, "%s takes %d to %d arguments, not %d", fn, len(sig.Params), len(params), len(nodes))
 		return nil
 	}
-	out := &ir.BuiltinCall{Fn: fn, Typ: sig.Result, Span: l.span(n)}
+	out := &ir.BuiltinCall{Fn: fn, Typ: sig.Result, Span: l.calleeCaret(l.span(n), n)}
 	for i, a := range nodes {
 		if a.Kind == ast.KindSpreadElement {
 			l.failf(a, "spreading arguments into %s is not supported yet", fn)
@@ -243,7 +244,7 @@ func (l *lowerer) primitiveCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bo
 		if recv == nil {
 			return nil, true
 		}
-		return &ir.BuiltinCall{Fn: ir.ToString, Args: []ir.Expr{recv}, Typ: ir.String, Span: l.span(n)}, true
+		return &ir.BuiltinCall{Fn: ir.ToStringMethod, Args: []ir.Expr{recv}, Typ: ir.String, Span: l.calleeCaret(l.span(n), n)}, true
 	case name == "toString":
 		l.failf(n, "toString with a radix is not supported yet")
 	case name == "valueOf":
@@ -254,7 +255,7 @@ func (l *lowerer) primitiveCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bo
 			if recv == nil {
 				return nil, true
 			}
-			return &ir.BuiltinCall{Fn: ir.NumToFixed, Args: []ir.Expr{recv, &ir.NumberLit{Span: l.span(n)}}, Typ: ir.String, Span: l.span(n)}, true
+			return &ir.BuiltinCall{Fn: ir.NumToFixed, Args: []ir.Expr{recv, &ir.NumberLit{Span: l.span(n)}}, Typ: ir.String, Span: l.calleeCaret(l.span(n), n)}, true
 		}
 		return l.builtin(n, ir.NumToFixed, access.Expression, args), true
 	case name == "toFixed":

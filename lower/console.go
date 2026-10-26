@@ -27,7 +27,8 @@ func (l *lowerer) consoleLog(n *ast.Node, c *ast.CallExpression) ir.Expr {
 		if arg == nil || !l.printable(a, arg.ExprType()) {
 			return nil
 		}
-		if t := arg.ExprType(); i == 0 && len(nodes) > 1 && (stringish(t) || t.Kind == ir.KindMaybe && stringish(*t.Elem)) {
+		// An unknown may hold a string, and so a format, at run time (M6 D5).
+		if t := arg.ExprType(); i == 0 && len(nodes) > 1 && (stringish(t) || t == ir.Unknown || t.Kind == ir.KindMaybe && stringish(*t.Elem)) {
 			if lit, ok := arg.(*ir.StringLit); !ok || strings.Contains(lit.Value, "%") {
 				l.failf(a, "a string before console.log's other arguments is a format to Node, which cakebear doesn't implement yet: make it a string literal with no %%, or log it on its own")
 				return nil

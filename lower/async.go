@@ -122,6 +122,30 @@ func (l *lowerer) asyncResult(n *ast.Node, fn *ir.Func) {
 // returnable refuses `return p` in an async function when p is itself a
 // promise: the function's promise would adopt p's state, which M2 does not
 // model. Awaiting it first is the supported spelling.
+// returnStmt lowers `return` and `return v`.
+func (l *lowerer) returnStmt(n *ast.Node) []ir.Stmt {
+	s := n.AsReturnStatement()
+	out := &ir.Return{Span: l.span(n)}
+	if s.Expression != nil {
+		if out.Value = l.expr(s.Expression); out.Value == nil {
+			return nil
+		}
+		if l.never(s.Expression, out.Value) { // errors.go
+			return []ir.Stmt{&ir.ExprStmt{Expr: out.Value, Span: out.Span}}
+		}
+		if !l.returnable(n, out.Value) {
+			return nil
+		}
+	}
+	if l.discard && out.Value != nil {
+		// A void slot: evaluate the value for its effects, then return.
+		value := out.Value
+		out.Value = nil
+		return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
+	}
+	return []ir.Stmt{out}
+}
+
 func (l *lowerer) returnable(n *ast.Node, v ir.Expr) bool {
 	if l.async && !l.discard && v.ExprType().Kind == ir.KindPromise {
 		l.failf(n, "an async function returning a promise is not supported yet; return await it instead")
@@ -148,10 +172,16 @@ func (l *lowerer) await(n *ast.Node) ir.Expr {
 	return &ir.Await{Value: value, Typ: *t.Elem, Span: l.span(n)}
 }
 
-// newExpr lowers `new Promise((resolve) => …)`, the only constructor so far.
+// newExpr lowers `new Promise((resolve) => …)` and `new Error(message)` and its
+// kinds (errors.go), the only constructors so far.
 func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 	ne := n.AsNewExpression()
 	callee := ne.Expression
+	if callee.Kind == ast.KindIdentifier {
+		if k, ok := errorKindOf(l.checker.GetSymbolAtLocation(callee)); ok {
+			return l.newError(n, k, n.Arguments())
+		}
+	}
 	if callee.Kind != ast.KindIdentifier || callee.Text() != "Promise" ||
 		!onlyInBundledLib(l.checker.GetSymbolAtLocation(callee), "") {
 		if callee.Kind == ast.KindIdentifier {

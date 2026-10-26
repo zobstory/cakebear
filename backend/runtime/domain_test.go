@@ -171,11 +171,12 @@ func TestRunWaitsForTimersAndFlushesBeforeWaiting(t *testing.T) { //nolint:paral
 func TestRunModuleExitsThirteenWhenUnsettled(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	_, stderr, exits := isolate(t)
 	pending := &Promise[struct{}]{d: Main()}
-	RunModule(pending, "/src/tla.ts")
+	RunModule(pending, "/src/a b~/tla.ts")
 	if code := exitCode(t, exits); code != 13 {
 		t.Errorf("exit code = %d, want 13, as Node exits for an unsettled top-level await", code)
 	}
-	if want := "Warning: Detected unsettled top-level await at file:///src/tla.ts"; !strings.Contains(stderr.String(), want) {
+	// The file as Node writes it, pathToFileURL's href (measured on 24.18).
+	if want := "Warning: Detected unsettled top-level await at file:///src/a%20b%7E/tla.ts"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr = %q, want %q", stderr.String(), want)
 	}
 

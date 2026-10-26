@@ -41,8 +41,12 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	if s, ok := e.accLength(x); ok {
 		return s
 	}
-	if x.Fn == ir.ToString && len(x.Args) == 1 {
-		return e.toString(x.Args[0])
+	if (x.Fn == ir.ToString || x.Fn == ir.ToStringMethod) && len(x.Args) == 1 {
+		var use access // String(x) carries on with an empty x, as Node does
+		if x.Fn == ir.ToStringMethod {
+			use = reading("toString", x.Span)
+		}
+		return e.toString(x.Args[0], use)
 	}
 	fn, ok := builtinFuncs[x.Fn]
 	if !ok {
@@ -52,9 +56,9 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	for i, a := range x.Args {
 		switch {
 		case i == 0 && (x.Fn == ir.StrIndex || x.Fn == ir.StrIndexOrUndefined):
-			args[i] = e.receiver(a, elementAccess(x.Args[1], false)) // `s[i]` reads the property i
+			args[i] = e.receiver(a, elementAccess(x.Args[1], false, x.Span)) // `s[i]` reads the property i
 		case i == 0 && isMethod(x.Fn):
-			args[i] = e.receiver(a, reading(x.Fn.String()))
+			args[i] = e.receiver(a, reading(x.Fn.String(), x.Span))
 		default:
 			args[i] = e.expr(a)
 		}
@@ -68,21 +72,28 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 
 // isMethod reports whether fn is a method, whose first argument is its
 // receiver: a string's, which ir/builtin.go lists together, `s[i]`
-// included, or toFixed. String(x) and x.toString() are one builtin,
-// ToString, whose argument is taken for String's: Node carries on with an
-// empty one, as String does.
+// included, or toFixed. x.toString() is builtinCall's own.
 func isMethod(fn ir.Builtin) bool {
 	return fn >= ir.StrLength && fn <= ir.StrIndexOrUndefined || fn == ir.NumToFixed
 }
 
 // toString is a primitive's ToString: a number as JavaScript prints it, an
 // extension type as console.log prints it, a string as it is, and a maybe
-// of one of them as "undefined", "null" or its value's.
-func (e *emitter) toString(a ir.Expr) string {
-	v := e.expr(a)
+// of one of them as "undefined", "null" or its value's. a is the receiver
+// of use, the zero access for String(a).
+func (e *emitter) toString(a ir.Expr, use access) string {
+	v := e.receiver(a, use)
 	t := a.ExprType()
 	if t.Kind == ir.KindMaybe && t.Elem != nil {
 		return e.maybeToString(v, t, a.ExprSpan())
+	}
+	switch t { // `Name: message`, and what an unknown holds (M6 D4, D5)
+	case ir.Error:
+		e.usesRuntime = true
+		return rtPkg + ".ErrorToString(" + v + ")"
+	case ir.Unknown:
+		e.usesRuntime = true
+		return rtPkg + ".UnknownToString(" + v + ")"
 	}
 	s, ok := primitiveToString(t, v)
 	if !ok {

@@ -1,9 +1,7 @@
 package lower
 
 import (
-	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/scanner"
@@ -66,7 +64,7 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 			return nil
 		}
 		t := l.typeOf(n)
-		stored, isMaybe := l.storedMaybe(n)
+		stored, isMaybe := l.stored(n) // a maybe or an unknown, narrowed below
 		if t == ir.Invalid && !isMaybe {
 			l.failf(n, "%s has a type the backend cannot represent yet%s", n.Text(), l.reason())
 			return nil
@@ -179,6 +177,10 @@ func (l *lowerer) binary(n *ast.Node) ir.Expr {
 			l.failf(n, "an assignment used as a value is not supported yet; write it as a statement of its own")
 		}
 		return nil
+	}
+
+	if out, ok := l.errorBinary(n); ok { // instanceof and typeof (errors.go)
+		return out
 	}
 
 	left := l.expr(b.Left)
@@ -303,6 +305,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return out
 	}
 	if out, handled := l.jsonCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.errorCall(n, c); handled {
 		return out
 	}
 	if out, handled := l.globalCall(n, c); handled {
@@ -454,37 +459,4 @@ func isConsoleLog(n *ast.Node) bool {
 		access.Expression.Text() == "console" &&
 		access.Name() != nil &&
 		access.Name().Text() == "log"
-}
-
-// describeKind names an AST node kind in words a TypeScript author recognises,
-// rather than leaking the compiler's internal spelling into a diagnostic.
-func describeKind(k ast.Kind) string {
-	s := k.String()
-	s = strings.TrimPrefix(s, "Kind")
-	var out strings.Builder
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			out.WriteByte(' ')
-		}
-		out.WriteRune(r)
-	}
-	return strings.ToLower(out.String())
-}
-
-// lineAndColumn resolves a source position to 0-based line and column.
-//
-// ECMALineMap holds the offset each line starts at, so the line containing pos
-// is the last entry not greater than pos, and the column is the remainder.
-func lineAndColumn(file *ast.SourceFile, pos int) (line, col int) {
-	starts := file.ECMALineMap()
-	if len(starts) == 0 || pos < 0 {
-		return 0, 0
-	}
-	// The first start strictly greater than pos, minus one, is our line.
-	i := sort.Search(len(starts), func(i int) bool { return int(starts[i]) > pos })
-	if i == 0 {
-		return 0, pos
-	}
-	line = i - 1
-	return line, pos - int(starts[line])
 }

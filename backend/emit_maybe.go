@@ -53,6 +53,9 @@ func (e *emitter) maybe(x ir.Expr) string {
 		case !x.Undefined:
 			test = "IsNull"
 		}
+		if x.Value.ExprType() == ir.Unknown { // tested as it is (runtime/unknown.go)
+			return fmt.Sprintf("%s.%sUnknown(%s)", rtPkg, test, e.expr(x.Value))
+		}
 		return e.operand(x.Value) + "." + test + "()"
 	}
 	return e.cannot(x.ExprSpan(), describeUnsupported(x))
@@ -73,25 +76,24 @@ func (e *emitter) operand(x ir.Expr) string {
 // property of it, write one, or iterate it. Node does each only to a value
 // that is neither null nor undefined, and throws for one that is, where a
 // value only used carries on. So an Unwrap that is an access's receiver
-// fails saying Node throws, and how (runtime/maybe.go). The zero access is
-// a use.
+// fails saying Node throws, and how (runtime/maybe.go), at the place the
+// node making the access gives (emit_site.go). The zero access is a use.
 type access struct {
-	kind string // the suffix of the runtime's method: Read, Write, Delete, In or Iterate
-	key  string // the property, as Node's TypeError names it
+	kind string  // the suffix of the runtime's method: Read, Write, Delete, In or Iterate
+	key  string  // the property, as Node's TypeError names it
+	at   ir.Span // where an uncaught report of the failure points
 }
 
 // iterating is for…of's access, and deleting delete's: Node's TypeError for
 // either names no property.
-var (
-	iterating = access{kind: "Iterate"}
-	deleting  = access{kind: "Delete"}
-)
+func iterating(at ir.Span) access { return access{kind: "Iterate", at: at} }
+func deleting(at ir.Span) access  { return access{kind: "Delete", at: at} }
 
 // reading, writing and searching are accesses of the property named key,
 // searching being `"key" in x`'s.
-func reading(key string) access   { return access{"Read", quoteKey(key)} }
-func writing(key string) access   { return access{"Write", quoteKey(key)} }
-func searching(key string) access { return access{"In", quoteKey(key)} }
+func reading(key string, at ir.Span) access   { return access{"Read", quoteKey(key), at} }
+func writing(key string, at ir.Span) access   { return access{"Write", quoteKey(key), at} }
+func searching(key string, at ir.Span) access { return access{"In", quoteKey(key), at} }
 
 // quoteKey quotes a property as Node's TypeError does: 'x', 'a'b'.
 func quoteKey(key string) string { return "'" + key + "'" }
@@ -100,15 +102,15 @@ func quoteKey(key string) string { return "'" + key + "'" }
 // which Node evaluates before it throws, and cakebear's check fails before
 // i is evaluated, so only a number the source writes is named, and any
 // other index is "an index".
-func elementAccess(index ir.Expr, write bool) access {
+func elementAccess(index ir.Expr, write bool, at ir.Span) access {
 	key := "an index"
 	if n, ok := index.(*ir.NumberLit); ok {
 		key = quoteKey(indexName(n))
 	}
 	if write {
-		return access{"Write", key}
+		return access{"Write", key, at}
 	}
-	return access{"Read", key}
+	return access{"Read", key, at}
 }
 
 // receiver emits x as the receiver of a, as itself, or, when it is an
@@ -134,7 +136,7 @@ func (e *emitter) unwrap(x *ir.Unwrap, a access) string {
 		args += ", " + strconv.Quote(a.key)
 	}
 	if a.kind != "" {
-		args += ", " + e.siteArg(x.Span) // the forms Node throws for take a site
+		args += ", " + e.siteArg(a.at) // the forms Node throws for take a site
 	}
 	return fmt.Sprintf("%s.%s%s(%s)", e.operand(x.Value), method, a.kind, args)
 }
@@ -244,6 +246,7 @@ var directToString = map[ir.Type]string{
 	ir.Boolean: rtPkg + ".BoolToString",
 	ir.Int64:   rtPkg + ".IntToString",
 	ir.Uint64:  rtPkg + ".UintToString",
+	ir.Error:   rtPkg + ".ErrorToString",
 }
 
 // cloned reports whether a field of type t is copied when its object is

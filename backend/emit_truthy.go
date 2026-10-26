@@ -27,6 +27,9 @@ func (e *emitter) truthy(x *ir.Truthy) string {
 	switch {
 	case t.Kind == ir.KindMaybe:
 		return e.maybeTruthy(x.Value, x.Span)
+	case t == ir.Unknown:
+		e.usesRuntime = true
+		return rtPkg + ".TruthyUnknown(" + e.expr(x.Value) + ")"
 	case alwaysTruthy(t):
 		e.usesRuntime = true
 		return rtPkg + ".AlwaysTruthy(" + e.expr(x.Value) + ")"
@@ -47,7 +50,7 @@ func (e *emitter) truthy(x *ir.Truthy) string {
 // an array, a function, a promise or a host value.
 func alwaysTruthy(t ir.Type) bool {
 	switch t.Kind {
-	case ir.KindObject, ir.KindArray, ir.KindFunc, ir.KindPromise, ir.KindHost:
+	case ir.KindObject, ir.KindArray, ir.KindFunc, ir.KindPromise, ir.KindHost, ir.KindError:
 		return true
 	}
 	return false
