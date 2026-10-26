@@ -60,7 +60,7 @@ func CreateServer(listener func(*Domain, *IncomingMessage, *ServerResponse)) *Se
 func (s *Server) Listen(port float64, callbacks ...func(*Domain)) *Server {
 	p, ok := portNumber(port)
 	if !ok {
-		fatalf("RangeError [ERR_SOCKET_BAD_PORT]: port should be >= 0 and < 65536. Received %s.", NumberToString(port))
+		fatalf("RangeError [ERR_SOCKET_BAD_PORT]: options.port should be >= 0 and < 65536. Received type number (%s).", numberForDisplay(port))
 		return s
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(p)))
@@ -219,10 +219,14 @@ func (r *ServerResponse) WriteHead(status float64) *ServerResponse {
 	if r.headersSent {
 		panic("Error [ERR_HTTP_HEADERS_SENT]: Cannot write headers after they are sent to the client")
 	}
-	if status != math.Trunc(status) || status < 100 || status > 999 {
-		panic("RangeError [ERR_HTTP_INVALID_STATUS_CODE]: Invalid status code: " + NumberToString(status))
+	// Node converts the status with `statusCode |= 0`, ToInt32, and checks
+	// what that gives: 200.5 sends 200, and so does 2^32 + 200. The message
+	// names the status as it was passed, -0 as -0 (measured on Node 24.18).
+	code := numToInt32(status)
+	if code < 100 || code > 999 {
+		panic("RangeError [ERR_HTTP_INVALID_STATUS_CODE]: Invalid status code: " + numberForDisplay(status))
 	}
-	r.status = int(status)
+	r.status = int(code)
 	r.sendHeaders()
 	return r
 }

@@ -74,7 +74,7 @@ func TestJSONRefusals(t *testing.T) {
 			"JSON.stringify cannot serialise a promise yet"},
 		{"a request", "import { createServer } from \"node:http\";\ncreateServer((req, res) => {\n  res.end(JSON.stringify(req));\n});\n",
 			"JSON.stringify cannot serialise an IncomingMessage yet"},
-		{"JSON.parse", "const n: number = JSON.parse(\"1\");\n", "JSON.parse is not supported yet: it returns any"},
+		{"JSON.parse", "const n: number = JSON.parse(\"1\");\n", "JSON.parse is not supported yet: it returns any, which cakebear doesn't lower"},
 		{"another member", "console.log(JSON.rawJSON(\"1\"));\n", "JSON.rawJSON is not supported yet; only JSON.stringify is"},
 		{"a member added to JSON", "export {};\ndeclare global {\n  interface JSON {\n    extra(): string;\n  }\n}\nconsole.log(JSON.extra());\n",
 			"JSON.extra is added to JSON outside TypeScript's libs, which is not supported"},
