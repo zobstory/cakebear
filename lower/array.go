@@ -38,7 +38,8 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 	if ct := l.contextualType(n); ct != nil {
 		t = elemOfMaybe(l.slotOf(ct)) // a maybe's slot takes it wrapped
 	}
-	if t.Kind != ir.KindArray {
+	own := t.Kind != ir.KindArray // an unknown's slot, say: the literal's own type
+	if own {
 		t = l.typeOf(n)
 	}
 	elems := n.AsArrayLiteralExpression().Elements.Nodes
@@ -60,7 +61,16 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 			l.failf(n, "an array literal with a hole is not supported")
 			return nil
 		}
-		v := l.expr(e)
+		var v ir.Expr
+		if own {
+			// Its elements' slots are the outer slot's, no element type,
+			// so each is held to the literal's own.
+			if v = l.exprOf(e); v != nil {
+				v = into(v, *t.Elem)
+			}
+		} else {
+			v = l.expr(e)
+		}
 		if v == nil {
 			return nil
 		}

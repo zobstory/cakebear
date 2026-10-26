@@ -71,7 +71,7 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 		return l.withCallback(op, args[0], visitor(result), false)
 	case ir.ArrayFilter, ir.ArraySome, ir.ArrayEvery, ir.ArrayFindIndex, ir.ArrayFind, ir.ArrayFindLast:
 		if r := l.callbackResult(args[0]); r != ir.Boolean && !l.libGlobal(args[0], "Boolean") {
-			l.failf(args[0], "%s's callback must return a boolean; testing a %s for truthiness is not supported yet: return !!x, or pass Boolean", m, r)
+			l.failf(args[0], "%s's callback must return a boolean; testing %s for truthiness is not supported yet: return !!x, or pass Boolean", m, aType(r))
 			return nil
 		}
 		op.Typ = map[ir.ArrayMethod]ir.Type{ir.ArrayFilter: t, ir.ArraySome: ir.Boolean, ir.ArrayEvery: ir.Boolean, ir.ArrayFindIndex: ir.Number,

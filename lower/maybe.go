@@ -151,30 +151,40 @@ func intoMaybe(v ir.Expr, slot ir.Type) ir.Expr {
 // only once its call is typed, as push's and includes's `T` are for an array
 // of maybes, takes its argument wrapped, as any other slot does.
 func (l *lowerer) emptyOutside(n *ast.Node) bool {
+	t := l.libraryParam(n)
+	return t != nil && (admitsUndefined(t) || admitsNull(t))
+}
+
+// libraryParam is the type a library's own declaration gives the parameter
+// n is the argument for, in a call of a function the program doesn't
+// declare, or nil. It is the declaration's, before any instantiation: the
+// signature the resolved one was instantiated from, so Array<T>'s push
+// takes a T. A branch of a `?:` that is the argument is the argument's.
+func (l *lowerer) libraryParam(n *ast.Node) *checker.Type {
 	p := n.Parent
-	for p != nil && p.Kind == ast.KindParenthesizedExpression {
+	for p != nil && (p.Kind == ast.KindParenthesizedExpression ||
+		p.Kind == ast.KindConditionalExpression && p.AsConditionalExpression().Condition != n) {
 		n, p = p, p.Parent
 	}
 	if p == nil || (p.Kind != ast.KindCallExpression && p.Kind != ast.KindNewExpression) {
-		return false
+		return nil
 	}
 	i := slices.Index(p.Arguments(), n)
 	sig := l.checker.GetResolvedSignature(p)
 	if i < 0 || sig == nil || sig.Declaration() == nil || l.p.inProgram(sig.Declaration()) {
-		return false
+		return nil
 	}
 	for sig.Target() != nil {
-		sig = sig.Target() // the declaration's own, before T is filled in
+		sig = sig.Target()
 	}
 	params := sig.Parameters()
 	if i >= len(params) {
 		if !sig.HasRestParameter() || len(params) == 0 {
-			return false
+			return nil
 		}
 		i = len(params) - 1
 	}
-	t := l.checker.GetTypeOfSymbol(params[i])
-	return admitsUndefined(t) || admitsNull(t)
+	return l.checker.GetTypeOfSymbol(params[i])
 }
 
 // nullishCompare lowers a comparison with null or undefined (D12):
@@ -246,39 +256,44 @@ func undefinedReturns(body []ir.Stmt, result ir.Type, span ir.Span) []ir.Stmt {
 		}
 		return &ir.Empty{Typ: result, Span: span}
 	}
-	var fill func(stmts []ir.Stmt)
-	fill = func(stmts []ir.Stmt) {
-		for _, s := range stmts {
-			switch s := s.(type) {
-			case *ir.Return:
-				if s.Value == nil {
-					s.Value = undefined(s.Span)
-				}
-			case *ir.If:
-				fill(s.Then)
-				fill(s.Else)
-			case *ir.While:
-				fill(s.Body)
-			case *ir.For:
-				fill(s.Body)
-			case *ir.ForOf:
-				fill(s.Body)
-			case *ir.Try:
-				fill(s.Body)
-				if s.Catch != nil {
-					fill(s.Catch.Body)
-				}
-				fill(s.Finally)
-			}
+	eachReturn(body, func(r *ir.Return) {
+		if r.Value == nil {
+			r.Value = undefined(r.Span)
 		}
-	}
-	fill(body)
+	})
 	if len(body) > 0 {
 		if _, ok := body[len(body)-1].(*ir.Return); ok {
 			return body
 		}
 	}
 	return append(body, &ir.Return{Value: undefined(span), Span: span})
+}
+
+// eachReturn calls f with every return in stmts and the blocks inside them.
+// Nested function literals have their own returns, and are expressions,
+// which this walks none of.
+func eachReturn(stmts []ir.Stmt, f func(*ir.Return)) {
+	for _, s := range stmts {
+		switch s := s.(type) {
+		case *ir.Return:
+			f(s)
+		case *ir.If:
+			eachReturn(s.Then, f)
+			eachReturn(s.Else, f)
+		case *ir.While:
+			eachReturn(s.Body, f)
+		case *ir.For:
+			eachReturn(s.Body, f)
+		case *ir.ForOf:
+			eachReturn(s.Body, f)
+		case *ir.Try:
+			eachReturn(s.Body, f)
+			if s.Catch != nil {
+				eachReturn(s.Catch.Body, f)
+			}
+			eachReturn(s.Finally, f)
+		}
+	}
 }
 
 // returnedType is what a function's returns carry: its result, or for an

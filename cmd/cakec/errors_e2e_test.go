@@ -288,3 +288,115 @@ func TestUncaughtThrowsEndAsNode(t *testing.T) {
 		})
 	}
 }
+
+// nestedTrysProgram is a try inside another try's finally, or inside a catch
+// with no finally after it, both of which are emitted in place, after the
+// outer try's literal: whose return waits where. Agent m6-sweep found each
+// failing go build, the inner try clearing the outer's place for a return.
+// Node 24.18 printed nodeNestedTrys for this same file, 3 of 3 runs.
+const nestedTrysProgram = `export {};
+// A try inside an outer try's finally, or inside a catch with no finally,
+// emitted in place: whose return waits where.
+function innerOnly(): number {
+  try {
+    console.log("body");
+  } finally {
+    try {
+      return 2;
+    } finally {
+      console.log("inner finally");
+    }
+  }
+  return 1;
+}
+function both(): number {
+  try {
+    return 1;
+  } finally {
+    try {
+      console.log("inner");
+    } catch {
+      console.log("never");
+    }
+  }
+}
+function replaces(): number {
+  try {
+    return 1;
+  } finally {
+    try {
+      throw new Error("x");
+    } catch {
+      return 3;
+    }
+  }
+}
+function inCatch(n: number): string {
+  try {
+    if (n > 0) throw new RangeError("big");
+    return "small";
+  } catch (e) {
+    try {
+      if (e instanceof RangeError) return "caught " + e.message;
+    } finally {
+      console.log("catch's inner finally");
+    }
+    return "other";
+  }
+}
+function deep(): number {
+  try {
+    try {
+      return 1;
+    } finally {
+      try {
+        console.log("deep inner");
+      } finally {
+        console.log("deep middle");
+      }
+    }
+  } finally {
+    try {
+      console.log("outer's inner");
+    } catch {
+      console.log("never");
+    }
+  }
+}
+function loop(): number {
+  let n: number = 0;
+  for (let i: number = 0; i < 5; i++) {
+    try {
+      if (i === 3) break;
+    } finally {
+      try {
+        n += i;
+        if (i === 1) continue;
+      } finally {
+        console.log("i", i);
+      }
+    }
+  }
+  return n;
+}
+console.log(innerOnly(), both(), replaces(), inCatch(1), inCatch(0), deep(), loop());
+`
+
+const nodeNestedTrys = `body
+inner finally
+inner
+catch's inner finally
+deep inner
+deep middle
+outer's inner
+i 0
+i 1
+i 2
+i 3
+2 1 3 caught big small 1 6
+`
+
+func TestNestedTrysMatchNode(t *testing.T) {
+	t.Parallel()
+	matchesNode(t, buildProgram(t, "nested_trys", nestedTrysProgram), nodeNestedTrys, 20)
+}

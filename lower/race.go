@@ -59,6 +59,7 @@ type sharedUse struct {
 	promise bool // the binding holds a promise
 	host    bool // the binding holds a host value, such as a response
 	opaque  bool // the binding holds a function value the rule can't see into
+	unknown bool // the binding is an unknown, which may hold an object that can change (M6)
 	// maybeFunc is a const that may hold a function (M5), which the rule
 	// sees into none of yet.
 	maybeFunc bool
@@ -184,7 +185,7 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 					u := sharedUse{
 						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
 						promise: kind == ir.KindPromise, host: kind == ir.KindHost, aggregate: aggregateWord(kind), at: n,
-						maybeFunc: kind == ir.KindFunc && isConstDecl(decl),
+						maybeFunc: kind == ir.KindFunc && isConstDecl(decl), unknown: kind == ir.KindUnknown,
 					}
 					if u.aggregate != "" {
 						u.notFrozen = rc.l.frozenWhy(decl)
@@ -452,6 +453,9 @@ func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "use " + name + ", a node:http value created outside it; one can't be shared " + who.across + " yet"
 	case u.maybeFunc:
 		return "use " + name + ", which may hold a function; one that may be null or undefined can't be shared " + who.across + " yet"
+	case u.unknown:
+		return "use " + name + ", an unknown created outside it; one can't be shared " + who.across +
+			" yet, since it may hold an object that can change: narrow it to a primitive outside it, or create it " + who.inside
 	case u.opaque:
 		return "use " + name + ", a function value cakebear can't see into, which could touch anything; " +
 			"declare it with `function`, or as a const bound to an arrow function"
@@ -472,6 +476,8 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "uses " + name + ", a node:http value created " + who.outside
 	case u.maybeFunc:
 		return "uses " + name + ", which may hold a function"
+	case u.unknown:
+		return "uses " + name + ", an unknown created " + who.outside
 	case u.opaque:
 		return "uses " + name + ", a function value cakebear can't see into"
 	default:

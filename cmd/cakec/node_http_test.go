@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -196,6 +198,28 @@ func TestNodeHTTPHelloServes(t *testing.T) {
 	}
 }
 
+// TestEndTakesAConditional: a `?:` passed to res.end, whose chunk its own
+// declaration lets be undefined, is the string the call takes. Its branches
+// took that slot's maybe, so the program failed go build until agent
+// m6-sweep found it (M6 step 3).
+func TestEndTakesAConditional(t *testing.T) {
+	t.Parallel()
+	port := strconv.Itoa(freePort(t))
+	server := startServer(t, buildProgram(t, "end_cond", `import { createServer } from "node:http";
+const server = createServer((req, res) => {
+  const url: string = req.url;
+  res.end(url === "/a" ? "A" : "other");
+});
+server.listen(`+port+`, () => console.log("listening"));
+`))
+	server.waitForLine(t, "listening", 10*time.Second)
+	for path, want := range map[string]string{"/a": "A", "/b": "other"} {
+		if status, _, body := get(t, "http://127.0.0.1:"+port+path); status != 200 || body != want {
+			t.Errorf("GET %s = %d %q, want 200 %q, as Node answers", path, status, body, want)
+		}
+	}
+}
+
 type runningServer struct {
 	cmd    *exec.Cmd
 	out    *io.PipeWriter
@@ -291,15 +315,36 @@ func (s *runningServer) waitForLine(t *testing.T, want string, timeout time.Dura
 
 func freePort(t *testing.T) int {
 	t.Helper()
-	// Every interface, as the servers listen: a port free on 127.0.0.1 alone
-	// may be taken on the rest, by another test's server.
-	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
+	// Below the ephemeral range, which starts at 32768 on Linux and 49152 on
+	// macOS: the kernel hands a port from it to any outgoing connection, a
+	// test's HTTP client say, between this probe and the server's listen,
+	// which is after a build. That failed TestSpawnInAHandler with
+	// EADDRINUSE. Each port goes to one test a run, and is probed on every
+	// interface, as the servers listen.
+	portsMu.Lock()
+	defer portsMu.Unlock()
+	for range 500 {
+		port := 20000 + rand.IntN(12000)
+		if handedOut[port] {
+			continue
+		}
+		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+		if err != nil {
+			continue
+		}
+		_ = ln.Close()
+		handedOut[port] = true
+		return port
 	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().(*net.TCPAddr).Port
+	t.Fatal("no free port from 20000 to 31999")
+	return 0
 }
+
+// The ports freePort has given this run.
+var (
+	portsMu   sync.Mutex
+	handedOut = map[int]bool{}
+)
 
 func get(t *testing.T, url string) (status int, contentType, body string) {
 	t.Helper()

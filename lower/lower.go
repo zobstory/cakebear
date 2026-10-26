@@ -320,20 +320,7 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		return []ir.Stmt{&ir.While{Cond: cond, Body: l.statementBody(s.Statement), Span: l.span(n)}}
 
 	case ast.KindReturnStatement:
-		s := n.AsReturnStatement()
-		out := &ir.Return{Span: l.span(n)}
-		if s.Expression != nil {
-			if out.Value = l.expr(s.Expression); out.Value == nil || !l.returnable(n, out.Value) {
-				return nil
-			}
-		}
-		if l.discard && out.Value != nil {
-			// A void slot: evaluate the value for its effects, then return.
-			value := out.Value
-			out.Value = nil
-			return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
-		}
-		return []ir.Stmt{out}
+		return l.returnStmt(n)
 
 	case ast.KindForStatement:
 		return l.forStmt(n)
@@ -479,6 +466,10 @@ func (l *lowerer) assignment(stmt *ast.Node, bin *ast.BinaryExpression) []ir.Stm
 	}
 	if out, ok := l.arrayAssign(stmt, bin.Left, bin.Right); ok {
 		return out
+	}
+	if bin.Left.Kind == ast.KindPropertyAccessExpression && isErrorType(l.checker.GetTypeAtLocation(bin.Left.Expression())) {
+		l.failf(stmt, "assigning an Error's %s is not supported yet: cakebear's Errors don't change once made", bin.Left.Name().Text())
+		return nil
 	}
 	if bin.Left.Kind != ast.KindIdentifier {
 		l.failf(stmt, "only assignment to a simple variable is supported yet")

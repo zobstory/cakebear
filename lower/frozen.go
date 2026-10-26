@@ -94,6 +94,10 @@ func (l *lowerer) deepReadonly(t *checker.Type, seen map[*checker.Type]bool) str
 		return "it holds a promise"
 	case ir.KindHost:
 		return "it holds a node:http value"
+	case ir.KindUnknown:
+		// What it holds is known only at run time, and may be an object
+		// held elsewhere: a call's result, say.
+		return "it is an unknown, which may hold an object or an array that can change"
 	case ir.KindInvalid:
 		return "it holds a type the backend cannot represent yet"
 	}

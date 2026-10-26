@@ -38,19 +38,17 @@ const (
 	StrIndex // s[i] typed string, which panics past the end, as xs[i] does (M4 D8)
 	StrIndexOrUndefined
 
-	ToString     // String(x), a template's ${x}: x a primitive
-	// x.toString(): ToString of x, read as a method's receiver, so a
-	// null or undefined x throws, where String(x) carries on with it.
-	ToStringMethod
-	NumToFixed   // n.toFixed(digits)
-	NumFromStr   // Number(s)
-	NumParseInt  // parseInt(s, radix?)
-	NumParseFlt  // parseFloat(s)
-	NumIsFinite  // Number.isFinite(n), isFinite(n)
-	NumIsNaN     // Number.isNaN(n), isNaN(n)
-	NumIsInteger // Number.isInteger(n)
-	URIEncode    // encodeURIComponent(s)
-	URIDecode    // decodeURIComponent(s)
+	ToString       // String(x), a template's ${x}: x a primitive
+	ToStringMethod // x.toString(): ToString, x read as a receiver, so an empty x throws where String(x) doesn't
+	NumToFixed     // n.toFixed(digits)
+	NumFromStr     // Number(s)
+	NumParseInt    // parseInt(s, radix?)
+	NumParseFlt    // parseFloat(s)
+	NumIsFinite    // Number.isFinite(n), isFinite(n)
+	NumIsNaN       // Number.isNaN(n), isNaN(n)
+	NumIsInteger   // Number.isInteger(n)
+	URIEncode      // encodeURIComponent(s)
+	URIDecode      // decodeURIComponent(s)
 )
 
 // BuiltinSig is a builtin's signature: its required parameters, a string
@@ -153,12 +151,12 @@ func IsPrimitive(t Type) bool {
 }
 
 // ToStringable reports whether ToString takes a value of type t: a
-// primitive, a maybe of one, an Error (`Name: message`), or an unknown,
-// whatever it holds (M6 plan D4, D5). None calls into the program: the
-// built-in kinds have no toString of a program's, and nor have the objects
-// an unknown may hold, which give `[object Object]`.
+// primitive or an Error (`Name: message`), or a maybe of either, or an
+// unknown, whatever it holds (M6 plan D4, D5). None calls into the program:
+// the built-in kinds have no toString of a program's, and nor have the
+// objects an unknown may hold, which give `[object Object]`.
 func ToStringable(t Type) bool {
-	return IsPrimitive(primitiveOf(t)) || t == Error || t == Unknown
+	return IsPrimitive(primitiveOf(t)) || primitiveOf(t) == Error || t == Unknown
 }
 
 // checkBuiltin holds a builtin call to its signature. A string argument may

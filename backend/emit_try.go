@@ -30,7 +30,7 @@ type errorState struct {
 	frames []tryFrame // the try literals open in the function, innermost last
 	loops  int        // the loops open in the function
 	ret    ir.Type    // what the function's returns carry
-	retVar string     // where a return's value waits while finallys run
+	retVar string     // where a return's value waits while finallys run, once a try declares it
 	tries  int        // the trys emitted so far, for their names
 
 	sites     []ir.Span      // the site table (emit_site.go)
@@ -77,8 +77,12 @@ func (e *emitter) tryStmt(s *ir.Try, pad string, depth int) {
 	if s.Catch != nil && s.Finally != nil {
 		codes |= exits(s.Catch.Body, false)
 	}
-	outermost := len(e.frames) == 0
-	if outermost && codes&(1<<codeReturn) != 0 && e.ret != ir.Void {
+	// The first try a return can leave declares where the value waits, and
+	// any try inside it uses that: one in its block or catch, and one in a
+	// finally, emitted in place after the literal, whose return replaces
+	// the pending one.
+	owns := codes&(1<<codeReturn) != 0 && e.ret != ir.Void && e.retVar == ""
+	if owns {
 		e.retVar = fmt.Sprintf("ts_r%d", e.tries)
 		fmt.Fprintf(&e.buf, "%svar %s %s\n", pad, e.retVar, e.typ(e.ret, s.Span))
 	}
@@ -118,7 +122,7 @@ func (e *emitter) tryStmt(s *ir.Try, pad string, depth int) {
 			fmt.Fprintf(&e.buf, "%s}\n", pad)
 		}
 	}
-	if outermost {
+	if owns {
 		e.retVar = ""
 	}
 }
@@ -157,8 +161,8 @@ func (e *emitter) leaves(s ir.Stmt, pad string) bool {
 	case *ir.Return:
 		switch {
 		case s.Value != nil && e.retVar == "":
-			// exits found every return under the outermost try, which
-			// declared retVar: this is a bug, refused rather than dropped.
+			// exits found every return under the try that declared
+			// retVar: this is a bug, refused rather than dropped.
 			fmt.Fprintf(&e.buf, "%s%s\n", pad, e.cannot(s.Span, "the backend lost a return's value inside a try"))
 		case s.Value != nil:
 			fmt.Fprintf(&e.buf, "%s%s = %s\n", pad, e.retVar, e.full(s.Value))

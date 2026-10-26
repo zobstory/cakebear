@@ -52,12 +52,12 @@ func checkReturns(body []Stmt, want Type) error {
 func checkReturn(r *Return, want Type) error {
 	switch {
 	case want == Void && r.Value != nil:
-		return fmt.Errorf("%s: a return of a %s from a function that returns nothing", r.Span, r.Value.ExprType())
+		return fmt.Errorf("%s: a return of %s from a function that returns nothing", r.Span, article(r.Value.ExprType().String()))
 	case want != Void && r.Value == nil:
-		return fmt.Errorf("%s: a return of nothing from a function that returns a %s", r.Span, want)
+		return fmt.Errorf("%s: a return of nothing from a function that returns %s", r.Span, article(want.String()))
 	case r.Value != nil:
 		if got := r.Value.ExprType(); !got.Equal(want) && !(want == String && got == Base64) {
-			return fmt.Errorf("%s: a return of a %s from a function that returns a %s", r.Span, got, want)
+			return fmt.Errorf("%s: a return of %s from a function that returns %s", r.Span, article(got.String()), article(want.String()))
 		}
 	}
 	return nil
@@ -70,7 +70,7 @@ func checkDecl(d *VarDecl) error {
 		return nil
 	}
 	if got := d.Init.ExprType(); !got.Equal(d.Type) && !(d.Type == String && got == Base64) {
-		return fmt.Errorf("%s, a %s, is given a %s", d.Name, d.Type, got) // Validate adds d's span
+		return fmt.Errorf("%s, %s, is given %s", d.Name, article(d.Type.String()), article(got.String())) // Validate adds d's span
 	}
 	return nil
 }

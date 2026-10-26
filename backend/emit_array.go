@@ -166,6 +166,10 @@ func unjoinable(t ir.Type) string {
 	case ir.KindNumber, ir.KindString, ir.KindBoolean, ir.KindInt32, ir.KindInt64,
 		ir.KindUint32, ir.KindUint64, ir.KindFloat32, ir.KindBase64:
 		return ""
+	case ir.KindError, ir.KindUnknown:
+		// `Name: message`, and what an unknown holds, which is only data
+		// (ir.Box): never a function, so never a toString of the program's.
+		return ""
 	case ir.KindArray:
 		if t.Elem == nil {
 			return "it has no element type"

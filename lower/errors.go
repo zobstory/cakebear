@@ -196,7 +196,12 @@ var errorProps = map[string]ir.ErrorProp{
 // errorProperty lowers a read of an Error's property: `e.message`.
 func (l *lowerer) errorProperty(n *ast.Node) (ir.Expr, bool) {
 	access := n.AsPropertyAccessExpression()
-	if !isErrorType(l.checker.GetTypeAtLocation(access.Expression)) {
+	recv := l.checker.GetTypeAtLocation(access.Expression)
+	if access.QuestionDotToken != nil {
+		// `e?.message`: chain holds e, narrowed, for this link.
+		recv = l.checker.GetNonNullableType(recv)
+	}
+	if !isErrorType(recv) {
 		return nil, false
 	}
 	prop, ok := errorProps[access.Name().Text()]
@@ -278,15 +283,34 @@ func (l *lowerer) typeOfTest(n *ast.Node) (ir.Expr, bool) {
 	return test, true
 }
 
+// never reports whether v, the value of n, is a call of a function
+// returning never, which TypeScript lets a function of any result return:
+// `return fail("…")`. It is lowered as the call, which doesn't come back,
+// and Go's end of the function is the backend's (emit_loops.go).
+func (l *lowerer) never(n *ast.Node, v ir.Expr) bool {
+	return v.ExprType() == ir.Void && l.checker.GetTypeAtLocation(n).Flags()&checker.TypeFlagsNever != 0
+}
+
 // boxed holds v to an unknown's slot, when n's is one (D5): a value of any
 // other type is boxed, an extension type widened to the number it is first.
 // An unknown holds only data, so a function, a promise or a host value, or
 // anything holding one, is refused.
 func (l *lowerer) boxed(n *ast.Node, v ir.Expr) ir.Expr {
-	if v.ExprType() == ir.Unknown || l.slotType(n) != ir.Unknown {
+	if v.ExprType() == ir.Unknown || l.slotType(n) != ir.Unknown || awaited(n) {
 		return v
 	}
 	return l.box(n, v)
+}
+
+// awaited reports whether n is what an await waits for, whose slot the
+// checker gives as the await's: the value the await gives is boxed there,
+// not the promise.
+func awaited(n *ast.Node) bool {
+	p := n.Parent
+	for p != nil && p.Kind == ast.KindParenthesizedExpression {
+		p = p.Parent
+	}
+	return p != nil && p.Kind == ast.KindAwaitExpression
 }
 
 // box is v, the value of n, as an unknown holds it, whatever n's slot.
@@ -339,9 +363,11 @@ func mentionsUnknown(t ir.Type) bool {
 // or what a function literal passed to one returns (`some`'s predicate gives
 // an unknown). Lowering gives those the types the call needs
 // (array_methods.go, numbers.go), as emptyOutside does for maybes, so such a
-// slot is none the IR holds (slotType), and nothing is boxed into it.
+// slot is none the IR holds (slotType), and nothing is boxed into it. An
+// unknown only an instantiation gave, as `unknown[]`'s push takes one, is a
+// slot like any.
 func (l *lowerer) libraryTyped(n *ast.Node) bool {
-	if l.libraryArgument(n) {
+	if l.libraryDeclaresUnknown(n) {
 		return true
 	}
 	p := n.Parent
@@ -357,21 +383,40 @@ func (l *lowerer) libraryTyped(n *ast.Node) bool {
 	case p.Kind == ast.KindArrowFunction && p.Body() == n:
 		fn = p
 	}
-	return fn != nil && (fn.Kind == ast.KindArrowFunction || fn.Kind == ast.KindFunctionExpression) && l.libraryArgument(fn)
+	return fn != nil && (fn.Kind == ast.KindArrowFunction || fn.Kind == ast.KindFunctionExpression) && l.libraryDeclaresUnknown(fn)
 }
 
-// libraryArgument reports whether n is an argument to a call of a function
-// the program doesn't declare.
-func (l *lowerer) libraryArgument(n *ast.Node) bool {
-	p := n.Parent
-	for p != nil && p.Kind == ast.KindParenthesizedExpression {
-		n, p = p, p.Parent
-	}
-	if p == nil || (p.Kind != ast.KindCallExpression && p.Kind != ast.KindNewExpression) || !slices.Contains(p.Arguments(), n) {
+// libraryDeclaresUnknown reports whether n is an argument to a call of a
+// function the program doesn't declare, whose declaration types that
+// parameter with unknown, before any instantiation (libraryParam).
+func (l *lowerer) libraryDeclaresUnknown(n *ast.Node) bool {
+	return l.declaresUnknown(l.libraryParam(n), 0)
+}
+
+// declaresUnknown reports whether t is unknown, or holds one, as a union's
+// member, an array's element, or what a function takes or gives.
+func (l *lowerer) declaresUnknown(t *checker.Type, depth int) bool {
+	switch {
+	case t == nil || depth > 4:
 		return false
+	case t.Flags()&checker.TypeFlagsUnknown != 0:
+		return true
+	case t.Flags()&checker.TypeFlagsUnion != 0:
+		return slices.ContainsFunc(t.Types(), func(m *checker.Type) bool { return l.declaresUnknown(m, depth+1) })
+	case l.checker.IsArrayType(t):
+		return l.declaresUnknown(l.checker.GetElementTypeOfArrayType(t), depth+1)
 	}
-	sig := l.checker.GetResolvedSignature(p)
-	return sig != nil && sig.Declaration() != nil && !l.p.inProgram(sig.Declaration())
+	for _, sig := range l.checker.GetSignaturesOfType(t, checker.SignatureKindCall) {
+		if l.declaresUnknown(l.checker.GetReturnTypeOfSignature(sig), depth+1) {
+			return true
+		}
+		for _, param := range sig.Parameters() {
+			if l.declaresUnknown(l.checker.GetTypeOfSymbol(param), depth+1) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // unknownOperands boxes the other side of `===` or `!==` between an unknown

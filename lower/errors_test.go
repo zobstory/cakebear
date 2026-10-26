@@ -327,6 +327,29 @@ func TestErrorRefusals(t *testing.T) {
 			"a string before console.log's other arguments is a format to Node"},
 		{"nothing returned for an unknown", "function apply(f: () => unknown): void {\n}\napply(() => {\n  console.log(1);\n});\n",
 			"this function returns nothing where unknown is expected"},
+		// What agent m6-sweep found refused in words that misled, or not at all.
+		{"an array into an unknown[]", "const a: number[] = [1];\nconst b: unknown[] = a;\n",
+			"a number[] can't be used as an unknown[] yet: an array holds values of one type in cakebear"},
+		{"a map's numbers into an unknown[]", "const a: number[] = [1];\nconst b: unknown[] = a.map((n) => n * 2);\n",
+			"a number[] can't be used as an unknown[] yet"},
+		{"never as ??'s default", "function fail(): never {\n  throw new Error(\"x\");\n}\nfunction f(m: string | undefined): string {\n  return m ?? fail();\n}\n",
+			"a call that never returns, as the default of ??, is not supported yet"},
+		{"never as a branch", "function fail(): never {\n  throw new Error(\"x\");\n}\nfunction f(c: boolean): number {\n  return c ? 1 : fail();\n}\n",
+			"a call that never returns, as a branch of ?:, is not supported yet"},
+		{"writing an Error's name", "const e: Error = new Error(\"m\");\ne.name = \"X\";\n",
+			"assigning an Error's name is not supported yet: cakebear's Errors don't change once made"},
+		{"|| on an unknown", "function get(): unknown {\n  return 0;\n}\nconst u: unknown = get() || \"d\";\n",
+			"|| on an unknown as a value is not supported yet: narrow it first"},
+		{"&& on an unknown", "function get(): unknown {\n  return 0;\n}\nconst u: unknown = get() && \"d\";\n",
+			"&& on an unknown as a value is not supported yet"},
+		{"typeof as a value", "const u: unknown = 1;\nconst s: string = typeof u;\n",
+			"typeof as a value, not compared with a string literal, is not supported yet"},
+		{"a handler reading a const unknown", "import { createServer } from \"node:http\";\nfunction get(): unknown {\n  return 1;\n}\n" +
+			"const shared: unknown = get();\ncreateServer((req, res) => {\n  res.end(String(shared));\n});\n",
+			"can't use `shared`, an unknown created outside it; one can't be shared between requests yet"},
+		{"a spawn reading a const unknown", "function get(): unknown {\n  return 1;\n}\nconst shared: unknown = get();\n" +
+			"const p: Promise<string> = spawn((): string => String(shared));\n",
+			"can't use `shared`, an unknown created outside it; one can't be shared with a spawned function yet"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

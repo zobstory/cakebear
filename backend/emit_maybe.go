@@ -246,6 +246,7 @@ var directToString = map[ir.Type]string{
 	ir.Boolean: rtPkg + ".BoolToString",
 	ir.Int64:   rtPkg + ".IntToString",
 	ir.Uint64:  rtPkg + ".UintToString",
+	ir.Error:   rtPkg + ".ErrorToString",
 }
 
 // cloned reports whether a field of type t is copied when its object is

@@ -28,10 +28,25 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 			return l.adapt(n, v, slot)
 		}
 	}
+	if slot := l.slotType(n); slot.Kind == ir.KindArray && holdsUnknown(slot) && !slot.Equal(v.ExprType()) {
+		// An array holds values of its element type only, so one of
+		// numbers isn't one of unknowns, which TypeScript allows.
+		l.failf(n, "%s can't be used as %s yet: an array holds values of one type in cakebear, so build one of unknowns instead", aType(v.ExprType()), aType(slot))
+		return nil
+	}
 	if !l.exact(n, v) {
 		return nil
 	}
 	return v
+}
+
+// holdsUnknown reports whether t is an unknown, or an array or a maybe of
+// one, at any depth.
+func holdsUnknown(t ir.Type) bool {
+	if t == ir.Unknown {
+		return true
+	}
+	return (t.Kind == ir.KindArray || t.Kind == ir.KindMaybe) && t.Elem != nil && holdsUnknown(*t.Elem)
 }
 
 // fitField holds v, the value of a shorthand property, to its field's type

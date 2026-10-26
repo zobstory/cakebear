@@ -62,6 +62,15 @@ func (l *lowerer) conditional(n *ast.Node) ir.Expr {
 	if test == nil || then == nil || els == nil {
 		return nil
 	}
+	for _, b := range []struct {
+		n *ast.Node
+		v ir.Expr
+	}{{c.WhenTrue, then}, {c.WhenFalse, els}} {
+		if l.never(b.n, b.v) {
+			l.failf(b.n, "a call that never returns, as a branch of ?:, is not supported yet: choose with an if, and throw there")
+			return nil
+		}
+	}
 	t := then.ExprType()
 	if !els.ExprType().Equal(t) {
 		if t = l.typeOf(n); t == ir.Invalid {
@@ -132,8 +141,12 @@ func (l *lowerer) coalesce(n *ast.Node) ir.Expr {
 		l.failf(n, "this ?? has a type the backend cannot represent yet%s", l.reason())
 		return nil
 	}
+	if l.never(b.Right, d) {
+		l.failf(b.Right, "a call that never returns, as the default of ??, is not supported yet: test the value with an if, and throw there")
+		return nil
+	}
 	if d = into(d, t); !d.ExprType().Equal(t) || !t.Equal(xt) && !t.Equal(*xt.Elem) {
-		l.failf(n, "?? of a %s and a %s is not supported yet", xt, d.ExprType())
+		l.failf(n, "?? of %s and %s is not supported yet", aType(xt), aType(d.ExprType()))
 		return nil
 	}
 	return l.hold(x, func(held func() ir.Expr) ir.Expr {
