@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"unicode/utf8"
@@ -35,7 +34,7 @@ func strPad(s string, maxLength float64, fill []string, atStart bool) string {
 	if filler == "" {
 		return s
 	}
-	checkLength(target)
+	checkLength(target, nil)
 	f, fillLen := newJSStr(filler), int(target)-n
 	b := strBuilder{b: make([]byte, 0, len(s)+fillLen)}
 	if !atStart {
@@ -50,18 +49,17 @@ func strPad(s string, maxLength float64, fill []string, atStart bool) string {
 	return b.string()
 }
 
-// StrRepeat is `s.repeat(count)`. A negative or infinite count is a
-// RangeError in Node, and a panic here.
-func StrRepeat(s string, count float64) string {
+// StrRepeat is `s.repeat(count)`. A negative or infinite count, or a string
+// longer than V8 makes, is the RangeError Node throws, made at site.
+func StrRepeat(s string, count float64, site *Site) string {
 	k := toInteger(count)
 	if k < 0 || math.IsInf(k, 1) {
-		panic(fmt.Sprintf("cakebear: repeat can't repeat a string %s times (Node throws RangeError: Invalid count value: %s)",
-			NumberToString(count), NumberToString(count)))
+		throwError(ErrorRange, "Invalid count value: "+NumberToString(count), site)
 	}
 	if k == 0 || s == "" {
 		return ""
 	}
-	checkLength(float64(utf16Len(s)) * k)
+	checkLength(float64(utf16Len(s))*k, site)
 	if !endsHigh(s) || !startsLow(s) {
 		return strings.Repeat(s, int(k))
 	}

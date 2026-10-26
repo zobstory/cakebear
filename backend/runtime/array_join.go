@@ -83,6 +83,17 @@ func joinString(v any, stack []any) string {
 		return BoolToString(x)
 	case string:
 		return x
+	case nil, jsNull:
+		return "" // an unknown[]'s undefined or null, as join writes them
+	case maybe:
+		// Lowering refuses a join over maybes, but String() of an unknown
+		// can reach an array of them all the same.
+		if state, value := x.maybeState(); state == stateValue {
+			return joinString(value, stack)
+		}
+		return ""
+	case *Error:
+		return ErrorToString(x)
 	case Object:
 		return "[object Object]"
 	case joiner:

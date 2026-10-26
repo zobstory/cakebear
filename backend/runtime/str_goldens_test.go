@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strconv"
-	"strings"
 	"testing"
 	"unicode"
 )
@@ -67,7 +66,7 @@ var strFns = map[string]func(a strArgs) any{
 	"replaceAll":  func(a strArgs) any { return StrReplaceAll(a.str(0), a.str(1), a.str(2)) },
 	"padStart":    func(a strArgs) any { return StrPadStart(a.str(0), a[1].(float64), a.strs(2)...) },
 	"padEnd":      func(a strArgs) any { return StrPadEnd(a.str(0), a[1].(float64), a.strs(2)...) },
-	"repeat":      func(a strArgs) any { return StrRepeat(a.str(0), a[1].(float64)) },
+	"repeat":      func(a strArgs) any { return StrRepeat(a.str(0), a[1].(float64), nil) },
 	"compare":     func(a strArgs) any { return float64(StrCompare(a.str(0), a.str(1))) },
 	"concat":      func(a strArgs) any { return StrConcat(a.strs(0)...) },
 	"int": func(a strArgs) any {
@@ -140,8 +139,8 @@ func checkStrEntry(t *testing.T, line int, e strEntry) bool {
 	got, panicked := callStr(fn, args)
 	switch {
 	case e.Throws != nil:
-		if msg, _ := panicked.(string); !strings.HasPrefix(msg, "cakebear: ") || !strings.HasSuffix(msg, "(Node throws "+*e.Throws+")") {
-			t.Errorf("line %d: %s%s gave %s, panic %v\nwant the panic for what Node threw, %s", line, e.Fn, args, show(got), panicked, *e.Throws)
+		if msg, ok := threwString(panicked); !ok || msg != *e.Throws {
+			t.Errorf("line %d: %s%s gave %s, panic %v\nwant a throw of what Node threw, %s", line, e.Fn, args, show(got), panicked, *e.Throws)
 			return false
 		}
 	case panicked != nil:

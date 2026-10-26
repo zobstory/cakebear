@@ -14,22 +14,25 @@ import (
 // name is what generated code calls for one ir.HostOp:
 //
 //	createServer(listener)       CreateServer(func(*Domain, *IncomingMessage, *ServerResponse))
-//	server.listen(port, cb?)     (*Server).Listen(float64, ...func(*Domain))
-//	res.setHeader(name, value)   (*ServerResponse).SetHeader(string, string)
-//	res.writeHead(status)        (*ServerResponse).WriteHead(float64)
+//	server.listen(port, cb?)     (*Server).Listen(float64, *Site, ...func(*Domain))
+//	res.setHeader(name, value)   (*ServerResponse).SetHeader(string, string, *Site)
+//	res.writeHead(status)        (*ServerResponse).WriteHead(float64, *Site)
 //	res.end(chunk?)              (*ServerResponse).End(...string)
 //	req.url, req.method          (*IncomingMessage).URL(), .Method()
 //
 // Methods that return `this` in TypeScript return their receiver, so a chained
 // call emits as written. The optional arguments are variadic so a call emits
 // with the arguments the source gave; lower/ has already checked the arity.
+// A *Site is the call's (thrown.go), for the report of the error it may throw.
 //
 // Each request is its own domain (domain.go), driven by the goroutine net/http
 // gives it, so requests run in parallel while the async code within one runs
-// in Node's order. Where Node would throw (headers set after they were sent, a
-// status code out of range) the runtime panics with Node's message. net/http
-// recovers a handler's panic and drops only that connection, so one bad
-// request cannot take the server down.
+// in Node's order. Where Node throws (headers set after they were sent, a
+// status code out of range, a bad port) the runtime throws Node's error, code
+// and all (M6 plan D9, R34), which a try can catch. A throw nothing catches
+// ends only its request (D8): before the response ends its connection is
+// dropped, after it the response stands, and the report goes to stderr
+// either way. Node would end the whole server.
 
 // listenHost is the address servers bind: every interface, as Node's default
 // is. Tests narrow it to loopback.
@@ -56,12 +59,12 @@ func CreateServer(listener func(*Domain, *IncomingMessage, *ServerResponse)) *Se
 // both are queued for Run, the callback first, so "listening on …" is printed
 // before any handler runs, as under Node. The callback runs in the main
 // program's domain, wherever listen was called from, because Node runs it on
-// the main thread.
-func (s *Server) Listen(port float64, callbacks ...func(*Domain)) *Server {
+// the main thread. A port Node refuses is a RangeError it throws there and
+// then (R37).
+func (s *Server) Listen(port float64, site *Site, callbacks ...func(*Domain)) *Server {
 	p, ok := portNumber(port)
 	if !ok {
-		fatalf("RangeError [ERR_SOCKET_BAD_PORT]: options.port should be >= 0 and < 65536. Received type number (%s).", numberForDisplay(port))
-		return s
+		throwCoded(ErrorRange, "ERR_SOCKET_BAD_PORT", "options.port should be >= 0 and < 65536. Received type number ("+numberForDisplay(port)+").", site)
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(p)))
 	if err != nil {
@@ -118,9 +121,28 @@ func portNumber(f float64) (int, bool) {
 // handler may go on working after that. So once the response has ended, serve
 // returns, and whatever the domain still has to do carries on on a goroutine
 // of its own, which keeps the process alive until it is done.
+//
+// A throw nothing caught ends the request, and only it (M6 plan D8): the
+// report goes to stderr, and the connection is dropped, quietly, unless the
+// response had already ended, in which case it stands. The domain is
+// abandoned with whatever it had left to do. A Go panic goes on to net/http,
+// which drops the connection and logs it with its stack, as before.
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
-	res := &ServerResponse{w: w, status: http.StatusOK}
 	d := newDomain()
+	res := &ServerResponse{w: w, status: http.StatusOK, d: d}
+	defer func() {
+		if p := recover(); p != nil {
+			t, ok := p.(*Thrown)
+			if !ok {
+				panic(p)
+			}
+			writeErr(uncaughtReport(t, d.running))
+			if !res.ended {
+				panic(http.ErrAbortHandler) // net/http drops the connection and logs nothing
+			}
+		}
+	}()
+	d.running = inHandler
 	d.runTask(func() { s.listener(d, &IncomingMessage{r: r, url: requestURL(r.RequestURI)}, res) })
 	for !res.ended && d.pending() {
 		d.waitNext()
@@ -139,11 +161,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 // finishDetached runs what is left of a request's domain after its response.
 // Nothing recovers a panic on this goroutine, and the connection it could
-// have dropped is already finished, so a panic is reported, not fatal.
+// have dropped is already finished, so a panic is reported, not fatal: a
+// throw as an uncaught one is (D8), and a Go panic with its value.
 func finishDetached(d *Domain) {
 	defer unref()
 	defer func() {
 		if r := recover(); r != nil {
+			if t, ok := r.(*Thrown); ok {
+				writeErr(uncaughtReport(t, d.running))
+				return
+			}
 			warnf("cakebear: after a response was sent: %v", r)
 		}
 	}()
@@ -190,6 +217,7 @@ type ServerResponse struct {
 	status      int
 	headersSent bool
 	ended       bool
+	d           *Domain // the request's
 }
 
 // SetHeader is res.setHeader, replacing any value already set. Go canonicalises
@@ -199,15 +227,16 @@ type ServerResponse struct {
 // Node throws for a name that isn't an HTTP token and for a value holding a
 // character it can't send, a lone surrogate or anything past U+00FF among
 // them; net/http would drop the first silently and send the second's bytes.
-func (r *ServerResponse) SetHeader(name, value string) *ServerResponse {
+// The value isn't in the message, the name is (R34).
+func (r *ServerResponse) SetHeader(name, value string, site *Site) *ServerResponse {
 	if r.headersSent {
-		panic("Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client")
+		throwCoded(ErrorBase, "ERR_HTTP_HEADERS_SENT", "Cannot set headers after they are sent to the client", site)
 	}
 	if !isHTTPToken(name) {
-		panic(`TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token ["` + wellFormed(name) + `"]`)
+		throwCoded(ErrorType, "ERR_INVALID_HTTP_TOKEN", `Header name must be a valid HTTP token ["`+name+`"]`, site)
 	}
 	if !validHeaderValue(value) {
-		panic(`TypeError [ERR_INVALID_CHAR]: Invalid character in header content ["` + name + `"]`)
+		throwCoded(ErrorType, "ERR_INVALID_CHAR", `Invalid character in header content ["`+name+`"]`, site)
 	}
 	r.w.Header().Set(name, value)
 	return r
@@ -215,16 +244,16 @@ func (r *ServerResponse) SetHeader(name, value string) *ServerResponse {
 
 // WriteHead is res.writeHead(status): it sends the status with the headers set
 // so far, after which no more can be set.
-func (r *ServerResponse) WriteHead(status float64) *ServerResponse {
+func (r *ServerResponse) WriteHead(status float64, site *Site) *ServerResponse {
 	if r.headersSent {
-		panic("Error [ERR_HTTP_HEADERS_SENT]: Cannot write headers after they are sent to the client")
+		throwCoded(ErrorBase, "ERR_HTTP_HEADERS_SENT", "Cannot write headers after they are sent to the client", site)
 	}
 	// Node converts the status with `statusCode |= 0`, ToInt32, and checks
 	// what that gives: 200.5 sends 200, and so does 2^32 + 200. The message
 	// names the status as it was passed, -0 as -0 (measured on Node 24.18).
 	code := numToInt32(status)
 	if code < 100 || code > 999 {
-		panic("RangeError [ERR_HTTP_INVALID_STATUS_CODE]: Invalid status code: " + numberForDisplay(status))
+		throwCoded(ErrorRange, "ERR_HTTP_INVALID_STATUS_CODE", "Invalid status code: "+numberForDisplay(status), site)
 	}
 	r.status = int(code)
 	r.sendHeaders()
@@ -239,7 +268,7 @@ func (r *ServerResponse) WriteHead(status float64) *ServerResponse {
 func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	if r.ended {
 		if len(chunk) > 0 {
-			panic("Error [ERR_STREAM_WRITE_AFTER_END]: write after end")
+			r.writeAfterEnd()
 		}
 		return r
 	}
@@ -249,6 +278,22 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	}
 	r.ended = true
 	return r
+}
+
+// writeAfterEnd is res.end(chunk) after the response has ended. Node doesn't
+// throw there: the response emits 'error' on the next tick, nothing listens,
+// and that is an uncaught exception no try around the call can catch, once
+// the handler has carried on (R36). So it is raised on the request's next
+// tick, worded as Node prints it under --stack-trace-limit=0, with no
+// excerpt: Node's points into its own events module, and End takes no site.
+// Only the first counts: Node is gone by the second.
+func (r *ServerResponse) writeAfterEnd() {
+	if r.d.tick != nil {
+		return
+	}
+	e := newCodedError(ErrorBase, "ERR_STREAM_WRITE_AFTER_END", "write after end", nil)
+	e.stack = "Error [ERR_STREAM_WRITE_AFTER_END]: write after end\nEmitted 'error' event on ServerResponse instance at:\n"
+	r.d.tick = &Thrown{V: e}
 }
 
 // sendHeaders commits the status line and headers. net/http still buffers

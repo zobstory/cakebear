@@ -127,6 +127,7 @@ func run(sigs <-chan os.Signal) {
 	d.drain()
 	for {
 		for _, f := range takeQueue() {
+			d.running = inCallback
 			d.runTask(f)
 		}
 		d.runInbox()

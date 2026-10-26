@@ -231,7 +231,7 @@ func TestEmitProducesCompilableShape(t *testing.T) {
 		"return float64(n * 2.0)", // the conversion keeps Go from fusing it (unfused)
 		"func main()",
 		"LogNumber(double(ts_domain, 21.0))",
-		"defer " + rtPkg + ".Flush()",
+		"defer " + rtPkg + ".Exit()",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("emitted source missing %q:\n%s", want, got)

@@ -17,7 +17,11 @@
 // "\uD800"): {"u":[<UTF-16 code unit>...]}. A line has, in place of out,
 //   "outU":[<code unit>...]   when the output holds a lone surrogate, which
 //                             only a gap cut through a pair puts there;
-//   "throws":"<String(err)>"  when JSON.stringify threw: a cycle.
+//   "throws":"<String(err)>"  when JSON.stringify threw: a cycle;
+//   "undef":true              when it gave undefined, as it does for an
+//                             unknown holding undefined (UNKNOWN only).
+// A line of ERROR or UNKNOWN (M6) may also say "any":true, when its value
+// is an unknown: those sections hold Errors and unknowns (golden-codec.mjs).
 //
 // The subset's constraints are checked on every entry, as for the inspect
 // corpus (golden-codec.mjs, validate with forJSON).
@@ -28,12 +32,13 @@
 // file to a few MB. It reads inspect-goldens.jsonl and its index, so
 // regenerate those first if they change.
 //
-// The index file maps each section to its 1-based line range.
+// The index file maps each section to its 1-based line range. ERROR and
+// UNKNOWN come last, so the lines before them stay as they were.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { codeUnits, decodeArgs, encodeArgs, numText, validate } from './golden-codec.mjs';
+import { codeUnits, decodeArgs, encodeArgs, numText, validate, stripAny, ERROR_KINDS } from './golden-codec.mjs';
 
 if (process.version !== 'v24.18.0') {
   throw new Error(`recorded against Node v24.18.0, this is ${process.version}`);
@@ -74,8 +79,9 @@ function v(x) {
   }
 }
 
-// record is what Node makes of one entry: its output, or what it threw.
-function record(value, space) {
+// record is what Node makes of one entry: its output, or what it threw, or
+// that it gave undefined, which only an unknown's entry may.
+function record(value, space, any) {
   validate([value], { forJSON: true });
   if (space !== undefined) {
     const keys = Object.keys(space);
@@ -83,7 +89,7 @@ function record(value, space) {
   }
   const [x] = decodeArgs([value]);
   const again = JSON.stringify(encodeArgs([x]));
-  if (again !== JSON.stringify([value])) throw new Error(`not canonical:\n${JSON.stringify([value])}\n${again}`);
+  if (again !== JSON.stringify(stripAny([value]))) throw new Error(`not canonical:\n${JSON.stringify([value])}\n${again}`);
   const sp = space === undefined ? undefined : decodeArgs([space])[0];
   let out;
   try {
@@ -92,6 +98,7 @@ function record(value, space) {
     if (!(err instanceof TypeError) || !err.message.startsWith('Converting circular structure to JSON\n')) throw err;
     return { throws: String(err) };
   }
+  if (out === undefined && any) return { undef: true };
   if (typeof out !== 'string') throw new Error('JSON.stringify gave no string');
   return out.isWellFormed() ? { out } : { outU: codeUnits(out) };
 }
@@ -99,8 +106,10 @@ function record(value, space) {
 // ---------------------------------------------------------------------------
 // The corpus being built
 
-const entries = []; // { section, value, space }
+const entries = []; // { section, value, space, any }
 const addD = (section, value, space) => entries.push({ section, value, space });
+// addU adds an entry whose value is an unknown.
+const addU = (section, value, space) => entries.push({ section, value, space, any: true });
 const add = (section, x, space) => addD(section, v(x), space);
 
 // Spaces: none, numbers that clamp, truncate or give nothing, and strings
@@ -479,6 +488,60 @@ function sectionMAYBE() {
 }
 
 // ---------------------------------------------------------------------------
+// ERROR: an Error is its own enumerable properties (R27): {} for every one
+// the program makes, and {"code":…} for Node's own, wherever it is, under
+// the gaps that change the layout. UNKNOWN: unknowns of every kind, an
+// unknown[] mixing them, undefined left out of an object and null in an
+// array, as for a maybe, and undefined at the top level, which gives
+// undefined; and a cycle through unknowns, which throws.
+
+const ERR = (kind, m, code) => ({ err: kind, ...(m === undefined ? {} : { m }), ...(code === undefined ? {} : { code }) });
+const UA = (items, id) => ({ ...A(items, id), any: true });
+const UO = (pairs, id) => ({ ...O(pairs, id), any: true });
+const M6_SPACES = [undefined, N(2), S('\t'), N(0.5), S('--')];
+const CODED = [
+  ERR('Error', 'Cannot set headers after they are sent to the client', 'ERR_HTTP_HEADERS_SENT'),
+  ERR('TypeError', 'Header name must be a valid HTTP token ["bad name"]', 'ERR_INVALID_HTTP_TOKEN'),
+  ERR('TypeError', 'Invalid character in header content ["x-a"]', 'ERR_INVALID_CHAR'),
+  ERR('RangeError', 'Invalid status code: 1000', 'ERR_HTTP_INVALID_STATUS_CODE'),
+  ERR('RangeError', 'options.port should be >= 0 and < 65536. Received type number (70000).', 'ERR_SOCKET_BAD_PORT'),
+];
+
+function sectionERROR() {
+  const r = 'ERROR';
+  const values = [
+    ...ERROR_KINDS.map((k) => ERR(k, 'm')), ERR('Error'), ERR('Error', ''), ERR('TypeError', 'say "hi"\n'), ...CODED,
+    O([['e', ERR('Error', 'x')]]), A([ERR('Error', 'x')]), A([ERR('Error', 'a'), ERR('RangeError', 'b'), ERR('Error')]),
+    O([['data', E(null)], ['error', ERR('Error', 'failed')]]), O([['a', N(1)], ['e', CODED[0]], ['b', S('x')]]),
+    A([CODED[1], CODED[3]]), A([ERR('Error', 'x'), E(null), E(undefined)]), O([['nested', O([['deeper', A([CODED[4]])]])]]),
+  ];
+  for (const x of values) {
+    for (const space of M6_SPACES) addD(r, x, space);
+  }
+}
+
+function sectionUNKNOWN() {
+  const r = 'UNKNOWN';
+  const each = [
+    E(undefined), E(null), N(0), N(-0), N(1.5), N(NaN), N(Infinity), S(''), S('a"b'), B(true), ERR('Error', 'm'), CODED[0],
+    A([]), A([N(1), N(2)]), O([]), O([['a', N(1)]]), UA([N(1), S('a'), E(null), E(undefined), B(false)]),
+    UO([['u', E(undefined)], ['n', E(null)], ['s', S('x')]]),
+  ];
+  for (const x of each) {
+    for (const space of M6_SPACES) addU(r, x, space);
+  }
+  for (const space of M6_SPACES) {
+    addU(r, UA(each), space);
+    addU(r, UO(each.map((x, i) => [`k${i}`, x])), space);
+    addU(r, UO([['u', E(undefined)]]), space);
+    addU(r, UA([UA([E(undefined)]), UO([['e', ERR('RangeError', 'r')], ['u', E(undefined)]])]), space);
+  }
+  addU(r, UA([N(1), R(1)], 1));
+  addU(r, UO([['self', R(1)]], 1));
+  addU(r, UA([UO([['up', R(1)]])], 1), N(2));
+}
+
+// ---------------------------------------------------------------------------
 
 sectionSTR();
 sectionNUM();
@@ -489,18 +552,20 @@ sectionCIRC();
 const deliberate = entries.length;
 sectionINSPECT();
 sectionMAYBE();
+sectionERROR();
+sectionUNKNOWN();
 
 const lines = [];
 const index = {};
-entries.forEach(({ section, value, space }, i) => {
+entries.forEach(({ section, value, space, any }, i) => {
   let result;
   try {
-    result = record(value, space);
+    result = record(value, space, any);
   } catch (err) {
     err.message = `${section} entry ${i}: ${err.message}`;
     throw err;
   }
-  lines.push(JSON.stringify({ value, space, ...result }));
+  lines.push(JSON.stringify({ value, space, ...(any ? { any } : {}), ...result }));
   const line = i + 1;
   if (!index[section]) index[section] = { first: line, last: line, count: 0, throws: 0 };
   if (index[section].last < line - 1) throw new Error(`section ${section} is not contiguous`);
@@ -516,8 +581,8 @@ const reread = fs.readFileSync(OUT, 'utf8').split('\n');
 if (reread.pop() !== '') throw new Error('no trailing newline');
 let mismatches = 0;
 for (const [i, text] of reread.entries()) {
-  const { value, space, ...result } = JSON.parse(text);
-  if (JSON.stringify(record(value, space)) !== JSON.stringify(result)) {
+  const { value, space, any, ...result } = JSON.parse(text);
+  if (JSON.stringify(record(value, space, any)) !== JSON.stringify(result)) {
     mismatches++;
     if (mismatches <= 5) console.error(`line ${i + 1}: output differs`);
   }

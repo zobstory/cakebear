@@ -161,7 +161,7 @@ func TestIterationPanicsWhenTheArrayShrinks(t *testing.T) {
 	shrinkAt := func(n, at, keep int) (*Array[float64], visitor) {
 		return NewArray(make([]float64, n)...), func(_ *Domain, _, i float64, a *Array[float64]) bool {
 			if int(i) == at {
-				a.SetLength(float64(keep))
+				a.SetLength(float64(keep), nil)
 			}
 			return false
 		}

@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -10,13 +9,13 @@ import (
 // A–Z a–z 0–9 - _ . ! ~ * ' ( ) as %XX of each of its UTF-8 bytes, in upper
 // case. A string's bytes are its UTF-8 already, so they are escaped as they
 // are, but for two halves of a pair, which JavaScript reads as the one code
-// point they make. A lone surrogate has no UTF-8, and panics where Node
-// throws a URIError.
+// point they make. A lone surrogate has no UTF-8, and is the URIError Node
+// throws, made at site.
 //
 // A byte that is neither UTF-8 nor a surrogate's three bytes has no
 // JavaScript meaning, and nothing lowered makes one; it is U+FFFD, as Go
 // decodes it.
-func EncodeURIComponent(s string) string {
+func EncodeURIComponent(s string, site *Site) string {
 	i := 0
 	for i < len(s) && uriUnreserved(s[i]) {
 		i++
@@ -42,7 +41,7 @@ func EncodeURIComponent(s string) string {
 		if u, ok := surrogateAt(s, i); ok {
 			low, pair := surrogateAt(s, i+3)
 			if u >= 0xdc00 || !pair || low < 0xdc00 {
-				panic("cakebear: encodeURIComponent cannot encode the lone surrogate U+" + strings.ToUpper(strconv.FormatInt(int64(u), 16)) + " (Node throws URIError: URI malformed)")
+				throwError(ErrorURI, "URI malformed", site)
 			}
 			var buf [4]byte
 			for _, c := range buf[:utf8.EncodeRune(buf[:], 0x10000+(u-0xd800)<<10+(low-0xdc00))] {
@@ -85,10 +84,11 @@ func uriEscape(b *strings.Builder, c byte) {
 // DecodeURIComponent is decodeURIComponent(s): each %XX, in either case,
 // is a byte, and each run of them a byte of ASCII or one UTF-8 sequence,
 // which must be complete and valid: no overlong form, no surrogate and
-// nothing past U+10FFFF. Anything else panics where Node throws a URIError.
+// nothing past U+10FFFF. Anything else is the URIError Node throws, made at
+// site.
 // Everything but an escape is kept as it is, a lone surrogate included.
 // Nothing is reserved, so %25 is "%" and %2F is "/".
-func DecodeURIComponent(s string) string {
+func DecodeURIComponent(s string, site *Site) string {
 	i := strings.IndexByte(s, '%')
 	if i < 0 {
 		return s
@@ -100,7 +100,7 @@ func DecodeURIComponent(s string) string {
 		s = s[i:]
 		lead, ok := uriOctet(s, 0)
 		if !ok {
-			uriMalformed(s, 3)
+			throwError(ErrorURI, "URI malformed", site)
 		}
 		// The bytes of the sequence lead begins. A continuation byte, or one
 		// no UTF-8 starts with, is one byte alone, which isn't valid either.
@@ -118,12 +118,12 @@ func DecodeURIComponent(s string) string {
 		for j := 1; j < n; j++ {
 			c, ok := uriOctet(s, 3*j)
 			if !ok {
-				uriMalformed(s, 3*j+3)
+				throwError(ErrorURI, "URI malformed", site)
 			}
 			seq[j] = c
 		}
 		if !utf8.Valid(seq[:n]) {
-			uriMalformed(s, 3*n)
+			throwError(ErrorURI, "URI malformed", site)
 		}
 		b.Write(seq[:n])
 		s = s[3*n:]
@@ -143,13 +143,4 @@ func uriOctet(s string, i int) (byte, bool) {
 		return 0, false
 	}
 	return byte(hi<<4 | lo), true
-}
-
-// uriMalformed panics for the escapes at the start of s, which it quotes
-// up to its first n bytes, and the rest of the character the cut is in.
-func uriMalformed(s string, n int) {
-	for n < len(s) && !utf8.RuneStart(s[n]) {
-		n++
-	}
-	panic("cakebear: decodeURIComponent cannot decode " + strconv.Quote(s[:min(n, len(s))]) + " (Node throws URIError: URI malformed)")
 }

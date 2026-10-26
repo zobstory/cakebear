@@ -42,6 +42,13 @@ type Domain struct {
 	// spawned counts this domain's spawns whose results have not come back
 	// (spawn.go). Each is pending work: the domain cannot go idle under one.
 	spawned int
+	// running is what the driver is running, which the report of an
+	// uncaught error reads (uncaught.go). Each kind of task sets it as it
+	// starts, so a throw finds it as it was when the throw began.
+	running phase
+	// tick is a failure Node would raise on the next tick, which comes
+	// before the next microtask (writeAfterEnd).
+	tick *Thrown
 
 	// The inbox is the one part of a domain other goroutines touch: a spawned
 	// domain posts its result here. It has its own lock, and wake tells the
@@ -76,6 +83,7 @@ func (d *Domain) runInbox() {
 	d.inbox = nil
 	d.inboxMu.Unlock()
 	for _, f := range in {
+		d.running = inCallback
 		d.runTask(f)
 	}
 }
@@ -90,12 +98,22 @@ func Main() *Domain { return mainDomain }
 func (d *Domain) queueMicrotask(f func()) { d.micro = append(d.micro, f) }
 
 // drain runs microtasks until there are none, including the ones queued while
-// it runs, as Node does after each macrotask.
+// it runs, as Node does after each macrotask. A failure due on the next tick
+// is raised first, and before each microtask, as Node runs process.nextTick
+// callbacks before promise reactions.
 func (d *Domain) drain() {
-	for d.microHead < len(d.micro) {
+	for {
+		if t := d.tick; t != nil {
+			d.tick = nil
+			panic(t)
+		}
+		if d.microHead == len(d.micro) {
+			break
+		}
 		f := d.micro[d.microHead]
 		d.micro[d.microHead] = nil
 		d.microHead++
+		d.running = inMicrotask
 		f()
 	}
 	d.micro, d.microHead = d.micro[:0], 0
@@ -172,6 +190,7 @@ func (d *Domain) fireDue() {
 	for len(d.timers) > 0 && !d.timers[0].when.After(time.Now()) {
 		t := heap.Pop(&d.timers).(*timer)
 		delete(d.byID, t.id)
+		d.running = inTimer
 		d.runTask(func() { t.cb(d) })
 	}
 }

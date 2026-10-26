@@ -30,5 +30,5 @@ func (e *emitter) jsonStringify(x *ir.JSONStringify) string {
 			return e.cannot(x.Span, "JSON.stringify's space cannot be a "+t.String())
 		}
 	}
-	return fmt.Sprintf("%s.JSONStringify(%s, %s)", rtPkg, e.expr(x.Value), gap)
+	return fmt.Sprintf("%s.JSONStringify(%s, %s, %s)", rtPkg, e.expr(x.Value), gap, e.siteArg(x.Span))
 }

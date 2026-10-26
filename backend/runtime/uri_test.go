@@ -22,7 +22,7 @@ func TestURIKeyOutputs(t *testing.T) {
 		{"\xed\xa0\xbd\xed\xb8\x80", "%F0%9F%98%80"},
 		{"x\xed\xaf\xbf\xed\xbf\xbfy", "x%F4%8F%BF%BFy"},
 	} {
-		if got := EncodeURIComponent(c.in); got != c.want {
+		if got := EncodeURIComponent(c.in, nil); got != c.want {
 			t.Errorf("encodeURIComponent(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
@@ -39,46 +39,40 @@ func TestURIKeyOutputs(t *testing.T) {
 		{"\xed\xa0\x80%41", "\xed\xa0\x80A"},
 		{"日本%E8%AA%9E", "日本語"},
 	} {
-		if got := DecodeURIComponent(c.in); got != c.want {
+		if got := DecodeURIComponent(c.in, nil); got != c.want {
 			t.Errorf("decodeURIComponent(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
 
-// TestURIPanics: each panic, verbatim, where Node throws URIError: URI
-// malformed.
-func TestURIPanics(t *testing.T) {
+// TestURIThrows: each throws the URIError Node throws, URI malformed, which
+// a try can catch (M6 plan D9).
+func TestURIThrows(t *testing.T) {
 	t.Parallel()
 
-	const node = " (Node throws URIError: URI malformed)"
 	for _, c := range []struct {
 		name string
 		call func()
 		want string
 	}{
-		{"a lone high half", func() { EncodeURIComponent("a\xed\xa0\x80") }, "cakebear: encodeURIComponent cannot encode the lone surrogate U+D800" + node},
-		{"a lone low half", func() { EncodeURIComponent("\xed\xb8\x80") }, "cakebear: encodeURIComponent cannot encode the lone surrogate U+DE00" + node},
-		{"halves the wrong way round", func() { EncodeURIComponent("\xed\xb8\x80\xed\xa0\xbd") }, "cakebear: encodeURIComponent cannot encode the lone surrogate U+DE00" + node},
-		{"two high halves", func() { EncodeURIComponent("\xed\xa0\xbd\xed\xa0\xbd") }, "cakebear: encodeURIComponent cannot encode the lone surrogate U+D83D" + node},
-		{"a % at the end", func() { DecodeURIComponent("100%") }, `cakebear: decodeURIComponent cannot decode "%"` + node},
-		{"one hex digit", func() { DecodeURIComponent("a%4") }, `cakebear: decodeURIComponent cannot decode "%4"` + node},
-		{"not hex", func() { DecodeURIComponent("%ZZtop") }, `cakebear: decodeURIComponent cannot decode "%ZZ"` + node},
-		{"not hex, cut in a character", func() { DecodeURIComponent("%4é") }, `cakebear: decodeURIComponent cannot decode "%4é"` + node},
-		{"a continuation byte first", func() { DecodeURIComponent("%80") }, `cakebear: decodeURIComponent cannot decode "%80"` + node},
-		{"a sequence cut short", func() { DecodeURIComponent("%E2%82") }, `cakebear: decodeURIComponent cannot decode "%E2%82"` + node},
-		{"a sequence broken off", func() { DecodeURIComponent("%E2%82A") }, `cakebear: decodeURIComponent cannot decode "%E2%82A"` + node},
-		{"an overlong form", func() { DecodeURIComponent("%C0%80") }, `cakebear: decodeURIComponent cannot decode "%C0%80"` + node},
-		{"a surrogate", func() { DecodeURIComponent("%ED%A0%80") }, `cakebear: decodeURIComponent cannot decode "%ED%A0%80"` + node},
-		{"past U+10FFFF", func() { DecodeURIComponent("%F4%90%80%80") }, `cakebear: decodeURIComponent cannot decode "%F4%90%80%80"` + node},
-		{"a five-byte lead", func() { DecodeURIComponent("%F8%88%80%80%80") }, `cakebear: decodeURIComponent cannot decode "%F8"` + node},
+		{"a lone high half", func() { EncodeURIComponent("a\xed\xa0\x80", nil) }, "URIError: URI malformed"},
+		{"a lone low half", func() { EncodeURIComponent("\xed\xb8\x80", nil) }, "URIError: URI malformed"},
+		{"halves the wrong way round", func() { EncodeURIComponent("\xed\xb8\x80\xed\xa0\xbd", nil) }, "URIError: URI malformed"},
+		{"two high halves", func() { EncodeURIComponent("\xed\xa0\xbd\xed\xa0\xbd", nil) }, "URIError: URI malformed"},
+		{"a % at the end", func() { DecodeURIComponent("100%", nil) }, "URIError: URI malformed"},
+		{"one hex digit", func() { DecodeURIComponent("a%4", nil) }, "URIError: URI malformed"},
+		{"not hex", func() { DecodeURIComponent("%ZZtop", nil) }, "URIError: URI malformed"},
+		{"not hex, cut in a character", func() { DecodeURIComponent("%4é", nil) }, "URIError: URI malformed"},
+		{"a continuation byte first", func() { DecodeURIComponent("%80", nil) }, "URIError: URI malformed"},
+		{"a sequence cut short", func() { DecodeURIComponent("%E2%82", nil) }, "URIError: URI malformed"},
+		{"a sequence broken off", func() { DecodeURIComponent("%E2%82A", nil) }, "URIError: URI malformed"},
+		{"an overlong form", func() { DecodeURIComponent("%C0%80", nil) }, "URIError: URI malformed"},
+		{"a surrogate", func() { DecodeURIComponent("%ED%A0%80", nil) }, "URIError: URI malformed"},
+		{"past U+10FFFF", func() { DecodeURIComponent("%F4%90%80%80", nil) }, "URIError: URI malformed"},
+		{"a five-byte lead", func() { DecodeURIComponent("%F8%88%80%80%80", nil) }, "URIError: URI malformed"},
 	} {
-		func() {
-			defer func() {
-				if got := recover(); got != c.want {
-					t.Errorf("%s: panicked with %v, want %q", c.name, got, c.want)
-				}
-			}()
-			c.call()
-		}()
+		if got := throws(c.call); got != c.want {
+			t.Errorf("%s: %s, want a throw of %s", c.name, got, c.want)
+		}
 	}
 }

@@ -40,7 +40,7 @@ func TestStrHalvesRoundTrip(t *testing.T) {
 	if got := StrReplace(highHalf+"-", "-", lowHalf); got != "😀" {
 		t.Errorf("replace across the seam = % x, want 😀", got)
 	}
-	if got := StrRepeat(lowHalf+highHalf, 2); got != lowHalf+"😀"+highHalf {
+	if got := StrRepeat(lowHalf+highHalf, 2, nil); got != lowHalf+"😀"+highHalf {
 		t.Errorf("repeat across the seam = % x", got)
 	}
 	if got := StrPadEnd(highHalf, 2, lowHalf); got != "😀" {
@@ -164,43 +164,40 @@ func TestStrCompareIsUTF16Order(t *testing.T) {
 	}
 }
 
-// Each panic carries Node's error, verbatim, and says what happened.
-func TestStrPanicsMatchNode(t *testing.T) {
+// Each throws Node's error, verbatim (M6 plan D9); a string longer than V8
+// makes is one, however it would be made.
+func TestStrThrowsMatchNode(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
 		name string
 		do   func()
-		want string // "" means it must not panic
+		want string // "" means it must not throw
 	}{
-		{"repeat -1", func() { StrRepeat("ab", -1) }, "cakebear: repeat can't repeat a string -1 times (Node throws RangeError: Invalid count value: -1)"},
-		{"repeat -1.5", func() { StrRepeat("ab", -1.5) }, "cakebear: repeat can't repeat a string -1.5 times (Node throws RangeError: Invalid count value: -1.5)"},
-		{"repeat Infinity", func() { StrRepeat("", math.Inf(1)) }, "cakebear: repeat can't repeat a string Infinity times (Node throws RangeError: Invalid count value: Infinity)"},
-		{"repeat -0.5", func() { StrRepeat("ab", -0.5) }, ""},
-		{"repeat NaN", func() { StrRepeat("ab", math.NaN()) }, ""},
-		{"repeat too long", func() { StrRepeat("ab", 1<<28) },
-			"cakebear: the string would be 536870912 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
-		{"empty repeat, long", func() { StrRepeat("", 1e9) }, ""},
+		{"repeat -1", func() { StrRepeat("ab", -1, nil) }, "RangeError: Invalid count value: -1"},
+		{"repeat -1.5", func() { StrRepeat("ab", -1.5, nil) }, "RangeError: Invalid count value: -1.5"},
+		{"repeat Infinity", func() { StrRepeat("", math.Inf(1), nil) }, "RangeError: Invalid count value: Infinity"},
+		{"repeat -0.5", func() { StrRepeat("ab", -0.5, nil) }, ""},
+		{"repeat NaN", func() { StrRepeat("ab", math.NaN(), nil) }, ""},
+		{"repeat too long", func() { StrRepeat("ab", 1<<28, nil) },
+			"RangeError: Invalid string length"},
+		{"empty repeat, long", func() { StrRepeat("", 1e9, nil) }, ""},
 		{"padStart Infinity", func() { StrPadStart("a", math.Inf(1)) },
-			"cakebear: the string would be 9007199254740991 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
+			"RangeError: Invalid string length"},
 		{"padStart Infinity, no fill", func() { StrPadStart("a", math.Inf(1), "") }, ""},
 		{"replaceAll too long", func() { StrReplaceAll(strings.Repeat("a", 1<<20), "a", strings.Repeat("$&", 600)) },
-			"cakebear: the string would be 629145600 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
+			"RangeError: Invalid string length"},
 		// Counted in code units once the bytes, 577765376 and 805355520, say
 		// it could be too long; $` is as long as the units before each match.
 		{"replaceAll too long, not ASCII", func() { StrReplaceAll(strings.Repeat("éa", 1<<19), "a", strings.Repeat("$&", 1100)) },
-			"cakebear: the string would be 577241088 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
+			"RangeError: Invalid string length"},
 		{"replaceAll of $` too long, not ASCII", func() { StrReplaceAll(strings.Repeat("éa", 1<<13), "a", strings.Repeat("$`", 8)) },
-			"cakebear: the string would be 536879104 code units long, past V8's limit of 536870888 (Node throws RangeError: Invalid string length)"},
-		{"at the limit", func() { checkLength(stringLimit) }, ""},
-		{"past the limit", func() { checkLength(stringLimit + 1) }, "(Node throws RangeError: Invalid string length)"},
+			"RangeError: Invalid string length"},
+		{"at the limit", func() { checkLength(stringLimit, nil) }, ""},
+		{"past the limit", func() { checkLength(stringLimit+1, nil) }, "RangeError: Invalid string length"},
 	} {
-		got := panicked(c.do)
-		switch {
-		case c.want == "" && got != "":
-			t.Errorf("%s: panicked with %q", c.name, got)
-		case c.want != "" && !strings.HasSuffix(got, c.want):
-			t.Errorf("%s: panic = %q, want %q", c.name, got, c.want)
+		if got := throws(c.do); got != c.want {
+			t.Errorf("%s: threw %q, want %q", c.name, got, c.want)
 		}
 	}
 }

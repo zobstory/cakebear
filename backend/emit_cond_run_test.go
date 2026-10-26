@@ -2,10 +2,8 @@ package backend
 
 import (
 	"bytes"
-	"errors"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/zobstory/cakebear/ir"
@@ -259,12 +257,13 @@ func TestOptionalChainsMatchNode(t *testing.T) {
 	}
 }
 
-// TestUnwrapFailuresSayWhatNodeDoes: an unwrap of an empty value stops the
-// program, exit 2, naming the value, whether the checker narrowed it or a !
-// asserted it, and what Node does instead (M5 plan D4): carry on, as it
-// prints NaN for the first, or throw the TypeError quoted, as it does,
-// exit 1, for each of the others, which it names by the key it reads, sets
-// or iterates. The one difference is xs[i]: Node names the index, 3, and
+// TestUnwrapFailuresSayWhatNodeDoes: an unwrap of an empty value does what
+// Node does (M5 plan D4). Where Node carries on, printing NaN for the first,
+// it stops the program, exit 2, naming the value and whether the checker
+// narrowed it or a ! asserted it. For each of the others it throws the
+// TypeError Node throws, which, uncaught, ends the program as Node's does,
+// exit 1 (M6 plan D9, checkFailure); Node names the key it reads, sets or
+// iterates. The one difference is xs[i]: Node names the index, 3, and
 // cakebear fails before evaluating it.
 //
 //	const m: number | undefined = undefined; console.log(m! + 1);
@@ -296,7 +295,7 @@ func TestUnwrapFailuresSayWhatNodeDoes(t *testing.T) {
 		{Name: "clear", Result: ir.Void, Span: span, Body: []ir.Stmt{set(b, "p", undef(ir.ObjectOf(pt)))}},
 		{Name: "zero", Result: ir.Number, Span: span, Body: []ir.Stmt{ret(num(0))}},
 	}
-	const thrown = ", though a ! asserted it isn't (Node throws TypeError: "
+
 	for _, tt := range []struct {
 		main []ir.Stmt
 		want string
@@ -306,31 +305,31 @@ func TestUnwrapFailuresSayWhatNodeDoes(t *testing.T) {
 		{[]ir.Stmt{
 			&ir.If{Cond: &ir.Unary{Op: ir.OpNot, Operand: isEmpty(get(b, "p"), true, false), Typ: ir.Boolean, Span: span}, Span: span,
 				Then: []ir.Stmt{do(callOf("clear", ir.Void)), logNum(get(must(get(b, "p")), "x"))}},
-		}, "cakebear: box.p is undefined where TypeScript had narrowed it to a value (Node throws TypeError: Cannot read properties of undefined (reading 'x'))"},
+		}, "TypeError: Cannot read properties of undefined (reading 'x')"},
 		{[]ir.Stmt{decl("s", strM, null(ir.String)), logNum(strMethod(ir.StrTrim, asserted(stable("s", strM))))},
-			"cakebear: s is null" + thrown + "Cannot read properties of null (reading 'trim'))"},
+			"TypeError: Cannot read properties of null (reading 'trim')"},
 		{[]ir.Stmt{decl("m", numM, undef(ir.Number)),
 			logNum(&ir.BuiltinCall{Fn: ir.NumToFixed, Args: []ir.Expr{asserted(stable("m", numM)), num(1)}, Typ: ir.String, Span: span})},
-			"cakebear: m is undefined" + thrown + "Cannot read properties of undefined (reading 'toFixed'))"},
+			"TypeError: Cannot read properties of undefined (reading 'toFixed')"},
 		// The read is ordered against the call beside it, through ts_read.
 		{[]ir.Stmt{decl("p", ptM, undef(ir.ObjectOf(pt))), logNum(binary(ir.OpAdd, get(asserted(stable("p", ptM)), "x"), callOf("zero", ir.Number), ir.Number))},
-			"cakebear: p is undefined" + thrown + "Cannot read properties of undefined (reading 'x'))"},
+			"TypeError: Cannot read properties of undefined (reading 'x')"},
 		{[]ir.Stmt{undefXs, logNum(elem(asserted(xs), num(0)))},
-			"cakebear: xs is undefined" + thrown + "Cannot read properties of undefined (reading '0'))"},
+			"TypeError: Cannot read properties of undefined (reading '0')"},
 		{[]ir.Stmt{undefXs, decl("i", ir.Number, num(3)), logNum(elem(asserted(xs), stable("i", ir.Number)))},
-			"cakebear: xs is undefined" + thrown + "Cannot read properties of undefined (reading an index))"},
+			"TypeError: Cannot read properties of undefined (reading an index)"},
 		{[]ir.Stmt{decl("p", ptM, null(ir.ObjectOf(pt))), set(asserted(stable("p", ptM)), "x", num(5))},
-			"cakebear: p is null" + thrown + "Cannot set properties of null (setting 'x'))"},
+			"TypeError: Cannot set properties of null (setting 'x')"},
 		{[]ir.Stmt{decl("ns", numsM, null(ir.ArrayOf(ir.Number))), &ir.IndexSet{Array: asserted(stable("ns", numsM)), Index: num(0), Value: num(1), Span: span}},
-			"cakebear: ns is null" + thrown + "Cannot set properties of null (setting '0'))"},
+			"TypeError: Cannot set properties of null (setting '0')"},
 		{[]ir.Stmt{undefXs, &ir.ForOf{Name: "v", Type: ir.Number, Array: asserted(xs), Body: []ir.Stmt{logNum(stable("v", ir.Number))}, Span: span}},
-			"cakebear: xs is undefined" + thrown + "xs is not iterable)"},
+			"TypeError: xs is not iterable"},
 		{[]ir.Stmt{undefXs, logNum(method(ir.ArrayLength, asserted(xs), ir.Number))},
-			"cakebear: xs is undefined" + thrown + "Cannot read properties of undefined (reading 'length'))"},
+			"TypeError: Cannot read properties of undefined (reading 'length')"},
 		{[]ir.Stmt{undefXs, do(method(ir.ArrayPush, asserted(xs), ir.Number, num(1)))},
-			"cakebear: xs is undefined" + thrown + "Cannot read properties of undefined (reading 'push'))"},
+			"TypeError: Cannot read properties of undefined (reading 'push')"},
 		{[]ir.Stmt{undefXs, do(method(ir.ArraySetLength, asserted(xs), ir.Void, num(0)))},
-			"cakebear: xs is undefined" + thrown + "Cannot set properties of undefined (setting 'length'))"},
+			"TypeError: Cannot set properties of undefined (setting 'length')"},
 	} {
 		// Every program has box and the functions, which only some use.
 		boxed := decl("box", ir.ObjectOf(box), lit(box, "p", some(lit(pt, "x", num(1), "y", num(2)))))
@@ -343,10 +342,7 @@ func TestUnwrapFailuresSayWhatNodeDoes(t *testing.T) {
 		cmd := exec.Command(out)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err := cmd.Run()
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), tt.want) {
-			t.Errorf("%v, stdout %q, stderr\n%s\nwant exit 2, nothing printed, and %q", err, stdout.String(), stderr.String(), tt.want)
-		}
+		checkFailure(t, err, stdout.String(), stderr.String(), tt.want)
 	}
 }
 

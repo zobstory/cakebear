@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/zobstory/cakebear/ir"
@@ -24,6 +25,15 @@ var hostMethods = map[ir.HostOp]string{
 	ir.HostSetHeader: "SetHeader",
 	ir.HostWriteHead: "WriteHead",
 	ir.HostEnd:       "End",
+}
+
+// hostSites is where each host operation that may throw takes the call's
+// site among its arguments (runtime/http.go): last, or before listen's
+// optional callback.
+var hostSites = map[ir.HostOp]int{
+	ir.HostListen:    1,
+	ir.HostSetHeader: 2,
+	ir.HostWriteHead: 1,
 }
 
 var hostProps = map[ir.HostProperty]string{
@@ -76,6 +86,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)
+	}
+	if at, ok := hostSites[x.Op]; ok && at <= len(args) {
+		args = slices.Insert(args, at, e.siteArg(x.Span))
 	}
 	list := strings.Join(args, ", ")
 

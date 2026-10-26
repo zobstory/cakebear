@@ -9,7 +9,8 @@ import (
 
 // A port of Node's util.inspect (lib/internal/util/inspect.js, v24.18.0), for
 // what the subset can build: numbers, strings, booleans, and the objects and
-// arrays made of them (M4 plan §2c, rules R1–R13, D12). It follows inspect.js
+// arrays made of them (M4 plan §2c, rules R1–R13, D12), and since M6 Errors
+// (error.go) and what an unknown holds (unknown.go). It follows inspect.js
 // function by function, with its defaults: depth 2, 100 array items, 10,000
 // string characters, a break length of 80 and compact 3. Colours are off, as
 // they are when stdout isn't a terminal.
@@ -94,6 +95,12 @@ func (c *inspector) value(v any, recurse int) string {
 		return BoolToString(x)
 	case string:
 		return c.str(x)
+	case nil:
+		return "undefined" // an unknown's (unknown.go)
+	case jsNull:
+		return "null"
+	case *Error:
+		return c.errorValue(x, recurse)
 	case Object, array:
 		return c.container(x, recurse)
 	case maybe:

@@ -7,16 +7,9 @@ import (
 	"testing"
 )
 
-// panicOf runs f and returns what it panicked with, or "".
-func panicOf(f func()) (msg string) {
-	defer func() {
-		if r := recover(); r != nil {
-			msg = fmt.Sprint(r)
-		}
-	}()
-	f()
-	return ""
-}
+// panicOf runs f and returns what it panicked with, or "": panicked's
+// words, so a throw reads as one.
+func panicOf(f func()) string { return panicked(f) }
 
 // TestArrayIsAReference: every alias of an array sees a push, as in
 // JavaScript, which a Go slice copied by value would not.
@@ -60,15 +53,19 @@ func TestArrayReadsAndWrites(t *testing.T) {
 		{"a NaN read", func() { xs.Get(math.NaN()) }, "NaN is not an array index"},
 		{"a write leaving a hole", func() { xs.Set(6, "x") }, "cakebear: writing index 6 of an array of length 4 would leave a hole (Node allows one)"},
 		{"a negative write", func() { xs.Set(-1, "x") }, `cakebear: -1 is not an array index (Node would set a property named "-1")`},
-		{"growing the length", func() { xs.SetLength(10) }, "setting the length of an array of length 4 to 10 would leave holes"},
-		{"a fractional length", func() { xs.SetLength(1.5) }, "1.5 is not a valid array length (Node throws RangeError: Invalid array length)"},
+		{"growing the length", func() { xs.SetLength(10, nil) }, "setting the length of an array of length 4 to 10 would leave holes"},
+		// Node throws for a length that isn't one, so this does (M6 plan D9).
+		{"a fractional length", func() { xs.SetLength(1.5, nil) }, "threw RangeError: Invalid array length"},
+		{"a negative length", func() { xs.SetLength(-1, nil) }, "threw RangeError: Invalid array length"},
+		{"a length past 2^32 - 1", func() { xs.SetLength(1<<32, nil) }, "threw RangeError: Invalid array length"},
+		{"the largest length", func() { xs.SetLength(1<<32-1, nil) }, "to 4294967295 would leave holes (Node allows them)"},
 	} {
 		if got := panicOf(tt.f); !strings.Contains(got, tt.want) {
 			t.Errorf("%s: panicked with %q, want %q", tt.name, got, tt.want)
 		}
 	}
 
-	xs.SetLength(2)
+	xs.SetLength(2, nil)
 	xs.Pop()
 	xs.Pop()
 	xs.Pop() // on an empty array: nothing, as in JavaScript

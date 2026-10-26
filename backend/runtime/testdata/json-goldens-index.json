@@ -61,6 +61,18 @@
       "last": 10695,
       "count": 95,
       "throws": 0
+    },
+    "ERROR": {
+      "first": 10696,
+      "last": 10810,
+      "count": 115,
+      "throws": 0
+    },
+    "UNKNOWN": {
+      "first": 10811,
+      "last": 10923,
+      "count": 113,
+      "throws": 3
     }
   }
 }

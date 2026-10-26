@@ -65,12 +65,17 @@ func (a *Array[T]) Set(i float64, v T) {
 	}
 }
 
-// SetLength is `xs.length = n`, which may only shrink the array (D9).
-func (a *Array[T]) SetLength(length float64) {
+// SetLength is `xs.length = n`, which may only shrink the array (D9). A
+// length that isn't an integer from 0 to 2^32 - 1 is the RangeError Node
+// throws, made at site (M6 plan D9).
+func (a *Array[T]) SetLength(length float64, site *Site) {
 	n, ok := arrayIndex(length)
+	if !ok && length == math.MaxUint32 {
+		n, ok = math.MaxUint32, true // a length, though not an index
+	}
 	switch {
 	case !ok:
-		panic(fmt.Sprintf("cakebear: %s is not a valid array length (Node throws RangeError: Invalid array length)", NumberToString(length)))
+		throwError(ErrorRange, "Invalid array length", site)
 	case n > len(a.items):
 		panic(fmt.Sprintf("cakebear: setting the length of an array of length %d to %d would leave holes (Node allows them)", len(a.items), n))
 	}
@@ -165,6 +170,16 @@ func (a *Array[T]) numeric() bool {
 		// undefined past them changes nothing.
 		for _, item := range a.items[:min(len(a.items), maxArrayLength+1)] {
 			if state, _ := any(item).(maybe).maybeState(); state != stateValue {
+				return false
+			}
+		}
+		return true
+	}
+	if _, unknowns := any(a.items).([]any); unknowns {
+		// An unknown[] is numeric where every element output has is a
+		// number, which an unknown holds as a float64.
+		for _, item := range a.items[:min(len(a.items), maxArrayLength+1)] {
+			if _, ok := any(item).(float64); !ok {
 				return false
 			}
 		}

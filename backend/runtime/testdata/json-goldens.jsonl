@@ -10693,3 +10693,231 @@
 {"value":{"o":[["k",{"a":[]}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": []\n}"}
 {"value":{"o":[["k",{"a":[]}]]},"space":{"n":"0.5"},"out":"{\n\"k\": []\n}"}
 {"value":{"o":[["k",{"a":[]}]]},"space":{"s":"--"},"out":"{\n--\"k\": []\n}"}
+{"value":{"err":"Error","m":"m"},"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"m"},"out":"{}"}
+{"value":{"err":"TypeError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"RangeError","m":"m"},"out":"{}"}
+{"value":{"err":"RangeError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"RangeError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"RangeError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"RangeError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"URIError","m":"m"},"out":"{}"}
+{"value":{"err":"URIError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"URIError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"URIError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"URIError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"SyntaxError","m":"m"},"out":"{}"}
+{"value":{"err":"SyntaxError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"SyntaxError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"SyntaxError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"SyntaxError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"ReferenceError","m":"m"},"out":"{}"}
+{"value":{"err":"ReferenceError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"ReferenceError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"ReferenceError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"ReferenceError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"EvalError","m":"m"},"out":"{}"}
+{"value":{"err":"EvalError","m":"m"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"EvalError","m":"m"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"EvalError","m":"m"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"EvalError","m":"m"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"Error"},"out":"{}"}
+{"value":{"err":"Error"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"Error"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"Error"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"Error"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"Error","m":""},"out":"{}"}
+{"value":{"err":"Error","m":""},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"Error","m":""},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"Error","m":""},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"Error","m":""},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"say \"hi\"\n"},"out":"{}"}
+{"value":{"err":"TypeError","m":"say \"hi\"\n"},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"say \"hi\"\n"},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"say \"hi\"\n"},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"say \"hi\"\n"},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"out":"{\"code\":\"ERR_HTTP_HEADERS_SENT\"}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},"out":"{\"code\":\"ERR_INVALID_HTTP_TOKEN\"}"}
+{"value":{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_INVALID_HTTP_TOKEN\"\n}"}
+{"value":{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n}"}
+{"value":{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n}"}
+{"value":{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid character in header content [\"x-a\"]","code":"ERR_INVALID_CHAR"},"out":"{\"code\":\"ERR_INVALID_CHAR\"}"}
+{"value":{"err":"TypeError","m":"Invalid character in header content [\"x-a\"]","code":"ERR_INVALID_CHAR"},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_INVALID_CHAR\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid character in header content [\"x-a\"]","code":"ERR_INVALID_CHAR"},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_INVALID_CHAR\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid character in header content [\"x-a\"]","code":"ERR_INVALID_CHAR"},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_INVALID_CHAR\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid character in header content [\"x-a\"]","code":"ERR_INVALID_CHAR"},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_INVALID_CHAR\"\n}"}
+{"value":{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"},"out":"{\"code\":\"ERR_HTTP_INVALID_STATUS_CODE\"}"}
+{"value":{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n}"}
+{"value":{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n}"}
+{"value":{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n}"}
+{"value":{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n}"}
+{"value":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"},"out":"{\"code\":\"ERR_SOCKET_BAD_PORT\"}"}
+{"value":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_SOCKET_BAD_PORT\"\n}"}
+{"value":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_SOCKET_BAD_PORT\"\n}"}
+{"value":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_SOCKET_BAD_PORT\"\n}"}
+{"value":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_SOCKET_BAD_PORT\"\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"x"}]]},"out":"{\"e\":{}}"}
+{"value":{"o":[["e",{"err":"Error","m":"x"}]]},"space":{"n":"2"},"out":"{\n  \"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"x"}]]},"space":{"s":"\t"},"out":"{\n\t\"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"x"}]]},"space":{"n":"0.5"},"out":"{\n\"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"x"}]]},"space":{"s":"--"},"out":"{\n--\"e\": {}\n}"}
+{"value":{"a":[{"err":"Error","m":"x"}]},"out":"[{}]"}
+{"value":{"a":[{"err":"Error","m":"x"}]},"space":{"n":"2"},"out":"[\n  {}\n]"}
+{"value":{"a":[{"err":"Error","m":"x"}]},"space":{"s":"\t"},"out":"[\n\t{}\n]"}
+{"value":{"a":[{"err":"Error","m":"x"}]},"space":{"n":"0.5"},"out":"[\n{}\n]"}
+{"value":{"a":[{"err":"Error","m":"x"}]},"space":{"s":"--"},"out":"[\n--{}\n]"}
+{"value":{"a":[{"err":"Error","m":"a"},{"err":"RangeError","m":"b"},{"err":"Error"}]},"out":"[{},{},{}]"}
+{"value":{"a":[{"err":"Error","m":"a"},{"err":"RangeError","m":"b"},{"err":"Error"}]},"space":{"n":"2"},"out":"[\n  {},\n  {},\n  {}\n]"}
+{"value":{"a":[{"err":"Error","m":"a"},{"err":"RangeError","m":"b"},{"err":"Error"}]},"space":{"s":"\t"},"out":"[\n\t{},\n\t{},\n\t{}\n]"}
+{"value":{"a":[{"err":"Error","m":"a"},{"err":"RangeError","m":"b"},{"err":"Error"}]},"space":{"n":"0.5"},"out":"[\n{},\n{},\n{}\n]"}
+{"value":{"a":[{"err":"Error","m":"a"},{"err":"RangeError","m":"b"},{"err":"Error"}]},"space":{"s":"--"},"out":"[\n--{},\n--{},\n--{}\n]"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"failed"}]]},"out":"{\"data\":null,\"error\":{}}"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"failed"}]]},"space":{"n":"2"},"out":"{\n  \"data\": null,\n  \"error\": {}\n}"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"failed"}]]},"space":{"s":"\t"},"out":"{\n\t\"data\": null,\n\t\"error\": {}\n}"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"failed"}]]},"space":{"n":"0.5"},"out":"{\n\"data\": null,\n\"error\": {}\n}"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"failed"}]]},"space":{"s":"--"},"out":"{\n--\"data\": null,\n--\"error\": {}\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["b",{"s":"x"}]]},"out":"{\"a\":1,\"e\":{\"code\":\"ERR_HTTP_HEADERS_SENT\"},\"b\":\"x\"}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["b",{"s":"x"}]]},"space":{"n":"2"},"out":"{\n  \"a\": 1,\n  \"e\": {\n    \"code\": \"ERR_HTTP_HEADERS_SENT\"\n  },\n  \"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["b",{"s":"x"}]]},"space":{"s":"\t"},"out":"{\n\t\"a\": 1,\n\t\"e\": {\n\t\t\"code\": \"ERR_HTTP_HEADERS_SENT\"\n\t},\n\t\"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["b",{"s":"x"}]]},"space":{"n":"0.5"},"out":"{\n\"a\": 1,\n\"e\": {\n\"code\": \"ERR_HTTP_HEADERS_SENT\"\n},\n\"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["b",{"s":"x"}]]},"space":{"s":"--"},"out":"{\n--\"a\": 1,\n--\"e\": {\n----\"code\": \"ERR_HTTP_HEADERS_SENT\"\n--},\n--\"b\": \"x\"\n}"}
+{"value":{"a":[{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"}]},"out":"[{\"code\":\"ERR_INVALID_HTTP_TOKEN\"},{\"code\":\"ERR_HTTP_INVALID_STATUS_CODE\"}]"}
+{"value":{"a":[{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"}]},"space":{"n":"2"},"out":"[\n  {\n    \"code\": \"ERR_INVALID_HTTP_TOKEN\"\n  },\n  {\n    \"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n  }\n]"}
+{"value":{"a":[{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"}]},"space":{"s":"\t"},"out":"[\n\t{\n\t\t\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n\t},\n\t{\n\t\t\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n\t}\n]"}
+{"value":{"a":[{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"}]},"space":{"n":"0.5"},"out":"[\n{\n\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n},\n{\n\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n}\n]"}
+{"value":{"a":[{"err":"TypeError","m":"Header name must be a valid HTTP token [\"bad name\"]","code":"ERR_INVALID_HTTP_TOKEN"},{"err":"RangeError","m":"Invalid status code: 1000","code":"ERR_HTTP_INVALID_STATUS_CODE"}]},"space":{"s":"--"},"out":"[\n--{\n----\"code\": \"ERR_INVALID_HTTP_TOKEN\"\n--},\n--{\n----\"code\": \"ERR_HTTP_INVALID_STATUS_CODE\"\n--}\n]"}
+{"value":{"a":[{"err":"Error","m":"x"},{"e":"null"},{"e":"undefined"}]},"out":"[{},null,null]"}
+{"value":{"a":[{"err":"Error","m":"x"},{"e":"null"},{"e":"undefined"}]},"space":{"n":"2"},"out":"[\n  {},\n  null,\n  null\n]"}
+{"value":{"a":[{"err":"Error","m":"x"},{"e":"null"},{"e":"undefined"}]},"space":{"s":"\t"},"out":"[\n\t{},\n\tnull,\n\tnull\n]"}
+{"value":{"a":[{"err":"Error","m":"x"},{"e":"null"},{"e":"undefined"}]},"space":{"n":"0.5"},"out":"[\n{},\nnull,\nnull\n]"}
+{"value":{"a":[{"err":"Error","m":"x"},{"e":"null"},{"e":"undefined"}]},"space":{"s":"--"},"out":"[\n--{},\n--null,\n--null\n]"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}]}]]}]]},"out":"{\"nested\":{\"deeper\":[{\"code\":\"ERR_SOCKET_BAD_PORT\"}]}}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}]}]]}]]},"space":{"n":"2"},"out":"{\n  \"nested\": {\n    \"deeper\": [\n      {\n        \"code\": \"ERR_SOCKET_BAD_PORT\"\n      }\n    ]\n  }\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}]}]]}]]},"space":{"s":"\t"},"out":"{\n\t\"nested\": {\n\t\t\"deeper\": [\n\t\t\t{\n\t\t\t\t\"code\": \"ERR_SOCKET_BAD_PORT\"\n\t\t\t}\n\t\t]\n\t}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}]}]]}]]},"space":{"n":"0.5"},"out":"{\n\"nested\": {\n\"deeper\": [\n{\n\"code\": \"ERR_SOCKET_BAD_PORT\"\n}\n]\n}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}]}]]}]]},"space":{"s":"--"},"out":"{\n--\"nested\": {\n----\"deeper\": [\n------{\n--------\"code\": \"ERR_SOCKET_BAD_PORT\"\n------}\n----]\n--}\n}"}
+{"value":{"e":"undefined"},"any":true,"undef":true}
+{"value":{"e":"undefined"},"space":{"n":"2"},"any":true,"undef":true}
+{"value":{"e":"undefined"},"space":{"s":"\t"},"any":true,"undef":true}
+{"value":{"e":"undefined"},"space":{"n":"0.5"},"any":true,"undef":true}
+{"value":{"e":"undefined"},"space":{"s":"--"},"any":true,"undef":true}
+{"value":{"e":"null"},"any":true,"out":"null"}
+{"value":{"e":"null"},"space":{"n":"2"},"any":true,"out":"null"}
+{"value":{"e":"null"},"space":{"s":"\t"},"any":true,"out":"null"}
+{"value":{"e":"null"},"space":{"n":"0.5"},"any":true,"out":"null"}
+{"value":{"e":"null"},"space":{"s":"--"},"any":true,"out":"null"}
+{"value":{"n":"0"},"any":true,"out":"0"}
+{"value":{"n":"0"},"space":{"n":"2"},"any":true,"out":"0"}
+{"value":{"n":"0"},"space":{"s":"\t"},"any":true,"out":"0"}
+{"value":{"n":"0"},"space":{"n":"0.5"},"any":true,"out":"0"}
+{"value":{"n":"0"},"space":{"s":"--"},"any":true,"out":"0"}
+{"value":{"n":"-0"},"any":true,"out":"0"}
+{"value":{"n":"-0"},"space":{"n":"2"},"any":true,"out":"0"}
+{"value":{"n":"-0"},"space":{"s":"\t"},"any":true,"out":"0"}
+{"value":{"n":"-0"},"space":{"n":"0.5"},"any":true,"out":"0"}
+{"value":{"n":"-0"},"space":{"s":"--"},"any":true,"out":"0"}
+{"value":{"n":"1.5"},"any":true,"out":"1.5"}
+{"value":{"n":"1.5"},"space":{"n":"2"},"any":true,"out":"1.5"}
+{"value":{"n":"1.5"},"space":{"s":"\t"},"any":true,"out":"1.5"}
+{"value":{"n":"1.5"},"space":{"n":"0.5"},"any":true,"out":"1.5"}
+{"value":{"n":"1.5"},"space":{"s":"--"},"any":true,"out":"1.5"}
+{"value":{"n":"NaN"},"any":true,"out":"null"}
+{"value":{"n":"NaN"},"space":{"n":"2"},"any":true,"out":"null"}
+{"value":{"n":"NaN"},"space":{"s":"\t"},"any":true,"out":"null"}
+{"value":{"n":"NaN"},"space":{"n":"0.5"},"any":true,"out":"null"}
+{"value":{"n":"NaN"},"space":{"s":"--"},"any":true,"out":"null"}
+{"value":{"n":"Infinity"},"any":true,"out":"null"}
+{"value":{"n":"Infinity"},"space":{"n":"2"},"any":true,"out":"null"}
+{"value":{"n":"Infinity"},"space":{"s":"\t"},"any":true,"out":"null"}
+{"value":{"n":"Infinity"},"space":{"n":"0.5"},"any":true,"out":"null"}
+{"value":{"n":"Infinity"},"space":{"s":"--"},"any":true,"out":"null"}
+{"value":{"s":""},"any":true,"out":"\"\""}
+{"value":{"s":""},"space":{"n":"2"},"any":true,"out":"\"\""}
+{"value":{"s":""},"space":{"s":"\t"},"any":true,"out":"\"\""}
+{"value":{"s":""},"space":{"n":"0.5"},"any":true,"out":"\"\""}
+{"value":{"s":""},"space":{"s":"--"},"any":true,"out":"\"\""}
+{"value":{"s":"a\"b"},"any":true,"out":"\"a\\\"b\""}
+{"value":{"s":"a\"b"},"space":{"n":"2"},"any":true,"out":"\"a\\\"b\""}
+{"value":{"s":"a\"b"},"space":{"s":"\t"},"any":true,"out":"\"a\\\"b\""}
+{"value":{"s":"a\"b"},"space":{"n":"0.5"},"any":true,"out":"\"a\\\"b\""}
+{"value":{"s":"a\"b"},"space":{"s":"--"},"any":true,"out":"\"a\\\"b\""}
+{"value":{"b":true},"any":true,"out":"true"}
+{"value":{"b":true},"space":{"n":"2"},"any":true,"out":"true"}
+{"value":{"b":true},"space":{"s":"\t"},"any":true,"out":"true"}
+{"value":{"b":true},"space":{"n":"0.5"},"any":true,"out":"true"}
+{"value":{"b":true},"space":{"s":"--"},"any":true,"out":"true"}
+{"value":{"err":"Error","m":"m"},"any":true,"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"n":"2"},"any":true,"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"s":"\t"},"any":true,"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"n":"0.5"},"any":true,"out":"{}"}
+{"value":{"err":"Error","m":"m"},"space":{"s":"--"},"any":true,"out":"{}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"any":true,"out":"{\"code\":\"ERR_HTTP_HEADERS_SENT\"}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"n":"2"},"any":true,"out":"{\n  \"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"s":"\t"},"any":true,"out":"{\n\t\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"n":"0.5"},"any":true,"out":"{\n\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},"space":{"s":"--"},"any":true,"out":"{\n--\"code\": \"ERR_HTTP_HEADERS_SENT\"\n}"}
+{"value":{"a":[]},"any":true,"out":"[]"}
+{"value":{"a":[]},"space":{"n":"2"},"any":true,"out":"[]"}
+{"value":{"a":[]},"space":{"s":"\t"},"any":true,"out":"[]"}
+{"value":{"a":[]},"space":{"n":"0.5"},"any":true,"out":"[]"}
+{"value":{"a":[]},"space":{"s":"--"},"any":true,"out":"[]"}
+{"value":{"a":[{"n":"1"},{"n":"2"}]},"any":true,"out":"[1,2]"}
+{"value":{"a":[{"n":"1"},{"n":"2"}]},"space":{"n":"2"},"any":true,"out":"[\n  1,\n  2\n]"}
+{"value":{"a":[{"n":"1"},{"n":"2"}]},"space":{"s":"\t"},"any":true,"out":"[\n\t1,\n\t2\n]"}
+{"value":{"a":[{"n":"1"},{"n":"2"}]},"space":{"n":"0.5"},"any":true,"out":"[\n1,\n2\n]"}
+{"value":{"a":[{"n":"1"},{"n":"2"}]},"space":{"s":"--"},"any":true,"out":"[\n--1,\n--2\n]"}
+{"value":{"o":[]},"any":true,"out":"{}"}
+{"value":{"o":[]},"space":{"n":"2"},"any":true,"out":"{}"}
+{"value":{"o":[]},"space":{"s":"\t"},"any":true,"out":"{}"}
+{"value":{"o":[]},"space":{"n":"0.5"},"any":true,"out":"{}"}
+{"value":{"o":[]},"space":{"s":"--"},"any":true,"out":"{}"}
+{"value":{"o":[["a",{"n":"1"}]]},"any":true,"out":"{\"a\":1}"}
+{"value":{"o":[["a",{"n":"1"}]]},"space":{"n":"2"},"any":true,"out":"{\n  \"a\": 1\n}"}
+{"value":{"o":[["a",{"n":"1"}]]},"space":{"s":"\t"},"any":true,"out":"{\n\t\"a\": 1\n}"}
+{"value":{"o":[["a",{"n":"1"}]]},"space":{"n":"0.5"},"any":true,"out":"{\n\"a\": 1\n}"}
+{"value":{"o":[["a",{"n":"1"}]]},"space":{"s":"--"},"any":true,"out":"{\n--\"a\": 1\n}"}
+{"value":{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},"any":true,"out":"[1,\"a\",null,null,false]"}
+{"value":{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},"space":{"n":"2"},"any":true,"out":"[\n  1,\n  \"a\",\n  null,\n  null,\n  false\n]"}
+{"value":{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},"space":{"s":"\t"},"any":true,"out":"[\n\t1,\n\t\"a\",\n\tnull,\n\tnull,\n\tfalse\n]"}
+{"value":{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},"space":{"n":"0.5"},"any":true,"out":"[\n1,\n\"a\",\nnull,\nnull,\nfalse\n]"}
+{"value":{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},"space":{"s":"--"},"any":true,"out":"[\n--1,\n--\"a\",\n--null,\n--null,\n--false\n]"}
+{"value":{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true},"any":true,"out":"{\"n\":null,\"s\":\"x\"}"}
+{"value":{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true},"space":{"n":"2"},"any":true,"out":"{\n  \"n\": null,\n  \"s\": \"x\"\n}"}
+{"value":{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true},"space":{"s":"\t"},"any":true,"out":"{\n\t\"n\": null,\n\t\"s\": \"x\"\n}"}
+{"value":{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true},"space":{"n":"0.5"},"any":true,"out":"{\n\"n\": null,\n\"s\": \"x\"\n}"}
+{"value":{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true},"space":{"s":"--"},"any":true,"out":"{\n--\"n\": null,\n--\"s\": \"x\"\n}"}
+{"value":{"a":[{"e":"undefined"},{"e":"null"},{"n":"0"},{"n":"-0"},{"n":"1.5"},{"n":"NaN"},{"n":"Infinity"},{"s":""},{"s":"a\"b"},{"b":true},{"err":"Error","m":"m"},{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},{"a":[]},{"a":[{"n":"1"},{"n":"2"}]},{"o":[]},{"o":[["a",{"n":"1"}]]},{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}],"any":true},"any":true,"out":"[null,null,0,0,1.5,null,null,\"\",\"a\\\"b\",true,{},{\"code\":\"ERR_HTTP_HEADERS_SENT\"},[],[1,2],{},{\"a\":1},[1,\"a\",null,null,false],{\"n\":null,\"s\":\"x\"}]"}
+{"value":{"o":[["k0",{"e":"undefined"}],["k1",{"e":"null"}],["k2",{"n":"0"}],["k3",{"n":"-0"}],["k4",{"n":"1.5"}],["k5",{"n":"NaN"}],["k6",{"n":"Infinity"}],["k7",{"s":""}],["k8",{"s":"a\"b"}],["k9",{"b":true}],["k10",{"err":"Error","m":"m"}],["k11",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["k12",{"a":[]}],["k13",{"a":[{"n":"1"},{"n":"2"}]}],["k14",{"o":[]}],["k15",{"o":[["a",{"n":"1"}]]}],["k16",{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true}],["k17",{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}]],"any":true},"any":true,"out":"{\"k1\":null,\"k2\":0,\"k3\":0,\"k4\":1.5,\"k5\":null,\"k6\":null,\"k7\":\"\",\"k8\":\"a\\\"b\",\"k9\":true,\"k10\":{},\"k11\":{\"code\":\"ERR_HTTP_HEADERS_SENT\"},\"k12\":[],\"k13\":[1,2],\"k14\":{},\"k15\":{\"a\":1},\"k16\":[1,\"a\",null,null,false],\"k17\":{\"n\":null,\"s\":\"x\"}}"}
+{"value":{"o":[["u",{"e":"undefined"}]],"any":true},"any":true,"out":"{}"}
+{"value":{"a":[{"a":[{"e":"undefined"}],"any":true},{"o":[["e",{"err":"RangeError","m":"r"}],["u",{"e":"undefined"}]],"any":true}],"any":true},"any":true,"out":"[[null],{\"e\":{}}]"}
+{"value":{"a":[{"e":"undefined"},{"e":"null"},{"n":"0"},{"n":"-0"},{"n":"1.5"},{"n":"NaN"},{"n":"Infinity"},{"s":""},{"s":"a\"b"},{"b":true},{"err":"Error","m":"m"},{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},{"a":[]},{"a":[{"n":"1"},{"n":"2"}]},{"o":[]},{"o":[["a",{"n":"1"}]]},{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}],"any":true},"space":{"n":"2"},"any":true,"out":"[\n  null,\n  null,\n  0,\n  0,\n  1.5,\n  null,\n  null,\n  \"\",\n  \"a\\\"b\",\n  true,\n  {},\n  {\n    \"code\": \"ERR_HTTP_HEADERS_SENT\"\n  },\n  [],\n  [\n    1,\n    2\n  ],\n  {},\n  {\n    \"a\": 1\n  },\n  [\n    1,\n    \"a\",\n    null,\n    null,\n    false\n  ],\n  {\n    \"n\": null,\n    \"s\": \"x\"\n  }\n]"}
+{"value":{"o":[["k0",{"e":"undefined"}],["k1",{"e":"null"}],["k2",{"n":"0"}],["k3",{"n":"-0"}],["k4",{"n":"1.5"}],["k5",{"n":"NaN"}],["k6",{"n":"Infinity"}],["k7",{"s":""}],["k8",{"s":"a\"b"}],["k9",{"b":true}],["k10",{"err":"Error","m":"m"}],["k11",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["k12",{"a":[]}],["k13",{"a":[{"n":"1"},{"n":"2"}]}],["k14",{"o":[]}],["k15",{"o":[["a",{"n":"1"}]]}],["k16",{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true}],["k17",{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}]],"any":true},"space":{"n":"2"},"any":true,"out":"{\n  \"k1\": null,\n  \"k2\": 0,\n  \"k3\": 0,\n  \"k4\": 1.5,\n  \"k5\": null,\n  \"k6\": null,\n  \"k7\": \"\",\n  \"k8\": \"a\\\"b\",\n  \"k9\": true,\n  \"k10\": {},\n  \"k11\": {\n    \"code\": \"ERR_HTTP_HEADERS_SENT\"\n  },\n  \"k12\": [],\n  \"k13\": [\n    1,\n    2\n  ],\n  \"k14\": {},\n  \"k15\": {\n    \"a\": 1\n  },\n  \"k16\": [\n    1,\n    \"a\",\n    null,\n    null,\n    false\n  ],\n  \"k17\": {\n    \"n\": null,\n    \"s\": \"x\"\n  }\n}"}
+{"value":{"o":[["u",{"e":"undefined"}]],"any":true},"space":{"n":"2"},"any":true,"out":"{}"}
+{"value":{"a":[{"a":[{"e":"undefined"}],"any":true},{"o":[["e",{"err":"RangeError","m":"r"}],["u",{"e":"undefined"}]],"any":true}],"any":true},"space":{"n":"2"},"any":true,"out":"[\n  [\n    null\n  ],\n  {\n    \"e\": {}\n  }\n]"}
+{"value":{"a":[{"e":"undefined"},{"e":"null"},{"n":"0"},{"n":"-0"},{"n":"1.5"},{"n":"NaN"},{"n":"Infinity"},{"s":""},{"s":"a\"b"},{"b":true},{"err":"Error","m":"m"},{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},{"a":[]},{"a":[{"n":"1"},{"n":"2"}]},{"o":[]},{"o":[["a",{"n":"1"}]]},{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}],"any":true},"space":{"s":"\t"},"any":true,"out":"[\n\tnull,\n\tnull,\n\t0,\n\t0,\n\t1.5,\n\tnull,\n\tnull,\n\t\"\",\n\t\"a\\\"b\",\n\ttrue,\n\t{},\n\t{\n\t\t\"code\": \"ERR_HTTP_HEADERS_SENT\"\n\t},\n\t[],\n\t[\n\t\t1,\n\t\t2\n\t],\n\t{},\n\t{\n\t\t\"a\": 1\n\t},\n\t[\n\t\t1,\n\t\t\"a\",\n\t\tnull,\n\t\tnull,\n\t\tfalse\n\t],\n\t{\n\t\t\"n\": null,\n\t\t\"s\": \"x\"\n\t}\n]"}
+{"value":{"o":[["k0",{"e":"undefined"}],["k1",{"e":"null"}],["k2",{"n":"0"}],["k3",{"n":"-0"}],["k4",{"n":"1.5"}],["k5",{"n":"NaN"}],["k6",{"n":"Infinity"}],["k7",{"s":""}],["k8",{"s":"a\"b"}],["k9",{"b":true}],["k10",{"err":"Error","m":"m"}],["k11",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["k12",{"a":[]}],["k13",{"a":[{"n":"1"},{"n":"2"}]}],["k14",{"o":[]}],["k15",{"o":[["a",{"n":"1"}]]}],["k16",{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true}],["k17",{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}]],"any":true},"space":{"s":"\t"},"any":true,"out":"{\n\t\"k1\": null,\n\t\"k2\": 0,\n\t\"k3\": 0,\n\t\"k4\": 1.5,\n\t\"k5\": null,\n\t\"k6\": null,\n\t\"k7\": \"\",\n\t\"k8\": \"a\\\"b\",\n\t\"k9\": true,\n\t\"k10\": {},\n\t\"k11\": {\n\t\t\"code\": \"ERR_HTTP_HEADERS_SENT\"\n\t},\n\t\"k12\": [],\n\t\"k13\": [\n\t\t1,\n\t\t2\n\t],\n\t\"k14\": {},\n\t\"k15\": {\n\t\t\"a\": 1\n\t},\n\t\"k16\": [\n\t\t1,\n\t\t\"a\",\n\t\tnull,\n\t\tnull,\n\t\tfalse\n\t],\n\t\"k17\": {\n\t\t\"n\": null,\n\t\t\"s\": \"x\"\n\t}\n}"}
+{"value":{"o":[["u",{"e":"undefined"}]],"any":true},"space":{"s":"\t"},"any":true,"out":"{}"}
+{"value":{"a":[{"a":[{"e":"undefined"}],"any":true},{"o":[["e",{"err":"RangeError","m":"r"}],["u",{"e":"undefined"}]],"any":true}],"any":true},"space":{"s":"\t"},"any":true,"out":"[\n\t[\n\t\tnull\n\t],\n\t{\n\t\t\"e\": {}\n\t}\n]"}
+{"value":{"a":[{"e":"undefined"},{"e":"null"},{"n":"0"},{"n":"-0"},{"n":"1.5"},{"n":"NaN"},{"n":"Infinity"},{"s":""},{"s":"a\"b"},{"b":true},{"err":"Error","m":"m"},{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},{"a":[]},{"a":[{"n":"1"},{"n":"2"}]},{"o":[]},{"o":[["a",{"n":"1"}]]},{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}],"any":true},"space":{"n":"0.5"},"any":true,"out":"[\nnull,\nnull,\n0,\n0,\n1.5,\nnull,\nnull,\n\"\",\n\"a\\\"b\",\ntrue,\n{},\n{\n\"code\": \"ERR_HTTP_HEADERS_SENT\"\n},\n[],\n[\n1,\n2\n],\n{},\n{\n\"a\": 1\n},\n[\n1,\n\"a\",\nnull,\nnull,\nfalse\n],\n{\n\"n\": null,\n\"s\": \"x\"\n}\n]"}
+{"value":{"o":[["k0",{"e":"undefined"}],["k1",{"e":"null"}],["k2",{"n":"0"}],["k3",{"n":"-0"}],["k4",{"n":"1.5"}],["k5",{"n":"NaN"}],["k6",{"n":"Infinity"}],["k7",{"s":""}],["k8",{"s":"a\"b"}],["k9",{"b":true}],["k10",{"err":"Error","m":"m"}],["k11",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["k12",{"a":[]}],["k13",{"a":[{"n":"1"},{"n":"2"}]}],["k14",{"o":[]}],["k15",{"o":[["a",{"n":"1"}]]}],["k16",{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true}],["k17",{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}]],"any":true},"space":{"n":"0.5"},"any":true,"out":"{\n\"k1\": null,\n\"k2\": 0,\n\"k3\": 0,\n\"k4\": 1.5,\n\"k5\": null,\n\"k6\": null,\n\"k7\": \"\",\n\"k8\": \"a\\\"b\",\n\"k9\": true,\n\"k10\": {},\n\"k11\": {\n\"code\": \"ERR_HTTP_HEADERS_SENT\"\n},\n\"k12\": [],\n\"k13\": [\n1,\n2\n],\n\"k14\": {},\n\"k15\": {\n\"a\": 1\n},\n\"k16\": [\n1,\n\"a\",\nnull,\nnull,\nfalse\n],\n\"k17\": {\n\"n\": null,\n\"s\": \"x\"\n}\n}"}
+{"value":{"o":[["u",{"e":"undefined"}]],"any":true},"space":{"n":"0.5"},"any":true,"out":"{}"}
+{"value":{"a":[{"a":[{"e":"undefined"}],"any":true},{"o":[["e",{"err":"RangeError","m":"r"}],["u",{"e":"undefined"}]],"any":true}],"any":true},"space":{"n":"0.5"},"any":true,"out":"[\n[\nnull\n],\n{\n\"e\": {}\n}\n]"}
+{"value":{"a":[{"e":"undefined"},{"e":"null"},{"n":"0"},{"n":"-0"},{"n":"1.5"},{"n":"NaN"},{"n":"Infinity"},{"s":""},{"s":"a\"b"},{"b":true},{"err":"Error","m":"m"},{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"},{"a":[]},{"a":[{"n":"1"},{"n":"2"}]},{"o":[]},{"o":[["a",{"n":"1"}]]},{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true},{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}],"any":true},"space":{"s":"--"},"any":true,"out":"[\n--null,\n--null,\n--0,\n--0,\n--1.5,\n--null,\n--null,\n--\"\",\n--\"a\\\"b\",\n--true,\n--{},\n--{\n----\"code\": \"ERR_HTTP_HEADERS_SENT\"\n--},\n--[],\n--[\n----1,\n----2\n--],\n--{},\n--{\n----\"a\": 1\n--},\n--[\n----1,\n----\"a\",\n----null,\n----null,\n----false\n--],\n--{\n----\"n\": null,\n----\"s\": \"x\"\n--}\n]"}
+{"value":{"o":[["k0",{"e":"undefined"}],["k1",{"e":"null"}],["k2",{"n":"0"}],["k3",{"n":"-0"}],["k4",{"n":"1.5"}],["k5",{"n":"NaN"}],["k6",{"n":"Infinity"}],["k7",{"s":""}],["k8",{"s":"a\"b"}],["k9",{"b":true}],["k10",{"err":"Error","m":"m"}],["k11",{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}],["k12",{"a":[]}],["k13",{"a":[{"n":"1"},{"n":"2"}]}],["k14",{"o":[]}],["k15",{"o":[["a",{"n":"1"}]]}],["k16",{"a":[{"n":"1"},{"s":"a"},{"e":"null"},{"e":"undefined"},{"b":false}],"any":true}],["k17",{"o":[["u",{"e":"undefined"}],["n",{"e":"null"}],["s",{"s":"x"}]],"any":true}]],"any":true},"space":{"s":"--"},"any":true,"out":"{\n--\"k1\": null,\n--\"k2\": 0,\n--\"k3\": 0,\n--\"k4\": 1.5,\n--\"k5\": null,\n--\"k6\": null,\n--\"k7\": \"\",\n--\"k8\": \"a\\\"b\",\n--\"k9\": true,\n--\"k10\": {},\n--\"k11\": {\n----\"code\": \"ERR_HTTP_HEADERS_SENT\"\n--},\n--\"k12\": [],\n--\"k13\": [\n----1,\n----2\n--],\n--\"k14\": {},\n--\"k15\": {\n----\"a\": 1\n--},\n--\"k16\": [\n----1,\n----\"a\",\n----null,\n----null,\n----false\n--],\n--\"k17\": {\n----\"n\": null,\n----\"s\": \"x\"\n--}\n}"}
+{"value":{"o":[["u",{"e":"undefined"}]],"any":true},"space":{"s":"--"},"any":true,"out":"{}"}
+{"value":{"a":[{"a":[{"e":"undefined"}],"any":true},{"o":[["e",{"err":"RangeError","m":"r"}],["u",{"e":"undefined"}]],"any":true}],"any":true},"space":{"s":"--"},"any":true,"out":"[\n--[\n----null\n--],\n--{\n----\"e\": {}\n--}\n]"}
+{"value":{"a":[{"n":"1"},{"ref":1}],"id":1,"any":true},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Array'\n    --- index 1 closes the circle"}
+{"value":{"o":[["self",{"ref":1}]],"id":1,"any":true},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    --- property 'self' closes the circle"}
+{"value":{"a":[{"o":[["up",{"ref":1}]],"any":true}],"id":1,"any":true},"space":{"n":"2"},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    --- property 'up' closes the circle"}

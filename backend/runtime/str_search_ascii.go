@@ -180,7 +180,7 @@ func replaceASCII(s string, m int, positions []int, t template) string {
 		size += t.size(pos, m, len(s))
 	}
 	if size > stringLimit { // a code unit is at least a byte
-		checkLength(replacedLength(s, m, positions, t))
+		checkLength(replacedLength(s, m, positions, t), nil)
 	}
 	b := strBuilder{b: make([]byte, 0, int(size))}
 	end := 0

@@ -27,7 +27,7 @@ func numCall(t *testing.T, fn string, args []any) (out, panicked any) {
 	defer func() { panicked = recover() }()
 	switch fn {
 	case "toFixed":
-		return NumberToFixed(args[0].(float64), args[1].(float64)), nil
+		return NumberToFixed(args[0].(float64), args[1].(float64), nil), nil
 	case "Number":
 		return StringToNumber(args[0].(string)), nil
 	case "parseInt":
@@ -46,9 +46,9 @@ func numCall(t *testing.T, fn string, args []any) (out, panicked any) {
 	case "mod":
 		return Mod(args[0].(float64), args[1].(float64)), nil
 	case "encodeURIComponent":
-		return EncodeURIComponent(args[0].(string)), nil
+		return EncodeURIComponent(args[0].(string), nil), nil
 	case "decodeURIComponent":
-		return DecodeURIComponent(args[0].(string)), nil
+		return DecodeURIComponent(args[0].(string), nil), nil
 	}
 	t.Fatalf("no function %q", fn)
 	return nil, nil
@@ -86,9 +86,8 @@ func checkNumEntry(t *testing.T, line int, e numEntry) bool {
 	got, panicked := numCall(t, e.Fn, args)
 	call := fmt.Sprintf("line %d: %s%s", line, e.Fn, truncate(string(numJSON(t, e.Args)), 200))
 	if e.Throws != nil {
-		msg, ok := panicked.(string)
-		if !ok || !strings.HasPrefix(msg, "cakebear: ") || !strings.HasSuffix(msg, " (Node throws "+*e.Throws+")") {
-			t.Errorf("%s: gave %s, panic %v; want the panic for what Node threw, %s", call, numShow(got), panicked, *e.Throws)
+		if msg, ok := threwString(panicked); !ok || msg != *e.Throws {
+			t.Errorf("%s: gave %s, panic %v; want a throw of what Node threw, %s", call, numShow(got), panicked, *e.Throws)
 			return false
 		}
 		return true
@@ -235,33 +234,24 @@ func TestNumberToFixedKeyOutputs(t *testing.T) {
 		{1.5, math.NaN(), "2"}, {1.5, -0.5, "2"}, {1.5, 2.9, "1.50"}, {1.5, 100.5, "1.5" + strings.Repeat("0", 99)},
 		{0.1, 20, "0.10000000000000000555"}, {5e-324, 3, "0.000"}, {123.456, 0, "123"},
 	} {
-		if got := NumberToFixed(c.x, c.digits); got != c.want {
+		if got := NumberToFixed(c.x, c.digits, nil); got != c.want {
 			t.Errorf("(%v).toFixed(%v) = %q, want %q", c.x, c.digits, got, c.want)
 		}
 	}
 }
 
-// TestNumberToFixedRefusesDigits: a count outside 0 to 100 panics with
-// Node's RangeError, checked before x, so NaN and 1e21 panic too.
+// TestNumberToFixedRefusesDigits: a count outside 0 to 100 throws Node's
+// RangeError (M6 plan D9), checked before x, so NaN and 1e21 throw too.
 func TestNumberToFixedRefusesDigits(t *testing.T) {
 	t.Parallel()
 
-	const node = " is not a digit count toFixed accepts (Node throws RangeError: toFixed() digits argument must be between 0 and 100)"
-	for _, c := range []struct {
-		x, digits float64
-		shown     string
-	}{
-		{1.5, 101, "101"}, {1.5, -1, "-1"}, {1.5, -1.5, "-1.5"}, {1.5, math.Inf(1), "Infinity"},
-		{1.5, math.Inf(-1), "-Infinity"}, {math.NaN(), 101, "101"}, {1e21, 1e300, "1e+300"},
+	for _, c := range []struct{ x, digits float64 }{
+		{1.5, 101}, {1.5, -1}, {1.5, -1.5}, {1.5, math.Inf(1)}, {1.5, math.Inf(-1)}, {math.NaN(), 101}, {1e21, 1e300},
 	} {
-		func() {
-			defer func() {
-				if got, want := recover(), "cakebear: "+c.shown+node; got != want {
-					t.Errorf("(%v).toFixed(%v) panicked with %v, want %q", c.x, c.digits, got, want)
-				}
-			}()
-			NumberToFixed(c.x, c.digits)
-		}()
+		const want = "RangeError: toFixed() digits argument must be between 0 and 100"
+		if got := throws(func() { NumberToFixed(c.x, c.digits, nil) }); got != want {
+			t.Errorf("(%v).toFixed(%v): %s, want a throw of %s", c.x, c.digits, got, want)
+		}
 	}
 }
 

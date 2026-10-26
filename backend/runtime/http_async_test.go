@@ -136,7 +136,7 @@ func TestAsyncHandlerPanicDropsOnlyItsConnection(t *testing.T) { //nolint:parall
 		Async(d, func(co *Co) struct{} {
 			Await(co, sleepFn(d, 1))
 			if req.URL() == "/boom" {
-				res.WriteHead(200).SetHeader("Late", "x") // Node throws here
+				res.WriteHead(200, nil).SetHeader("Late", "x", nil) // Node throws here
 			}
 			res.End("fine")
 			return struct{}{}
@@ -172,21 +172,24 @@ func TestUnendedResponseWarnsAfterItsTimers(t *testing.T) { //nolint:paralleltes
 	}
 }
 
-// A panic in work that runs after the response has nothing to drop and
-// nothing to recover it, so it is reported on stderr, and the process stays
-// up.
-func TestPanicAfterTheResponseIsReported(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
+// A failure in work that runs after the response has nothing to drop and
+// nothing to recover it, so it is reported on stderr, as an uncaught error
+// is (D8), and the process stays up. A write after the end is one: Node
+// raises it on the next tick, so the timer's own code runs on past it.
+func TestFailureAfterTheResponseIsReported(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	_, stderr, _ := isolate(t)
 	base := serveAsync(t, func(d *Domain, _ *IncomingMessage, res *ServerResponse) {
 		res.End("ok")
-		SetTimeout(d, func(*Domain) { res.End("again") }, 5) // write after end
+		SetTimeout(d, func(*Domain) {
+			res.End("again") // write after end
+			LogString("the timer carried on")
+		}, 5)
 	})
 
 	if r := fetch(http.DefaultClient, "GET", base+"/"); r.err != nil || r.body != "ok" {
 		t.Fatalf("got %v %q, want ok", r.err, r.body)
 	}
-	waitUntil(t, "the panic to be reported", func() bool {
-		return strings.Contains(stderr.String(), "after a response was sent: Error [ERR_STREAM_WRITE_AFTER_END]: write after end")
-	})
+	want := "[Error [ERR_STREAM_WRITE_AFTER_END]: write after end\nEmitted 'error' event on ServerResponse instance at:\n] {\n  code: 'ERR_STREAM_WRITE_AFTER_END'\n}\n\ncakebear " + Version + "\n"
+	waitUntil(t, "the failure to be reported", func() bool { return stderr.String() == want })
 	waitUntil(t, "the request to stop keeping the process alive", func() bool { return liveHandles.Load() == 0 })
 }
