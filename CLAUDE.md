@@ -374,6 +374,37 @@ Step 2, the runtime, is done, with nothing lowered to it yet
   Node with Errors and unknowns, String() of each too, in sections after
   the old ones, which are byte for byte as they were.
 
+Step 3, throw and try lowered and emitted, is done (`lower/errors.go`,
+`backend/emit_try.go`, `emit_errors.go`, `emit_site.go`; see "Since M6 step
+3" in the language subset):
+- `throw` panics a `*Thrown`, its value boxed as an unknown holds it. A try
+  block is a literal run by `Try`, or `TryK` when it can leave by `return`,
+  `break` or `continue`: it returns a code for how, acted on in the try's
+  own place once the finally has run, and a return's value waits in a
+  variable declared before the outermost try, so it is taken before the
+  finally runs (R20). The finally, and a catch with none after it, are
+  emitted in place, so their own exits replace the pending one (R21); a
+  catch before a finally is a literal too, so a throw from it still runs
+  the finally. A function literal inside a try has its own returns.
+- `unknown` is a type everywhere: a value into an unknown's slot is boxed,
+  and a read the checker narrowed is unboxed, checked, as a maybe is. A slot
+  TypeScript's libs type `unknown` where cakebear has a type of its own
+  (`some`'s predicate, `Number.isInteger`'s argument) is no slot the IR
+  holds, so nothing is boxed into it, as M5's `emptyOutside` does for
+  maybes; before, every callback's result was boxed.
+- Every place an error's report may point at is one entry of a site
+  table, `&ts_sites[N]`, its column converted to UTF-16 units. Its line is
+  `ir.Module.Lines`, the source with its types blanked as Node strips
+  them.
+- `never`, which a function ending in a throw returns, is void.
+- Found and fixed: `console.log(u, …)` with an unknown first could print a
+  `%` in it as a format, and is refused as a string first is; the
+  unsettled-await warning named the file as `file://` and the raw path,
+  where Node writes `pathToFileURL`'s href.
+- `TestErrorsMatchNode` holds a program of every way out of a try, each
+  kind, unknowns, a rethrow and an await in a try to Node, 20 runs, and
+  `TestUncaughtThrowsEndAsNode` four uncaught throws' ends.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -1231,6 +1262,32 @@ Since M5 step 8, a `let` of any type declared with no value (a maybe is
 undefined until assigned, anything else Go's zero), but for a `for` loop's
 first clause.
 
+Since M6 step 3 (`lower/errors.go`), errors:
+- `throw` of a value holding only data, and `try`/`catch`/`finally`, with
+  `catch {}` and every way out of each block;
+- `Error` and its built-in kinds (`TypeError`, `RangeError`, `URIError`,
+  `SyntaxError`, `ReferenceError`, `EvalError`), recognised by their
+  declarations in TypeScript's libs, as values and types (`Error | null`
+  too): `new K(message)`, `K(message)`, `.message`, `.name`, `.stack`,
+  `.cause`, `.toString()`, `String()`, templates, printing and
+  `JSON.stringify`;
+- `unknown`, which a catch binds, as a type everywhere, narrowed by
+  `instanceof` a kind, `typeof v === "tag"` (and `!==`, `==`, `!=`), `===`
+  and `== null`, and truthiness, and converted, printed and serialised as
+  what it holds;
+- a function returning `never`, which is void.
+
+Refused by name: throwing a function, a promise or a host value, or
+anything holding one (a catch would print it); a destructured catch
+binding, and one typed `any`; `any` itself; Error's options (a cause); a
+message that may be undefined; `instanceof` anything but an Error kind, and
+on anything but an unknown, an Error or a maybe of one; `typeof` of
+anything but an unknown, or compared with anything but a string literal; a
+function, a promise or a host value as an unknown; `JSON.stringify` of a
+bare unknown, which may be undefined; a callback returning nothing where
+`() => unknown` is wanted; and `console.log` with an unknown first among
+several arguments.
+
 Refused by name: other unions, a type that is only null or undefined, an
 optional call `f?.()` (calling a function that may be empty), `??=` as a
 value, `||=` and `&&=` (truthiness, step 7), `delete` as a value or of
@@ -1260,7 +1317,7 @@ a promise; the standard library's other globals (`NaN`, `Math`,
 libs declare them. A program's own function of the same name is unaffected.
 
 Not yet, from M2, each refused by name:
-- `reject`, `throw` and errors (M6);
+- `reject` (M6 step 4);
 - adopting one promise into another, through `resolve(p)` or an async `return p`
   (await it instead);
 - `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
@@ -1566,6 +1623,7 @@ not listed here that behaves differently is a bug.
 | An Error's stack (M6 D4) | `Name: message`, then V8's frames | `Name: message` alone: no frames are kept, so `console.log(err)` prints `[Error: m]`, as Node prints under `--stack-trace-limit=0` |
 | The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code for a non-Error at an ES module's top level and for node:http's errors | ends `cakebear <version>`; names the source's path at build time; prints the error with none (above); gives no advice; points at the program's throw, or its call. A string made too long by `+`, a pad or a replace has no source excerpt |
 | A recursion that never ends (M6 D3) | a `RangeError: Maximum call stack size exceeded` a try can catch | Go's `fatal error: stack overflow`, past every catch, exit 2 |
+| A throw leaving an async function, until M6 step 4 (D7) | rejects the function's promise; the caller carries on, and `await` throws it | raised in the caller at once, as a synchronous throw is (a throw caught inside the async function is fine) |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a
