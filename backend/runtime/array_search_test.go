@@ -206,7 +206,7 @@ func TestSortCopiesOutAndWritesBack(t *testing.T) {
 		want   string
 	}{
 		{"a push", []float64{3, 1, 2}, func(a *Array[float64]) { a.Push(0) }, "[1 2 3 0]"},
-		{"a shrink", []float64{3, 1, 2}, func(a *Array[float64]) { a.SetLength(0) }, "[1 2 3]"},
+		{"a shrink", []float64{3, 1, 2}, func(a *Array[float64]) { a.SetLength(0, nil) }, "[1 2 3]"},
 		{"a write", []float64{3, 1, 2, 5, 4}, func(a *Array[float64]) { a.Set(0, 100) }, "[1 2 3 4 5]"},
 	} {
 		xs := NewArray(tt.items...)

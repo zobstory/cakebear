@@ -83,6 +83,16 @@
       "first": 20001,
       "last": 20333,
       "count": 333
+    },
+    "ERROR": {
+      "first": 20334,
+      "last": 20654,
+      "count": 321
+    },
+    "UNKNOWN": {
+      "first": 20655,
+      "last": 21169,
+      "count": 515
     }
   }
 }

@@ -60,8 +60,8 @@ func TestEmitMembersThatMayBeUndefined(t *testing.T) {
 		"cakebearrt.OrUndefined(xs.FindLast(ts_domain, func(",
 		"cakebearrt.StrAt(s, i), cakebearrt.StrCodePointAt(s, i)",
 		"cakebearrt.StrIndex(s, i), cakebearrt.StrIndexOrUndefined(s, i)",
-		`cakebearrt.StrIndex(ns.MustRead("ns", "'0'"), 0.0)`,
-		`cakebearrt.StrAt(ns.MustRead("ns", "'at'"), 0.0)`,
+		`cakebearrt.StrIndex(ns.MustRead("ns", "'0'", nil), 0.0)`,
+		`cakebearrt.StrAt(ns.MustRead("ns", "'at'", nil), 0.0)`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("emitted source missing %q:\n%s", want, got)

@@ -46,17 +46,22 @@ func newTestObject(keys []string, values []any) *testObject {
 // goldenValue is the corpus's encoding of a value
 // (testdata/gen-inspect-goldens.mjs). U is a string holding a lone
 // surrogate, as its UTF-16 code units, which only the JSON corpus has
-// (testdata/gen-json-goldens.mjs).
+// (testdata/gen-json-goldens.mjs). Err, M and Code are an Error (M6), and
+// Any marks an array or object of unknowns (testdata/golden-codec.mjs).
 type goldenValue struct {
-	N   *string              `json:"n"`
-	S   *string              `json:"s"`
-	U   []uint16             `json:"u"`
-	B   *bool                `json:"b"`
-	E   *string              `json:"e"` // "undefined" or "null"
-	A   []json.RawMessage    `json:"a"`
-	O   [][2]json.RawMessage `json:"o"`
-	ID  *int                 `json:"id"`
-	Ref *int                 `json:"ref"`
+	N    *string              `json:"n"`
+	S    *string              `json:"s"`
+	U    []uint16             `json:"u"`
+	B    *bool                `json:"b"`
+	E    *string              `json:"e"` // "undefined" or "null"
+	A    []json.RawMessage    `json:"a"`
+	O    [][2]json.RawMessage `json:"o"`
+	ID   *int                 `json:"id"`
+	Ref  *int                 `json:"ref"`
+	Err  *string              `json:"err"`
+	M    *string              `json:"m"`
+	Code *string              `json:"code"`
+	Any  bool                 `json:"any"`
 }
 
 // decoder rebuilds the values of one corpus entry, its ids shared across
@@ -91,6 +96,12 @@ func (d *decoder) value(raw json.RawMessage) any {
 			d.t.Fatalf("a ref to %d before it is defined", *g.Ref)
 		}
 		return v
+	case g.Err != nil:
+		return d.errorValue(g)
+	case g.Any && g.O != nil:
+		return d.unknownObject(g)
+	case g.Any:
+		return d.unknownArray(g)
 	case g.O != nil:
 		obj := &testObject{}
 		d.register(g.ID, obj)
@@ -138,6 +149,8 @@ func (d *decoder) array(g goldenValue) any {
 			kind = "s"
 		case e.B != nil:
 			kind = "b"
+		case e.Err != nil:
+			kind = "err"
 		default:
 			kind = "container"
 		}
@@ -150,6 +163,8 @@ func (d *decoder) array(g goldenValue) any {
 			return d.register(g.ID, maybeArray[string](d, g.A))
 		case "b":
 			return d.register(g.ID, maybeArray[bool](d, g.A))
+		case "err":
+			return d.register(g.ID, maybeArray[*Error](d, g.A))
 		}
 		// Registered before its elements, which may refer back to it.
 		arr := NewArray[Maybe[any]]()
@@ -176,6 +191,12 @@ func (d *decoder) array(g goldenValue) any {
 		items := make([]bool, len(g.A))
 		for i, raw := range g.A {
 			items[i] = d.value(raw).(bool)
+		}
+		return d.register(g.ID, NewArray(items...))
+	case "err":
+		items := make([]*Error, len(g.A))
+		for i, raw := range g.A {
+			items[i] = d.value(raw).(*Error)
 		}
 		return d.register(g.ID, NewArray(items...))
 	}
@@ -232,9 +253,13 @@ func parseNumber(t *testing.T, s string) float64 {
 	return f
 }
 
+// goldenEntry is a line of the corpus. Any says its arguments are unknowns,
+// and Str is String() of its one argument (M6's sections).
 type goldenEntry struct {
 	Args []json.RawMessage `json:"args"`
+	Any  bool              `json:"any"`
 	Out  string            `json:"out"`
+	Str  *string           `json:"str"`
 }
 
 func checkEntry(t *testing.T, line int, e goldenEntry) bool {
@@ -242,11 +267,21 @@ func checkEntry(t *testing.T, line int, e goldenEntry) bool {
 	d := &decoder{t: t, ids: map[int]any{}}
 	args := make([]any, len(e.Args))
 	for i, raw := range e.Args {
-		args[i] = d.value(raw)
+		if e.Any {
+			args[i] = d.unknown(raw)
+		} else {
+			args[i] = d.value(raw)
+		}
 	}
 	if got := Format(args...); got != e.Out {
 		t.Errorf("entry %d: printed\n%s\nwant, as Node prints\n%s\n(args %s)", line, got, e.Out, truncate(fmt.Sprint(e.Args), 300))
 		return false
+	}
+	if e.Str != nil {
+		if got := UnknownToString(args[0]); got != *e.Str {
+			t.Errorf("entry %d: String() gave\n%s\nwant, as Node gives\n%s\n(args %s)", line, got, *e.Str, truncate(fmt.Sprint(e.Args), 300))
+			return false
+		}
 	}
 	return true
 }

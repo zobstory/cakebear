@@ -30,6 +30,12 @@ var builtinFuncs = map[ir.Builtin]string{
 	ir.URIEncode: "EncodeURIComponent", ir.URIDecode: "DecodeURIComponent",
 }
 
+// sitedBuiltins are the builtins whose runtime function may throw, as Node
+// throws there (M6 plan D9), and so takes the call's site last.
+var sitedBuiltins = map[ir.Builtin]bool{
+	ir.StrRepeat: true, ir.NumToFixed: true, ir.URIEncode: true, ir.URIDecode: true,
+}
+
 func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 	e.usesRuntime = true
 	if s, ok := e.accLength(x); ok {
@@ -53,7 +59,11 @@ func (e *emitter) builtinCall(x *ir.BuiltinCall) string {
 			args[i] = e.expr(a)
 		}
 	}
-	return fmt.Sprintf("%s.%s(%s)", rtPkg, fn, strings.Join(args, ", "))
+	list := strings.Join(args, ", ")
+	if sitedBuiltins[x.Fn] {
+		list += ", " + e.siteArg(x.Span)
+	}
+	return fmt.Sprintf("%s.%s(%s)", rtPkg, fn, list)
 }
 
 // isMethod reports whether fn is a method, whose first argument is its

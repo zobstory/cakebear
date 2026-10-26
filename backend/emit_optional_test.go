@@ -2,7 +2,6 @@ package backend
 
 import (
 	"bytes"
-	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -67,9 +66,9 @@ func TestEmitOptional(t *testing.T) {
 		"\to.ts_set1(cakebearrt.Some[string](\"x\"))\n",
 		"\to.ts_delete1()\n",
 		"cakebearrt.Log(o.ts_layout.Has(1), o.ts_layout.Has(0))",
-		"\tp.MustWrite(\"p\", \"'b'\").ts_set1(cakebearrt.Some[string](\"y\"))\n",
-		"\tp.AssertDelete(\"p\").ts_delete1()\n",
-		"p.MustIn(\"p\", \"'b'\").ts_layout.Has(1)",
+		"\tp.MustWrite(\"p\", \"'b'\", nil).ts_set1(cakebearrt.Some[string](\"y\"))\n",
+		"\tp.AssertDelete(\"p\", nil).ts_delete1()\n",
+		"p.MustIn(\"p\", \"'b'\", nil).ts_layout.Has(1)",
 		"\t(&ts_shape0{ts_layout: ts_layout0, a: 1.0}).ts_set1(cakebearrt.Some[string](\"z\"))\n",
 		"\t(&ts_shape0{ts_layout: ts_layout0, a: 2.0}).ts_delete1()\n",
 		"; (i < 1.0); o.ts_delete1() {\n",
@@ -90,8 +89,9 @@ func TestEmitOptional(t *testing.T) {
 }
 
 // TestOptionalAccessOfAnEmptyPanics: a delete from, or an `in` on, a value
-// TypeScript was wrong to think isn't empty fails as the access does in
-// Node, which throws, its TypeError in the message, exit 2.
+// TypeScript was wrong to think isn't empty throws the TypeError Node
+// throws, which, uncaught, ends the program as Node's does, exit 1 (M6 plan
+// D9, checkFailure).
 //
 //	interface O { a: number; p?: number }
 //	const u: O | undefined = undefined;
@@ -109,11 +109,11 @@ func TestOptionalAccessOfAnEmptyPanics(t *testing.T) {
 		want string
 	}{
 		{[]ir.Stmt{decl("u", objM, undef(ir.ObjectOf(s))), del(asserted(stable("u", objM)), "p")},
-			"cakebear: u is undefined, though a ! asserted it isn't (Node throws TypeError: Cannot convert undefined or null to object)"},
+			"TypeError: Cannot convert undefined or null to object"},
 		{[]ir.Stmt{decl("n", objM, null(ir.ObjectOf(s))), logAll(has(asserted(stable("n", objM)), "p"))},
-			"cakebear: n is null, though a ! asserted it isn't (Node throws TypeError: Cannot use 'in' operator to search for 'p' in null)"},
+			"TypeError: Cannot use 'in' operator to search for 'p' in null"},
 		{[]ir.Stmt{decl("n", objM, null(ir.ObjectOf(s))), set(must(stable("n", objM)), "p", some(num(1)))},
-			"cakebear: n is null where TypeScript had narrowed it to a value (Node throws TypeError: Cannot set properties of null (setting 'p'))"},
+			"TypeError: Cannot set properties of null (setting 'p')"},
 	} {
 		out := filepath.Join(t.TempDir(), "prog")
 		if src, err := Build(withShapes(&ir.Module{Name: "t", Main: tt.main}, &shapes), Options{Output: out}); err != nil {
@@ -123,9 +123,6 @@ func TestOptionalAccessOfAnEmptyPanics(t *testing.T) {
 		cmd := exec.Command(out)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err := cmd.Run()
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), tt.want) {
-			t.Errorf("%v, stdout %q, stderr\n%s\nwant exit 2, nothing printed, and %q", err, stdout.String(), stderr.String(), tt.want)
-		}
+		checkFailure(t, err, stdout.String(), stderr.String(), tt.want)
 	}
 }

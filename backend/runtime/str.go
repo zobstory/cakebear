@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -32,13 +31,14 @@ import (
 // Making a longer one throws RangeError: Invalid string length.
 const stringLimit = 1<<29 - 24
 
-// checkLength panics, as Node throws, when a string being made would be
-// longer than V8 allows. It runs before the string is built, so a repeat of
-// a billion doesn't allocate first.
-func checkLength(units float64) {
+// checkLength throws the RangeError Node throws when a string being made
+// would be longer than V8 allows, made at site. It runs before the string is
+// built, so a repeat of a billion doesn't allocate first. Of the functions
+// that check, only repeat takes a site: for the others, a +, a pad or a
+// replace, the report of an uncaught one has no excerpt.
+func checkLength(units float64, site *Site) {
 	if units > stringLimit {
-		panic(fmt.Sprintf("cakebear: the string would be %s code units long, past V8's limit of %d (Node throws RangeError: Invalid string length)",
-			NumberToString(units), stringLimit))
+		throwError(ErrorRange, "Invalid string length", site)
 	}
 }
 
@@ -265,7 +265,7 @@ func StrConcat(parts ...string) string {
 		for _, p := range parts {
 			units += utf16Len(p)
 		}
-		checkLength(float64(units))
+		checkLength(float64(units), nil)
 	}
 	return joinStrings(parts, "")
 }

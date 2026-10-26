@@ -281,7 +281,7 @@ func replaceAt(v jsStr, m int, positions []int, t template) string {
 	for _, pos := range positions {
 		units += t.length(pos, m, n)
 	}
-	checkLength(units)
+	checkLength(units, nil)
 	b := strBuilder{b: make([]byte, 0, len(v.s)+len(positions))}
 	end := 0
 	for _, pos := range positions {

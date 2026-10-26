@@ -15,18 +15,18 @@ import (
 // (1.005).toFixed(2) is "1.00".
 //
 // digits goes through ToIntegerOrInfinity, so NaN is 0 and 2.9 is 2, and
-// anything outside 0 to 100 panics where Node throws a RangeError, before x
-// is looked at. Then NaN is "NaN", and from 1e21 up, the infinities
+// anything outside 0 to 100 is the RangeError Node throws, made at site,
+// before x is looked at. Then NaN is "NaN", and from 1e21 up, the infinities
 // included, the result is NumberToString's. The sign is x < 0's: -0 has
 // none, but a negative that rounds to zero keeps it, so (-0.0001).toFixed(2)
 // is "-0.00".
-func NumberToFixed(x, digits float64) string {
+func NumberToFixed(x, digits float64, site *Site) string {
 	f := math.Trunc(digits)
 	if math.IsNaN(f) {
 		f = 0
 	}
 	if f < 0 || f > 100 {
-		panic("cakebear: " + NumberToString(digits) + " is not a digit count toFixed accepts (Node throws RangeError: toFixed() digits argument must be between 0 and 100)")
+		throwError(ErrorRange, "toFixed() digits argument must be between 0 and 100", site)
 	}
 	abs := math.Abs(x)
 	switch {

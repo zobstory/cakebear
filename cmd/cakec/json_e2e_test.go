@@ -1,11 +1,6 @@
 package main
 
-import (
-	"errors"
-	"os/exec"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // jsonProgram covers M4 step 9 (plan D15), JSON.stringify:
 //   - objects in their literal's key order, arrays, nesting, and a shared
@@ -88,8 +83,8 @@ func TestJSONStringifyMatchesNode(t *testing.T) {
 }
 
 // cycleProgram serialises a structure that refers to itself. Node throws a
-// TypeError naming the path around the circle; cakebear has no exceptions
-// yet (M6), so it panics with the same message (an accepted difference).
+// TypeError naming the path around the circle, and so does cakebear (M6
+// plan D9), which nothing catches here.
 const cycleProgram = `export {};
 interface Link { name: string; next: Link[] }
 const a: Link = { name: "a", next: [] };
@@ -108,23 +103,7 @@ const nodeCycle = "Converting circular structure to JSON\n" +
 	"    |     property 'next' -> object with constructor 'Array'\n" +
 	"    --- index 0 closes the circle"
 
-func TestJSONCyclePanics(t *testing.T) {
+func TestJSONCycleThrowsAsNode(t *testing.T) {
 	t.Parallel()
-
-	bin := buildProgram(t, "cycle", cycleProgram)
-	var stdout, stderr strings.Builder
-	cmd := exec.Command(bin)
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
-		t.Fatalf("%v, want exit 2; stderr:\n%s", err, stderr.String())
-	}
-	// Go's panic output indents each further line of the message with a tab.
-	if got := strings.ReplaceAll(stderr.String(), "\n\t", "\n"); !strings.Contains(got, "Node throws TypeError: "+nodeCycle) {
-		t.Errorf("stderr is\n%s\nwant it to hold Node's message\nTypeError: %s", stderr.String(), nodeCycle)
-	}
-	if stdout.String() != "before\n" {
-		t.Errorf("stdout = %q, want only what ran before the panic, %q", stdout.String(), "before\n")
-	}
+	checkUncaught(t, buildProgram(t, "cycle", cycleProgram), "before\n", "[TypeError: "+nodeCycle+"]")
 }

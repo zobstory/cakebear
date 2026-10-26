@@ -4,8 +4,84 @@
 // holding a lone surrogate, as its UTF-16 code units: {"u":[55296]}. M5
 // added one: undefined and null, as {"e":"undefined"} and {"e":"null"}, which
 // the Go side reads as an empty Maybe.
+//
+// M6 added two more. An Error, {"err":"TypeError","m":"<message>"}, m absent
+// for one with no message of its own, plus "code":"<CODE>" for one of Node's
+// own, which is made by doing what makes Node throw it (nodeError), so its
+// stack, toString and properties are Node's. And "any":true on an array or
+// an object, whose elements or properties are unknowns (M6 plan D5), so an
+// array may mix kinds. Node can't see the flag, so the canonical form leaves
+// it out (stripAny). An Error is a leaf: it never has an id.
+//
+// Errors are printed as under --stack-trace-limit=0, which this module sets
+// on import for every error made after: the flag only sets the same limit
+// before any code runs.
 
 import util from 'node:util';
+import http from 'node:http';
+import net from 'node:net';
+
+Error.stackTraceLimit = 0;
+
+export const ERROR_KINDS = ['Error', 'TypeError', 'RangeError', 'URIError', 'SyntaxError', 'ReferenceError', 'EvalError'];
+
+// grab is what f throws.
+function grab(f) {
+  try {
+    f();
+  } catch (err) {
+    return err;
+  }
+  throw new Error('it threw nothing');
+}
+
+function response() {
+  return new http.ServerResponse({ method: 'GET', httpVersionMajor: 1, httpVersionMinor: 1, headers: {} });
+}
+
+// nodeError makes the error Node's own code throws with code and message,
+// by doing what throws it: the cases of the runtime's own Node-throws sites
+// (M6 plan D9, R34, R37). Its message is checked against the description.
+function nodeError(code, message) {
+  const quoted = (prefix) => {
+    if (!message.startsWith(prefix + ' ["') || !message.endsWith('"]')) throw new Error(`bad ${code} message`);
+    return message.slice(prefix.length + 3, -2);
+  };
+  const number = (prefix, suffix = '') => {
+    if (!message.startsWith(prefix) || !message.endsWith(suffix)) throw new Error(`bad ${code} message`);
+    return Number(message.slice(prefix.length, message.length - suffix.length));
+  };
+  let err;
+  switch (code) {
+    case 'ERR_HTTP_HEADERS_SENT': {
+      const sent = response();
+      sent.writeHead(200);
+      err = grab(() => (message.startsWith('Cannot set') ? sent.setHeader('x', '1') : sent.writeHead(201)));
+      break;
+    }
+    case 'ERR_INVALID_HTTP_TOKEN':
+      err = grab(() => response().setHeader(quoted('Header name must be a valid HTTP token'), 'v'));
+      break;
+    case 'ERR_INVALID_CHAR':
+      err = grab(() => response().setHeader(quoted('Invalid character in header content'), 'a\nb'));
+      break;
+    case 'ERR_HTTP_INVALID_STATUS_CODE':
+      err = grab(() => response().writeHead(number('Invalid status code: ')));
+      break;
+    case 'ERR_SOCKET_BAD_PORT':
+      err = grab(() => net.createServer().listen(number('options.port should be >= 0 and < 65536. Received type number (', ').')));
+      break;
+    default:
+      throw new Error(`no way to make ${code}`);
+  }
+  if (err.code !== code || err.message !== message) throw new Error(`made ${err.code} ${JSON.stringify(err.message)}, not ${code} ${JSON.stringify(message)}`);
+  return err;
+}
+
+// stripAny is a description without its any flags, the form Node can tell.
+export function stripAny(desc) {
+  return JSON.parse(JSON.stringify(desc, (k, v) => (k === 'any' ? undefined : v)));
+}
 
 export function numText(x) {
   return Object.is(x, -0) ? '-0' : String(x);
@@ -57,20 +133,30 @@ export function decodeArgs(args) {
       if (keys.length !== 1 || (d.e !== 'undefined' && d.e !== 'null')) throw new Error('bad empty value');
       return d.e === 'null' ? null : undefined;
     }
+    if ('err' in d) {
+      if (!ERROR_KINDS.includes(d.err) || keys.some((k) => !['err', 'm', 'code'].includes(k))) throw new Error('bad error');
+      if ('m' in d && typeof d.m !== 'string') throw new Error('bad error message');
+      if ('code' in d) {
+        const err = nodeError(d.code, d.m);
+        if (err.name !== d.err) throw new Error(`${d.code} is a ${err.name}`);
+        return err;
+      }
+      return 'm' in d ? new globalThis[d.err](d.m) : new globalThis[d.err]();
+    }
     if ('ref' in d) {
       if (keys.length !== 1) throw new Error('bad ref');
       if (!reg.has(d.ref)) throw new Error(`ref ${d.ref} names no earlier container`);
       return reg.get(d.ref);
     }
     if ('a' in d) {
-      if (!Array.isArray(d.a) || keys.some((k) => k !== 'a' && k !== 'id')) throw new Error('bad array');
+      if (!Array.isArray(d.a) || keys.some((k) => k !== 'a' && k !== 'id' && k !== 'any')) throw new Error('bad array');
       const arr = [];
       register(d, arr);
       for (const e of d.a) arr.push(dec(e));
       return arr;
     }
     if ('o' in d) {
-      if (!Array.isArray(d.o) || keys.some((k) => k !== 'o' && k !== 'id')) throw new Error('bad object');
+      if (!Array.isArray(d.o) || keys.some((k) => k !== 'o' && k !== 'id' && k !== 'any')) throw new Error('bad object');
       const obj = {};
       register(d, obj);
       for (const pair of d.o) {
@@ -97,7 +183,7 @@ export function encodeArgs(values) {
   const multi = new Set();
   const children = (v) => (Array.isArray(v) ? v : Object.keys(v).map((k) => v[k]));
   const walk = (v) => {
-    if (typeof v !== 'object' || v === null) return;
+    if (typeof v !== 'object' || v === null || v instanceof Error) return;
     if (seen.has(v)) { multi.add(v); return; }
     seen.add(v);
     for (const c of children(v)) walk(c);
@@ -113,6 +199,12 @@ export function encodeArgs(values) {
       case 'undefined': return { e: 'undefined' };
       case 'object': {
         if (v === null) return { e: 'null' };
+        if (v instanceof Error) {
+          const r = { err: v.name };
+          if (Object.hasOwn(v, 'message')) r.m = v.message;
+          if (Object.hasOwn(v, 'code')) r.code = v.code;
+          return r;
+        }
         if (ids.has(v)) {
           if (ids.get(v) === undefined) throw new Error('second visit of an unshared container');
           return { ref: ids.get(v) };
@@ -151,6 +243,10 @@ export function validate(args, { forJSON = false } = {}) {
     if ('n' in d) return 'n';
     if ('b' in d) return 'b';
     if ('e' in d) return 'e';
+    if ('err' in d) {
+      if ('m' in d && !d.m.isWellFormed()) throw new Error('lone surrogate in a message');
+      return 'err';
+    }
     if ('s' in d) {
       if (!d.s.isWellFormed()) throw new Error('lone surrogate in a string');
       return 's';
@@ -166,10 +262,11 @@ export function validate(args, { forJSON = false } = {}) {
     if ('a' in d) {
       if ('id' in d) kindOf.set(d.id, 'a');
       // One kind, besides undefined and null: an array of T or of maybe-T.
+      // An unknown[] may hold any.
       const kinds = new Set(d.a.map(walk));
       kinds.delete('e');
-      if (kinds.size > 1) throw new Error(`mixed array of ${[...kinds]}`);
-      if (kinds.has('o')) {
+      if (kinds.size > 1 && !d.any) throw new Error(`mixed array of ${[...kinds]}`);
+      if (kinds.has('o') && !d.any) {
         // Objects of one shape, which may leave its optional properties
         // out: each key's values are of one kind, wherever it appears.
         const kindOfKey = new Map();
@@ -216,7 +313,7 @@ export function checkEntry(args) {
   validate(args);
   const values = decodeArgs(args);
   const again = JSON.stringify(encodeArgs(values));
-  if (again !== JSON.stringify(args)) throw new Error(`not canonical:\n${JSON.stringify(args)}\n${again}`);
+  if (again !== JSON.stringify(stripAny(args))) throw new Error(`not canonical:\n${JSON.stringify(args)}\n${again}`);
   const out = util.format(...values);
   if (!out.isWellFormed()) throw new Error('lone surrogate in the output');
   return out;

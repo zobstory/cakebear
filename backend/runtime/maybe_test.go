@@ -82,50 +82,53 @@ func TestMustSaysWhatWasEmpty(t *testing.T) {
 	}
 }
 
-// TestUnwrapsSayWhatNodeDoes: each unwrap of an empty Maybe says whether
-// the checker narrowed it or a ! asserted it, and what Node does with it:
-// carry on, or throw the TypeError it throws for the access, in its own
-// words, the state in place of $. One holding a value is that value,
-// whatever the access.
+// TestUnwrapsSayWhatNodeDoes: each unwrap of an empty Maybe does what Node
+// does with it. A use carries on in Node, and panics here, saying whether
+// the checker narrowed it or a ! asserted it. A read, write, delete, `in`
+// or iteration throws the TypeError Node throws for the access, in its own
+// words (R32), the state in place of $, made at the site given (M6 plan
+// D9). One holding a value is that value, whatever the access.
 func TestUnwrapsSayWhatNodeDoes(t *testing.T) {
 	t.Parallel()
 
 	const narrowed, asserted = " where TypeScript had narrowed it to a value", ", though a ! asserted it isn't"
+	site := &Site{File: "/p.ts", Line: 1, Col: 2, Text: "p.x"}
 	for _, tt := range []struct {
 		method string
 		unwrap func(Maybe[float64]) float64
-		why    string
-		node   string
+		why    string // for a use, which panics
+		node   string // the panic's last words, or the TypeError's message
 	}{
 		{"Must", func(m Maybe[float64]) float64 { return m.Must("p") }, narrowed, "carries on with $"},
 		{"Assert", func(m Maybe[float64]) float64 { return m.Assert("p") }, asserted, "carries on with $"},
-		{"MustRead", func(m Maybe[float64]) float64 { return m.MustRead("p", "'x'") }, narrowed,
-			"throws TypeError: Cannot read properties of $ (reading 'x')"},
-		{"AssertRead", func(m Maybe[float64]) float64 { return m.AssertRead("p", "'0'") }, asserted,
-			"throws TypeError: Cannot read properties of $ (reading '0')"},
-		{"MustWrite", func(m Maybe[float64]) float64 { return m.MustWrite("p", "'x'") }, narrowed,
-			"throws TypeError: Cannot set properties of $ (setting 'x')"},
-		{"AssertWrite", func(m Maybe[float64]) float64 { return m.AssertWrite("p", "an index") }, asserted,
-			"throws TypeError: Cannot set properties of $ (setting an index)"},
-		{"MustDelete", func(m Maybe[float64]) float64 { return m.MustDelete("p") }, narrowed,
-			"throws TypeError: Cannot convert undefined or null to object"},
-		{"AssertDelete", func(m Maybe[float64]) float64 { return m.AssertDelete("p") }, asserted,
-			"throws TypeError: Cannot convert undefined or null to object"},
-		{"MustIn", func(m Maybe[float64]) float64 { return m.MustIn("p", "'x'") }, narrowed,
-			"throws TypeError: Cannot use 'in' operator to search for 'x' in $"},
-		{"AssertIn", func(m Maybe[float64]) float64 { return m.AssertIn("p", "'x'") }, asserted,
-			"throws TypeError: Cannot use 'in' operator to search for 'x' in $"},
-		{"MustIterate", func(m Maybe[float64]) float64 { return m.MustIterate("p") }, narrowed, "throws TypeError: p is not iterable"},
-		{"AssertIterate", func(m Maybe[float64]) float64 { return m.AssertIterate("p") }, asserted, "throws TypeError: p is not iterable"},
+		{"MustRead", func(m Maybe[float64]) float64 { return m.MustRead("p", "'x'", site) }, "", "Cannot read properties of $ (reading 'x')"},
+		{"AssertRead", func(m Maybe[float64]) float64 { return m.AssertRead("p", "'0'", site) }, "", "Cannot read properties of $ (reading '0')"},
+		{"MustWrite", func(m Maybe[float64]) float64 { return m.MustWrite("p", "'x'", site) }, "", "Cannot set properties of $ (setting 'x')"},
+		{"AssertWrite", func(m Maybe[float64]) float64 { return m.AssertWrite("p", "an index", site) }, "", "Cannot set properties of $ (setting an index)"},
+		{"MustDelete", func(m Maybe[float64]) float64 { return m.MustDelete("p", site) }, "", "Cannot convert undefined or null to object"},
+		{"AssertDelete", func(m Maybe[float64]) float64 { return m.AssertDelete("p", site) }, "", "Cannot convert undefined or null to object"},
+		{"MustIn", func(m Maybe[float64]) float64 { return m.MustIn("p", "'x'", site) }, "", "Cannot use 'in' operator to search for 'x' in $"},
+		{"AssertIn", func(m Maybe[float64]) float64 { return m.AssertIn("p", "'x'", site) }, "", "Cannot use 'in' operator to search for 'x' in $"},
+		{"MustIterate", func(m Maybe[float64]) float64 { return m.MustIterate("p", site) }, "", "p is not iterable"},
+		{"AssertIterate", func(m Maybe[float64]) float64 { return m.AssertIterate("p", site) }, "", "p is not iterable"},
 	} {
 		if got := tt.unwrap(Some(3.0)); got != 3 {
 			t.Errorf("%s of 3 = %v", tt.method, got)
 		}
 		for _, empty := range []Maybe[float64]{{}, NullOf[float64]()} {
 			state := empty.emptyName()
-			want := "cakebear: p is " + state + tt.why + " (Node " + strings.ReplaceAll(tt.node, "$", state) + ")"
-			if got := panicked(func() { tt.unwrap(empty) }); got != want {
-				t.Errorf("%s of %s panicked %q, want %q", tt.method, state, got, want)
+			node := strings.ReplaceAll(tt.node, "$", state)
+			if tt.why != "" {
+				want := "cakebear: p is " + state + tt.why + " (Node " + node + ")"
+				if got := panicked(func() { tt.unwrap(empty) }); got != want {
+					t.Errorf("%s of %s panicked %q, want %q", tt.method, state, got, want)
+				}
+				continue
+			}
+			th := thrown(t, func() { tt.unwrap(empty) })
+			e, _ := th.V.(*Error)
+			if e == nil || ErrorToString(e) != "TypeError: "+node || e.site != site || th.Site != site {
+				t.Errorf("%s of %s threw %v at %v, want the TypeError %q at the site", tt.method, state, th.V, th.Site, node)
 			}
 		}
 	}
@@ -245,7 +248,7 @@ func TestLayoutSteps(t *testing.T) {
 	if got := Inspect(o); got != "{ a: 1, b: 'x' }" {
 		t.Errorf("printed %s", got)
 	}
-	if got := JSONStringify(o, JSONGap{}); got != `{"a":1,"b":"x"}` {
+	if got := JSONStringify(o, JSONGap{}, nil); got != `{"a":1,"b":"x"}` {
 		t.Errorf("serialised %s", got)
 	}
 }

@@ -1,0 +1,208 @@
+{
+  "node": "v24.18.0",
+  "cases": {
+    "handler/boom": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/handler.ts:15\n  throw new Error(\"before the end\");\n  ^\n\n[Error: before the end]\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      },
+      "frames": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/handler.ts:15\n  throw new Error(\"before the end\");\n  ^\n\nError: before the end\n    at Server.<anonymous> (file:///CASES/handler.ts:15:9)\n    at Server.emit (node:events:509:28)\n    at parserOnIncoming (node:_http_server:1268:12)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      }
+    },
+    "handler/string": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "listening\n",
+        "stderr": "\nfile:///CASES/handler.ts:9\n  if (req.url === \"/string\") throw \"a string\";\n                             ^\na string\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      },
+      "frames": {
+        "stdout": "listening\n",
+        "stderr": "\nfile:///CASES/handler.ts:9\n  if (req.url === \"/string\") throw \"a string\";\n                             ^\na string\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      }
+    },
+    "handler/after": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/handler.ts:12\n    throw new RangeError(\"after the end\");\n    ^\n\n[RangeError: after the end]\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "200 \"partial\""
+      },
+      "frames": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/handler.ts:12\n    throw new RangeError(\"after the end\");\n    ^\n\nRangeError: after the end\n    at Server.<anonymous> (file:///CASES/handler.ts:12:11)\n    at Server.emit (node:events:509:28)\n    at parserOnIncoming (node:_http_server:1268:12)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "200 \"partial\""
+      }
+    },
+    "handler/header": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "listening\n",
+        "stderr": "node:internal/errors:542\n      throw error;\n      ^\n\n[TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token [\"bad name\"]] {\n  code: 'ERR_INVALID_HTTP_TOKEN'\n}\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      },
+      "frames": {
+        "stdout": "listening\n",
+        "stderr": "node:internal/errors:542\n      throw error;\n      ^\n\nTypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token [\"bad name\"]\n    at ServerResponse.setHeader (node:_http_outgoing:649:3)\n    at Server.<anonymous> (file:///CASES/handler.ts:14:34)\n    at Server.emit (node:events:509:28)\n    at parserOnIncoming (node:_http_server:1268:12)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17) {\n  code: 'ERR_INVALID_HTTP_TOKEN'\n}\n\nNode.js v24.18.0\n",
+        "exit": 1,
+        "client": "request error ECONNRESET"
+      }
+    },
+    "listen-callback": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/listen-callback.ts:6\n  throw new Error(\"from the listen callback\");\n  ^\n\n[Error: from the listen callback]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "listening\n",
+        "stderr": "file:///CASES/listen-callback.ts:6\n  throw new Error(\"from the listen callback\");\n  ^\n\nError: from the listen callback\n    at Server.<anonymous> (file:///CASES/listen-callback.ts:6:9)\n    at Object.onceWrapper (node:events:630:28)\n    at Server.emit (node:events:521:24)\n    at emitListeningNT (node:net:2052:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:89:21)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "timer-builtin": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "",
+        "stderr": "file:///CASES/timer-builtin.ts:7\n  console.log(JSON.stringify(a));\n                   ^\n\n[TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'next' -> object with constructor 'Array'\n    --- index 0 closes the circle]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "",
+        "stderr": "file:///CASES/timer-builtin.ts:7\n  console.log(JSON.stringify(a));\n                   ^\n\nTypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    |     property 'next' -> object with constructor 'Array'\n    --- index 0 closes the circle\n    at JSON.stringify (<anonymous>)\n    at Timeout._onTimeout (file:///CASES/timer-builtin.ts:7:20)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "timer-error": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "sync\ntimer 1\n",
+        "stderr": "file:///CASES/timer-error.ts:7\n  throw e;\n  ^\n\n[Error: made at the top]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "sync\ntimer 1\n",
+        "stderr": "file:///CASES/timer-error.ts:7\n  throw e;\n  ^\n\nError: made at the top\n    at file:///CASES/timer-error.ts:3:18\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "timer-string": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "",
+        "stderr": "\nfile:///CASES/timer-string.ts:4\n  throw \"from a timer\";\n  ^\nfrom a timer\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "",
+        "stderr": "\nfile:///CASES/timer-string.ts:4\n  throw \"from a timer\";\n  ^\nfrom a timer\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "timer-values": {
+      "rule": "limit0",
+      "limit0": {
+        "stdout": "",
+        "stderr": "\nfile:///CASES/timer-values.ts:6\n  throw box;\n  ^\n{ a: 1, list: [ undefined, null, 's' ] }\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "",
+        "stderr": "\nfile:///CASES/timer-values.ts:6\n  throw box;\n  ^\n{ a: 1, list: [ undefined, null, 's' ] }\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-builtin": {
+      "rule": "header-from-frames",
+      "limit0": {
+        "stdout": "before\n",
+        "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[RangeError: Invalid count value: -1]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "before\n",
+        "stderr": "file:///CASES/top-builtin.ts:5\nconsole.log(\"ab\".repeat(n));\n                 ^\n\nRangeError: Invalid count value: -1\n    at String.repeat (<anonymous>)\n    at file:///CASES/top-builtin.ts:5:18\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-error": {
+      "rule": "header-from-frames",
+      "limit0": {
+        "stdout": "before\n",
+        "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[Error: m]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "before\n",
+        "stderr": "file:///CASES/top-error.ts:4\nthrow new Error(\"m\");\n      ^\n\nError: m\n    at file:///CASES/top-error.ts:4:7\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-function": {
+      "rule": "header-from-frames",
+      "limit0": {
+        "stdout": "",
+        "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[RangeError: from inner]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "",
+        "stderr": "file:///CASES/top-function.ts:4\n\tif (true) throw new RangeError(\"from inner\");\n\t                ^\n\nRangeError: from inner\n    at inner (file:///CASES/top-function.ts:4:18)\n    at outer (file:///CASES/top-function.ts:7:3)\n    at file:///CASES/top-function.ts:9:1\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-made-elsewhere": {
+      "rule": "header-from-frames",
+      "limit0": {
+        "stdout": "before\n",
+        "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[TypeError: made here]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "before\n",
+        "stderr": "file:///CASES/top-made-elsewhere.ts:3\nconst e        = new TypeError(\"made here\");\n                 ^\n\nTypeError: made here\n    at file:///CASES/top-made-elsewhere.ts:3:18\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-string": {
+      "rule": "throw-site",
+      "limit0": {
+        "stdout": "before\n",
+        "stderr": "\nnode:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\nm\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "before\n",
+        "stderr": "\nnode:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\nm\n(Use `node --trace-uncaught ...` to show where the exception was thrown)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    },
+    "top-wide": {
+      "rule": "header-from-frames",
+      "limit0": {
+        "stdout": "",
+        "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[Error: 日本😀]\n\nNode.js v24.18.0\n",
+        "exit": 1
+      },
+      "frames": {
+        "stdout": "",
+        "stderr": "file:///CASES/top-wide.ts:3\n/*日*/\tthrow new Error(\"日本😀\");\n       \t    ^\n\nError: 日本😀\n    at file:///CASES/top-wide.ts:3:13\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.18.0\n",
+        "exit": 1
+      }
+    }
+  }
+}

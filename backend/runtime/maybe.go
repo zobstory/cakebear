@@ -66,22 +66,45 @@ func (m Maybe[T]) IsEmpty() bool { return m.state != stateValue }
 // Assert is the same for a program's own `m!`, which can be wrong too. The
 // Read, Write, Delete, In and Iterate forms of each are for an m the program
 // reads a property of, writes one of, deletes one of, looks for one in with
-// `in`, or iterates, where Node throws rather than carry on, so their
-// messages say so. key names the property as Node's TypeError does, quoted,
-// 'x' or '0', or as "an index" for one the program computes, which cakebear
-// fails before evaluating.
-func (m Maybe[T]) Must(what string) T             { return m.unwrap(what, false, useValue, "") }
-func (m Maybe[T]) Assert(what string) T           { return m.unwrap(what, true, useValue, "") }
-func (m Maybe[T]) MustRead(what, key string) T    { return m.unwrap(what, false, useRead, key) }
-func (m Maybe[T]) AssertRead(what, key string) T  { return m.unwrap(what, true, useRead, key) }
-func (m Maybe[T]) MustWrite(what, key string) T   { return m.unwrap(what, false, useWrite, key) }
-func (m Maybe[T]) AssertWrite(what, key string) T { return m.unwrap(what, true, useWrite, key) }
-func (m Maybe[T]) MustDelete(what string) T       { return m.unwrap(what, false, useDelete, "") }
-func (m Maybe[T]) AssertDelete(what string) T     { return m.unwrap(what, true, useDelete, "") }
-func (m Maybe[T]) MustIn(what, key string) T      { return m.unwrap(what, false, useIn, key) }
-func (m Maybe[T]) AssertIn(what, key string) T    { return m.unwrap(what, true, useIn, key) }
-func (m Maybe[T]) MustIterate(what string) T      { return m.unwrap(what, false, useIterate, "") }
-func (m Maybe[T]) AssertIterate(what string) T    { return m.unwrap(what, true, useIterate, "") }
+// `in`, or iterates, where Node throws: so these throw the TypeError Node
+// throws, made at site (M6 plan D9, R32). key names the property as Node's
+// message does, quoted, 'x' or '0', or as "an index" for one the program
+// computes, which cakebear fails before evaluating. An iterated m's message
+// is what, then " is not iterable", so what is the expression as V8 writes
+// it (R33): `box.list`, or for a call `get is not a function or its return
+// value`.
+func (m Maybe[T]) Must(what string) T   { return m.unwrap(what, false, useValue, "", nil) }
+func (m Maybe[T]) Assert(what string) T { return m.unwrap(what, true, useValue, "", nil) }
+func (m Maybe[T]) MustRead(what, key string, site *Site) T {
+	return m.unwrap(what, false, useRead, key, site)
+}
+func (m Maybe[T]) AssertRead(what, key string, site *Site) T {
+	return m.unwrap(what, true, useRead, key, site)
+}
+func (m Maybe[T]) MustWrite(what, key string, site *Site) T {
+	return m.unwrap(what, false, useWrite, key, site)
+}
+func (m Maybe[T]) AssertWrite(what, key string, site *Site) T {
+	return m.unwrap(what, true, useWrite, key, site)
+}
+func (m Maybe[T]) MustDelete(what string, site *Site) T {
+	return m.unwrap(what, false, useDelete, "", site)
+}
+func (m Maybe[T]) AssertDelete(what string, site *Site) T {
+	return m.unwrap(what, true, useDelete, "", site)
+}
+func (m Maybe[T]) MustIn(what, key string, site *Site) T {
+	return m.unwrap(what, false, useIn, key, site)
+}
+func (m Maybe[T]) AssertIn(what, key string, site *Site) T {
+	return m.unwrap(what, true, useIn, key, site)
+}
+func (m Maybe[T]) MustIterate(what string, site *Site) T {
+	return m.unwrap(what, false, useIterate, "", site)
+}
+func (m Maybe[T]) AssertIterate(what string, site *Site) T {
+	return m.unwrap(what, true, useIterate, "", site)
+}
 
 // unwrapUse is what the program does with an unwrapped value, which decides
 // what Node does with an empty one.
@@ -96,35 +119,40 @@ const (
 	useIterate                  // iterates it, with for…of: Node throws
 )
 
-func (m Maybe[T]) unwrap(what string, asserted bool, use unwrapUse, key string) T {
+func (m Maybe[T]) unwrap(what string, asserted bool, use unwrapUse, key string, site *Site) T {
 	if m.state != stateValue {
-		panic(unwrapFailure(what, m.emptyName(), asserted, use, key))
+		if use == useValue {
+			panic(unwrapFailure(what, m.emptyName(), asserted))
+		}
+		throwError(ErrorType, unwrapError(what, m.emptyName(), use, key), site)
 	}
 	return m.v
 }
 
 // unwrapFailure says what was empty, why the program thought it wasn't, and
-// what Node does instead: carry on, or throw a TypeError, whose message is
-// Node 24.18's, verbatim when key is the property's own.
-func unwrapFailure(what, empty string, asserted bool, use unwrapUse, key string) string {
+// that Node carries on with it.
+func unwrapFailure(what, empty string, asserted bool) string {
 	why := " where TypeScript had narrowed it to a value"
 	if asserted {
 		why = ", though a ! asserted it isn't"
 	}
-	node := "carries on with " + empty
+	return fmt.Sprintf("cakebear: %s is %s%s (Node carries on with %s)", what, empty, why, empty)
+}
+
+// unwrapError is the message of the TypeError Node 24.18 throws for use of
+// an empty value, verbatim when key is the property's own.
+func unwrapError(what, empty string, use unwrapUse, key string) string {
 	switch use {
 	case useRead:
-		node = fmt.Sprintf("throws TypeError: Cannot read properties of %s (reading %s)", empty, key)
+		return fmt.Sprintf("Cannot read properties of %s (reading %s)", empty, key)
 	case useWrite:
-		node = fmt.Sprintf("throws TypeError: Cannot set properties of %s (setting %s)", empty, key)
+		return fmt.Sprintf("Cannot set properties of %s (setting %s)", empty, key)
 	case useDelete:
-		node = "throws TypeError: Cannot convert undefined or null to object"
+		return "Cannot convert undefined or null to object"
 	case useIn:
-		node = fmt.Sprintf("throws TypeError: Cannot use 'in' operator to search for %s in %s", key, empty)
-	case useIterate:
-		node = "throws TypeError: " + what + " is not iterable"
+		return fmt.Sprintf("Cannot use 'in' operator to search for %s in %s", key, empty)
 	}
-	return fmt.Sprintf("cakebear: %s is %s%s (Node %s)", what, empty, why, node)
+	return what + " is not iterable"
 }
 
 func (m Maybe[T]) emptyName() string {

@@ -320,6 +320,60 @@ Step 1, the IR, is done, with nothing lowered to it yet (`ir/errors.go`):
   (`TestErrorsAreRefusedForNow`), and the order pass knows the new
   expressions' operands, where it would have panicked.
 
+Step 2, the runtime, is done, with nothing lowered to it yet
+(`runtime/thrown.go`, `error.go`, `unknown.go`, `uncaught.go`):
+- `throw v` is `panic(&Thrown{V: v, Site: site})`, and a try is a literal
+  run by `Try` or `TryK`, whose deferred `Catch` takes back only a
+  `*Thrown` and raises anything else again inside the deferred call, so a
+  Go panic keeps its stack and passes every catch and finally (D2, D3).
+  `Rethrow` ends a finally.
+- `*Error` is an Error of a built-in kind, with a message and, for one of
+  Node's own, its code (D4). It has no frames: its stack is `Name:
+  message`, so `console.log` prints `[Error: m]`, with a `{ code: … }`
+  block, as Node prints under `--stack-trace-limit=0`. `ErrorToString` is
+  R26's, and `JSON.stringify` writes `{}`, or `{"code":…}` (R27). An Error
+  never changes, so domains can share one.
+- An unknown is a Go `any`: nil is undefined, `Null` null, and anything else
+  as the subset holds it; never a Maybe, which `BoxMaybe` makes the value
+  its state is, so Go's `==` is `===` (D5). `Unbox` and `UnboxMaybe` are
+  checked as `Must` is; `TypeOf`, `InstanceOf`, `TruthyUnknown` and
+  `UnknownToString` are typeof, instanceof, truthiness and ToString, and
+  inspect, `JSON.stringify` and join take an unknown's values wherever
+  they are: an undefined one is left out of an object and null in an
+  array, as a maybe's is.
+- A `Site` is a place in the source: file, line, UTF-16 column and the
+  line with its types blanked, which the emitter makes at package level and
+  passes by pointer (`backend/emit_site.go` passes nil until step 3). A
+  throw carries its statement's, a `new Error` its own, and a runtime
+  function that throws the call's. One with no line gives the report its
+  location alone, and one with no file is no site.
+- An uncaught throw ends the program as Node's ends (D6): the generated
+  main defers `Exit` in place of `Flush`, which writes the output so far,
+  then Node's report, then exits 1. The report is `file:///…:LINE`, the
+  source line, a caret where Node puts it (a tab copied, the column in code
+  units over the line's bytes, as Node reads it), a blank, the error as
+  inspect prints it, a blank and `cakebear <version>`; a non-Error has a
+  blank line first and none after the caret. It points where R6 says for
+  the context the domain was running: an Error's creation at the top level
+  and in a microtask, the throw in a timer, the listen callback and a
+  handler; where Node points into its own code, at the program's throw or
+  call. Three tests hold 15 cases, programs written as the emitter writes
+  them, to Node's reports (`testdata/gen-uncaught-goldens.mjs`).
+- The runtime's 12 Node-throws sites, `Maybe`'s 10 throwing unwraps and
+  listen's bad port throw Node's error, name, message and code, at the
+  call's site (D9, R32–R37). A write after `end` fails on the next tick,
+  uncatchable, worded as Node's. What Node does something else for, and
+  the `i32` zero-divisor checks, stay panics.
+- A throw nothing catches in a request handler ends only its request (D8):
+  the report goes to stderr, the connection is dropped before `res.end()`
+  and the response stands after it, and the server serves on.
+- The runtime never calls program code under a lock or midway through
+  changing a value, since a throw unwinds through it (D10); `sort` sorts a
+  copy (`TestThrowsThroughCallbacksMatchNode`, R23).
+- The inspect and JSON goldens hold 836 and 233 more outputs recorded from
+  Node with Errors and unknowns, String() of each too, in sections after
+  the old ones, which are byte for byte as they were.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -696,7 +750,8 @@ at its first NUL. That is why the gap is a `JSONGap` value rather than a
 string. `TestJSONGoldens` holds the runtime to 10,600 outputs recorded from
 Node (`testdata/gen-json-goldens.mjs`, deterministic), cycles included, and
 `TestJSONStringifyMatchesNode` holds a program to it end to end. A cycle
-panics with V8's `TypeError` message, verbatim.
+panicked with V8's `TypeError` message, verbatim, and since M6 step 2
+throws that TypeError.
 
 Step 10, frozen consts, is done (D10b, `lower/frozen.go`). A request handler
 or a spawned function may read a `const` object or array declared outside it
@@ -725,7 +780,8 @@ program to it end to end. Silent bugs found and fixed:
 - a surrogate pair joined by `+` didn't equal the literal, and printed raw;
 - printing a lone surrogate wrote raw bytes, where Node writes U+FFFD;
 - `setHeader` silently dropped a header name Node throws for, and sent a
-  value Node throws for; both panic with Node's message now.
+  value Node throws for; both panicked with Node's message, and since M6
+  step 2 throw Node's error.
 
 Step 11, M4's end to end, is done. `examples/route-server` is a JSON API in
 four modules, a frozen menu, query parsing with the string methods and
@@ -1474,7 +1530,7 @@ not listed here that behaves differently is a bug.
 | A CPU-heavy request handler | blocks every other request | the others are still served (8 `fib(38)` requests: ~1.3× one, vs Node's ~7.7×) |
 | `console.log` order across requests | one at a time, per event-loop turn | interleaved, nondeterministic (each line whole) |
 | A handler returns without `res.end()` | the request hangs until it times out | an empty 200, plus a one-line warning on stderr |
-| A handler does what Node throws for (headers after they were sent, a bad status code, writing after `end`, a header name that isn't a token, a header value with a character past U+00FF or a control) | the uncaught exception kills the process | a panic with Node's message; `net/http` drops only that connection |
+| A throw nothing catches in a request handler, the program's own or one of node:http's (headers after they were sent, a bad status code, a header name that isn't a token, a header value with a character past U+00FF or a control), or a write after `end` (M6 D8) | the uncaught exception kills the server | only that request ends: its connection is dropped before `res.end()`, the response stands after it, the report goes to stderr as Node's would, and the server serves on |
 | A header value with spaces at either end | sent as written | trimmed, as `net/http` writes every header |
 | A request line holding raw bytes from 0x80 up | a 400 | served: each such byte is one U+FFFD in `req.url` |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
@@ -1491,23 +1547,25 @@ not listed here that behaves differently is a bug.
 | Async code in *different* requests after an `await` | interleaved on one thread | in parallel (8 requests that await then compute `fib(38)`: ~1.2× one, vs Node's ~7.2×) |
 | `setTimeout`'s return value | a `Timeout` object | a `number`, as the DOM's declaration types it |
 | The cost of one `await` | ~32 ns | ~224 ns: a goroutine handoff |
-| A panic in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr (`cakebear: after a response was sent: …`); the process stays up |
+| A throw in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr as an uncaught throw is, and the process stays up; a Go panic there as `cakebear: after a response was sent: …` |
 | A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |
 | A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
 | `spawn(fn)` | no such global: `ReferenceError` (and TS2304 from `tsc`) | runs `fn` in parallel (4 spawned `fib(38)` calls: ~1.1× one); a shim `spawn = fn => Promise.resolve().then(fn)` runs the same program under Node, without the parallelism |
 | Reading past an array's end, or a negative or fractional index, where the read is typed as the element (M4 D8; under `noUncheckedIndexedAccess`, or for an array of maybes, it is undefined, as in Node) | `undefined` | a panic saying so: `cakebear: index 9 is out of range for an array of length 3 (Node reads undefined)`, exit 2. A string's `s[i]` typed `string` the same: `cakebear: index 5 is out of range for a string of length 2 (Node reads undefined)` |
-| A string or number builtin given what Node throws for (`"ab".repeat(-1)`, `(1).toFixed(101)`, a string past V8's length limit, `decodeURIComponent("%")`, `encodeURIComponent` of a lone surrogate) | a `RangeError` or `URIError`, exit 1 | a panic with Node's message, e.g. `cakebear: repeat can't repeat a string -1 times (Node throws RangeError: Invalid count value: -1)`, exit 2 |
-| `JSON.stringify` of a value that refers to itself | a `TypeError` naming the path around the circle, exit 1 | a panic with the same message: `cakebear: JSON.stringify met a cycle (Node throws TypeError: Converting circular structure to JSON …)`, exit 2 |
 | Writing past `length`, leaving a hole, or a negative or fractional index (D9) | a hole, or a property of that name | a panic saying so |
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce`, `findIndex`, `find` or `findLast` (D9) | skips the indices it removed (`findIndex`, `find` and `findLast` read them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
-| A write to a property of a value that is null or undefined, `u!.p = f()` | runs `f()`, then throws | stops before `f()` runs, with Node's TypeError (step 4) |
-| `x!` on a value that is null or undefined (M5 step 4) | carries on with it, or throws reading, writing or iterating it | a panic saying which: `cakebear: p is null, though a ! asserted it isn't (Node throws TypeError: Cannot read properties of null (reading 'x'))`, exit 2. The same wording is on a narrowed value read from |
+| A write to a property of a value that is null or undefined, `u!.p = f()` | runs `f()`, then throws | throws Node's TypeError before `f()` runs (M5 step 4) |
+| `x!` on a value that is null or undefined, used as a value (M5 step 4) | carries on with it | a panic: `cakebear: m is undefined, though a ! asserted it isn't (Node carries on with undefined)`, exit 2. Reading, writing, deleting or iterating it, or `in`, throws the TypeError Node throws (M6 D9) |
+| `xs![i]` read or written with `xs` null or undefined and `i` not a literal (M5 step 6) | evaluates `i`, then throws `Cannot read properties of undefined (reading '3')` | throws before `i` is evaluated, the same TypeError with `(reading an index)` |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
+| An Error's stack (M6 D4) | `Name: message`, then V8's frames | `Name: message` alone: no frames are kept, so `console.log(err)` prints `[Error: m]`, as Node prints under `--stack-trace-limit=0` |
+| The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code for a non-Error at an ES module's top level and for node:http's errors | ends `cakebear <version>`; names the source's path at build time; prints the error with none (above); gives no advice; points at the program's throw, or its call. A string made too long by `+`, a pad or a replace has no source excerpt |
+| A recursion that never ends (M6 D3) | a `RangeError: Maximum call stack size exceeded` a try can catch | Go's `fatal error: stack overflow`, past every catch, exit 2 |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

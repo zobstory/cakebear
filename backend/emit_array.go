@@ -93,7 +93,7 @@ func (e *emitter) arrayOp(x *ir.ArrayOp) string {
 	case ir.ArrayLength:
 		return arr + ".Length()"
 	case ir.ArraySetLength:
-		return arr + ".SetLength(" + args[0] + ")"
+		return arr + ".SetLength(" + args[0] + ", " + e.siteArg(x.Span) + ")"
 	case ir.ArrayPush:
 		return arr + ".Push(" + strings.Join(args, ", ") + ")"
 	case ir.ArrayPop, ir.ArrayShift:

@@ -133,6 +133,9 @@ func (e *emitter) unwrap(x *ir.Unwrap, a access) string {
 	if a.key != "" {
 		args += ", " + strconv.Quote(a.key)
 	}
+	if a.kind != "" {
+		args += ", " + e.siteArg(x.Span) // the forms Node throws for take a site
+	}
 	return fmt.Sprintf("%s.%s%s(%s)", e.operand(x.Value), method, a.kind, args)
 }
 

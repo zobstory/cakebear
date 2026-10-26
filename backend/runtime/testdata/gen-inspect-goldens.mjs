@@ -30,16 +30,23 @@
 // share one key set), no integer-like or __proto__ keys, no lone
 // surrogates, and a first argument that is a string has no '%'.
 //
-// The index file maps each section (R1..R13, CIRC, RANDOM, MAYBE) to its
-// 1-based line range in the corpus. MAYBE, null and undefined (M5), comes
-// after RANDOM, so that the lines before it, and RANDOM's seeded draws, stay
-// as they were.
+// The index file maps each section (R1..R13, CIRC, RANDOM, MAYBE, ERROR,
+// UNKNOWN) to its 1-based line range in the corpus. MAYBE, null and
+// undefined (M5), comes after RANDOM, so that the lines before it, and
+// RANDOM's seeded draws, stay as they were, and ERROR and UNKNOWN (M6)
+// after MAYBE for the same reason.
+//
+// ERROR and UNKNOWN hold Errors, {"err":…}, and unknowns, "any":true
+// (golden-codec.mjs), printed as under --stack-trace-limit=0 (M6 plan D4,
+// D5). An entry of theirs may say "any":true itself, when its arguments are
+// unknowns, and one of one argument has "str":"<String(value)>", which a
+// template writes too (R26).
 
 import util from 'node:util';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkEntry as check, decodeArgs, numText } from './golden-codec.mjs';
+import { checkEntry as check, decodeArgs, numText, ERROR_KINDS } from './golden-codec.mjs';
 
 if (process.version !== 'v24.18.0') {
   throw new Error(`recorded against Node v24.18.0, this is ${process.version}`);
@@ -62,6 +69,10 @@ const A = (items, id) => (id === undefined ? { a: items } : { a: items, id });
 const O = (pairs, id) => (id === undefined ? { o: pairs } : { o: pairs, id });
 const R = (id) => ({ ref: id });
 const E = (x) => ({ e: x === null ? 'null' : 'undefined' });
+// M6: an Error, and an unknown[] or an object of unknowns.
+const ERR = (kind, m, code) => ({ err: kind, ...(m === undefined ? {} : { m }), ...(code === undefined ? {} : { code }) });
+const UA = (items, id) => ({ ...A(items, id), any: true });
+const UO = (pairs, id) => ({ ...O(pairs, id), any: true });
 
 // v describes an acyclic plain JS value. Its objects' keys must not be
 // integer-like, or Object.keys would reorder them.
@@ -107,8 +118,10 @@ const fmt = (args) => util.format(...decodeArgs(args));
 // ---------------------------------------------------------------------------
 // The corpus being built
 
-const entries = []; // { section, args }
+const entries = []; // { section, args, any }
 const addD = (section, ...args) => entries.push({ section, args });
+// addU adds an entry whose arguments are unknowns.
+const addU = (section, ...args) => entries.push({ section, args, any: true });
 const add = (section, ...values) => addD(section, ...values.map(v));
 const notes = []; // threshold findings, printed at the end
 
@@ -1170,6 +1183,140 @@ function sectionMAYBE() {
 }
 
 // ---------------------------------------------------------------------------
+// ERROR: Errors of every built-in kind (M6 plan D4), as console.log prints
+// them under --stack-trace-limit=0: in brackets, any later line of the
+// message indented to where it is (R25), alone, beside other values, in
+// objects and arrays to past the depth limit, and in arrays long enough to
+// group. Then Node's own errors, which carry a code that the stack names
+// and console.log prints in a block, which past the depth limit is the
+// constructor's name alone (R24, R34).
+
+const MESSAGES = [
+  undefined, '', 'm', 'two words', "it's", 'say "hi"', 'back`tick', '${x}', 'line one\nline two', 'a\n    at b (c.js:1:1)',
+  'tab\there', 'é 😀 日本', '%s %d %o', 'trailing  ', '[bracketed]', 'nul\x00 esc\x1b', 'Error: nested', '\n', 'ends\n',
+  'x'.repeat(60), 'y'.repeat(68), 'z'.repeat(100), 'a\nb\nc\nd',
+];
+
+// The errors the runtime throws, Node's own made as Node makes them.
+const CODED = [
+  ERR('Error', 'Cannot set headers after they are sent to the client', 'ERR_HTTP_HEADERS_SENT'),
+  ERR('Error', 'Cannot write headers after they are sent to the client', 'ERR_HTTP_HEADERS_SENT'),
+  ...['bad name', '', 'x:y', '日本', 'a"b', 'x\ny'].map((n) => ERR('TypeError', `Header name must be a valid HTTP token ["${n}"]`, 'ERR_INVALID_HTTP_TOKEN')),
+  ...['x-a', 'content-type'].map((n) => ERR('TypeError', `Invalid character in header content ["${n}"]`, 'ERR_INVALID_CHAR')),
+  ...['1000', '99', '99.5', 'NaN', '-0', '-Infinity'].map((n) => ERR('RangeError', `Invalid status code: ${n}`, 'ERR_HTTP_INVALID_STATUS_CODE')),
+  ...['70000', '-1', '1.5', 'NaN', 'Infinity', '1e+21'].map((n) => ERR('RangeError', `options.port should be >= 0 and < 65536. Received type number (${n}).`, 'ERR_SOCKET_BAD_PORT')),
+];
+
+// What the runtime itself throws without a code (R32).
+const BUILTIN = [
+  ERR('RangeError', 'Invalid count value: -1'), ERR('RangeError', 'toFixed() digits argument must be between 0 and 100'),
+  ERR('URIError', 'URI malformed'), ERR('RangeError', 'Invalid string length'), ERR('RangeError', 'Invalid array length'),
+  ERR('TypeError', "Cannot read properties of undefined (reading 'x')"), ERR('TypeError', "Cannot set properties of null (setting '0')"),
+  ERR('TypeError', 'Cannot convert undefined or null to object'), ERR('TypeError', "Cannot use 'in' operator to search for 'k' in null"),
+  ERR('TypeError', 'box.list is not iterable'),
+  ERR('TypeError', "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    --- property 'self' closes the circle"),
+];
+
+// nest puts d at depth n: in an object's property, or an array's element.
+const nestO = (d, n) => (n === 0 ? d : O([['k', nestO(d, n - 1)]]));
+const nestA = (d, n) => (n === 0 ? d : A([nestA(d, n - 1)]));
+
+function sectionERROR() {
+  const r = 'ERROR';
+  for (const kind of ERROR_KINDS) {
+    for (const m of MESSAGES) addD(r, ERR(kind, m));
+  }
+  for (const d of [...CODED, ...BUILTIN]) addD(r, d);
+  // Beside other values, at the top level.
+  const e = ERR('Error', 'm');
+  for (const args of [[e, S('after')], [S('before'), e], [e, ERR('TypeError', 't')], [N(1), e], [e, O([['a', N(1)]])],
+    [ERR('Error', 'l1\nl2'), S('x')], [CODED[0], S('after')], [S('before'), CODED[2]], [CODED[8], CODED[14]]]) {
+    addD(r, ...args);
+  }
+  // Nested, to past the depth limit, where only an error with a code is cut.
+  for (const d of [e, ERR('RangeError', 'l1\nl2\nl3'), ERR('Error'), ERR('TypeError', 'z'.repeat(90)), CODED[0], CODED[8], CODED[14], BUILTIN[10]]) {
+    for (let n = 1; n <= 4; n++) {
+      addD(r, nestO(d, n));
+      addD(r, nestA(d, n));
+    }
+    addD(r, O([['a', N(1)], ['e', d], ['b', S('x')]]));
+    addD(r, O([['first', d], ['second', d]]));
+    addD(r, A([d, d]));
+  }
+  // Error[], long enough to group, and (Error | undefined)[].
+  for (const n of [2, 6, 7, 8, 12, 16, 26, 30, 40]) {
+    addD(r, A(Array.from({ length: n }, (_, i) => ERR(ERROR_KINDS[i % 3], String.fromCharCode(97 + (i % 26))))));
+    addD(r, A(Array.from({ length: n }, () => ERR('Error'))));
+    addD(r, A(Array.from({ length: n }, (_, i) => (i % 4 === 1 ? E(i % 8 === 1 ? null : undefined) : ERR('URIError', 'u' + i)))));
+  }
+  addD(r, A(Array.from({ length: 120 }, (_, i) => ERR('Error', String(i)))));
+  addD(r, A([CODED[2], CODED[3], CODED[4]]));
+  addD(r, O([['errors', A([CODED[10], ERR('Error', 'plain')])], ['count', N(2)]]));
+}
+
+// ---------------------------------------------------------------------------
+// UNKNOWN: unknowns (M6 plan D5) of every kind the subset holds, at the top
+// level and in unknown[] and objects of unknowns: undefined and null as an
+// unknown holds them, and an unknown[] that mixes kinds, which groups from
+// the left only when every element it looks at is a number. Every entry's
+// arguments are unknowns.
+
+const ONE_OF_EACH = [
+  E(undefined), E(null), N(0), N(-0), N(1.5), N(NaN), N(-Infinity), N(1e21), S(''), S('a'), S("it's"), S('x\ny'), B(true), B(false),
+  ERR('Error', 'm'), ERR('TypeError'), A([]), A([N(1), N(2)]), A([S('a'), E(undefined)]), O([]), O([['a', N(1)]]),
+  UA([N(1), S('a'), E(null)]), UO([['u', E(undefined)], ['n', E(null)]]),
+];
+
+function sectionUNKNOWN() {
+  const r = 'UNKNOWN';
+  for (const d of ONE_OF_EACH) addU(r, d);
+  for (const d of [...CODED.slice(0, 3), ...BUILTIN.slice(5, 7)]) addU(r, d);
+  // Several, mixed: a string first is written as it is.
+  for (const args of [[E(undefined), E(null)], [S('a'), E(undefined), N(1)], [N(1), S('a')], [ERR('Error', 'm'), E(null)],
+    [UA([E(undefined)]), UO([['e', ERR('RangeError', 'r')]])], [B(false), A([N(1)]), S('')]]) {
+    addU(r, ...args);
+  }
+  // unknown[]: every kind, and kinds mixed.
+  addU(r, UA(ONE_OF_EACH));
+  for (const d of ONE_OF_EACH) addU(r, UA([d, d]));
+  // Grouping: all numbers pad from the left, anything else from the right.
+  const rnd = mulberry32(SEED + 2);
+  for (let len = 6; len <= 30; len++) {
+    const nums = Array.from({ length: len }, () => N(Math.floor(rnd() * 1000) - 300));
+    addU(r, UA(nums));
+    for (const at of [0, Math.floor(len / 2), len - 1]) {
+      for (const other of [S('s'), E(undefined), E(null), B(true), ERR('Error', 'e')]) {
+        const mixed = nums.slice();
+        mixed[at] = other;
+        addU(r, UA(mixed));
+      }
+    }
+  }
+  for (const len of [101, 102, 110]) {
+    for (const at of [-1, 0, 100, 101]) {
+      if (at >= len) continue;
+      const xs = Array.from({ length: len }, (_, i) => N(i * 7));
+      if (at >= 0) xs[at] = S('x');
+      addU(r, UA(xs));
+    }
+  }
+  // Nested, and to past the depth limit; objects of unknowns.
+  for (const d of [E(undefined), E(null), ERR('Error', 'deep'), UA([N(1), S('a')]), CODED[0]]) {
+    for (let n = 1; n <= 4; n++) {
+      addU(r, UA([n === 1 ? d : UA([nestA(d, n - 2)])]));
+      addU(r, UO([['k', n === 1 ? d : nestO(d, n - 1)]]));
+    }
+  }
+  addU(r, UO(ONE_OF_EACH.map((d, i) => [`k${i}`, d])));
+  addU(r, UO([['data', E(null)], ['error', ERR('Error', 'failed')]]));
+  addU(r, UO([['data', A([N(1), N(2)])], ['error', E(null)]]));
+  // Cycles through unknowns.
+  addU(r, UA([N(1), R(1)], 1));
+  addU(r, UO([['self', R(1)], ['e', ERR('Error', 'x')]], 1));
+  addU(r, UA([UO([['up', R(1)]]), R(1)], 1));
+}
+
+// ---------------------------------------------------------------------------
 
 sectionR1();
 sectionR2();
@@ -1188,10 +1335,19 @@ sectionCIRC();
 const deliberate = entries.length;
 sectionRandom(TOTAL - deliberate);
 sectionMAYBE();
+sectionERROR();
+sectionUNKNOWN();
+
+// The forms an entry of ERROR or UNKNOWN has beyond args and out.
+const extras = (args, any) => ({
+  ...(any ? { any: true } : {}),
+  ...(args.length === 1 ? { str: String(decodeArgs(args)[0]) } : {}),
+});
+const M6 = new Set(['ERROR', 'UNKNOWN']);
 
 const lines = [];
 const index = {};
-entries.forEach(({ section, args }, i) => {
+entries.forEach(({ section, args, any }, i) => {
   let out;
   try {
     out = check(args);
@@ -1199,7 +1355,12 @@ entries.forEach(({ section, args }, i) => {
     err.message = `${section} entry ${i}: ${err.message}`;
     throw err;
   }
-  lines.push(JSON.stringify({ args, out }));
+  if (M6.has(section)) {
+    const { any: flag, ...more } = extras(args, any);
+    lines.push(JSON.stringify({ args, ...(flag ? { any: flag } : {}), out, ...more }));
+  } else {
+    lines.push(JSON.stringify({ args, out }));
+  }
   const line = i + 1;
   if (!index[section]) index[section] = { first: line, last: line, count: 0 };
   if (index[section].last < line - 1) throw new Error(`section ${section} is not contiguous`);
@@ -1214,8 +1375,8 @@ const reread = fs.readFileSync(OUT, 'utf8').split('\n');
 if (reread.pop() !== '') throw new Error('no trailing newline');
 let mismatches = 0;
 for (const [i, text] of reread.entries()) {
-  const { args, out } = JSON.parse(text);
-  if (check(args) !== out) {
+  const { args, out, str } = JSON.parse(text);
+  if (check(args) !== out || (str !== undefined && String(decodeArgs(args)[0]) !== str)) {
     mismatches++;
     if (mismatches <= 5) console.error(`line ${i + 1}: output differs`);
   }

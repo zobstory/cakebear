@@ -13,16 +13,19 @@ import (
 // 24.18 has them. Lowering refuses a replacer, and a value holding a
 // function, a promise or a host value, so none of those reaches here. A
 // Maybe's null is null, and its undefined is left out of an object, and
-// null in an array, as SerializeJSONProperty gives them (M5 plan D8).
+// null in an array, as SerializeJSONProperty gives them (M5 plan D8), and
+// so is an unknown's. An Error is its own enumerable properties (M6 plan
+// D4): `{}`, or its code for one of Node's own (errorJSON).
 
 // JSONStringify is JSON.stringify(v, null, space), given the gap
 // JSONGapNumber or JSONGapString made of space, or JSONGap{} for none.
 //
 // An object's keys are in the order its literal wrote them, as inspect
 // prints them (R6). A value reached twice is written twice, and one that
-// leads back to itself panics where Node throws (see circularMessage).
-func JSONStringify(v any, gap JSONGap) string {
-	e := jsonEncoder{JSONGap: gap}
+// leads back to itself throws the TypeError Node throws (see
+// circularMessage), made at site, the call's (M6 plan D9).
+func JSONStringify(v any, gap JSONGap, site *Site) string {
+	e := jsonEncoder{JSONGap: gap, site: site}
 	e.value(v, jsonKey{})
 	return string(e.buf)
 }
@@ -55,6 +58,7 @@ type jsonEncoder struct {
 	JSONGap
 	buf   []byte
 	stack []jsonFrame // the objects and arrays being written, outermost first
+	site  *Site       // the call's, for the error a cycle throws
 }
 
 // jsonFrame is an object or an array being written, and the key it was
@@ -98,6 +102,18 @@ func (e *jsonEncoder) value(v any, via jsonKey) {
 		e.buf = append(e.buf, BoolToString(x)...)
 	case string:
 		e.buf = appendJSONString(e.buf, x)
+	case jsNull:
+		e.buf = append(e.buf, "null"...)
+	case nil:
+		// An unknown's undefined, as a Maybe's below: an object leaves it
+		// out, an array writes null, and lowering refuses a bare unknown,
+		// whose JSON.stringify may give undefined.
+		if !via.isIndex {
+			panic("cakebear: JSON.stringify of undefined, which returns undefined rather than a string")
+		}
+		e.buf = append(e.buf, "null"...)
+	case *Error:
+		e.errorJSON(x, via)
 	case Object:
 		e.object(x, via)
 	case jsonArray:
@@ -167,8 +183,12 @@ func (e *jsonEncoder) object(o Object, via jsonKey) {
 	e.leave('}')
 }
 
-// isUndefined reports whether v is a Maybe that is undefined.
+// isUndefined reports whether v is undefined: a Maybe that is, or an
+// unknown's.
 func isUndefined(v any) bool {
+	if v == nil {
+		return true
+	}
 	m, ok := v.(maybe)
 	if !ok {
 		return false
@@ -207,12 +227,12 @@ func (a *Array[T]) appendJSON(e *jsonEncoder, via jsonKey) {
 	e.leave(']')
 }
 
-// enter puts a container on the stack, and panics if it is on it already:
+// enter puts a container on the stack, and throws if it is on it already:
 // a value that contains itself has no JSON.
 func (e *jsonEncoder) enter(container any, via jsonKey) {
 	for i, f := range e.stack {
 		if f.container == container {
-			panic("cakebear: JSON.stringify met a cycle (Node throws TypeError: " + circularMessage(e.stack[i:], via) + ")")
+			throwError(ErrorType, circularMessage(e.stack[i:], via), e.site)
 		}
 	}
 	e.stack = append(e.stack, jsonFrame{container: container, via: via})

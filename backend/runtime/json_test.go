@@ -14,10 +14,12 @@ import (
 // jsonEntry is one line of testdata/json-goldens.jsonl: a value, the space
 // JSON.stringify was given, if any, and what Node made of them, a string or
 // the TypeError it threw. OutU is a string holding a lone surrogate, as its
-// code units, which only a gap can put in the output.
+// code units, which only a gap can put in the output. Any says the value is
+// an unknown (M6).
 type jsonEntry struct {
 	Value  json.RawMessage `json:"value"`
 	Space  json.RawMessage `json:"space"`
+	Any    bool            `json:"any"`
 	Out    *string         `json:"out"`
 	OutU   []uint16        `json:"outU"`
 	Throws *string         `json:"throws"`
@@ -43,21 +45,34 @@ func wtf8(units []uint16) string {
 	return string(b)
 }
 
-// stringify is JSONStringify, with the message of a panic, if it panicked.
+// stringify is JSONStringify, with how it failed, if it did: what throws
+// says of a throw, or a panic's value.
 func stringify(v any, gap JSONGap) (out string, panicked any) {
-	defer func() { panicked = recover() }()
-	return JSONStringify(v, gap), nil
+	defer func() {
+		switch p := recover().(type) {
+		case nil:
+		case *Thrown:
+			panicked = throws(func() { panic(p) })
+		default:
+			panicked = p
+		}
+	}()
+	return JSONStringify(v, gap, nil), nil
 }
 
-// cyclePanic is what JSONStringify panics with where Node throws err.
-func cyclePanic(err string) string {
-	return "cakebear: JSON.stringify met a cycle (Node throws " + err + ")"
-}
+// cyclePanic is how stringify fails where Node throws err: with err itself,
+// a TypeError a try can catch (M6 plan D9).
+func cyclePanic(err string) string { return err }
 
 func checkJSONEntry(t *testing.T, line int, e jsonEntry) bool {
 	t.Helper()
 	d := &decoder{t: t, ids: map[int]any{}}
-	v := d.value(e.Value)
+	var v any
+	if e.Any {
+		v = d.unknown(e.Value)
+	} else {
+		v = d.value(e.Value)
+	}
 	gap := JSONGap{}
 	if e.Space != nil {
 		switch space := d.value(e.Space).(type) {

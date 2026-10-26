@@ -111,7 +111,9 @@ func (e *emitter) program(p *ir.Program) string {
 	}
 	out.WriteString("func main() {\n")
 	if e.usesRuntime {
-		out.WriteString("\tdefer " + rtPkg + ".Flush()\n")
+		// Exit flushes the output, and reports a throw nothing caught as
+		// Node does, exit code 1 (M6 plan D6).
+		out.WriteString("\tdefer " + rtPkg + ".Exit()\n")
 	}
 	if mainDomain {
 		// Top-level code runs in the main program's domain (domain.go).

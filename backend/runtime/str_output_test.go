@@ -47,7 +47,7 @@ func TestWellFormed(t *testing.T) {
 func TestResponseBodyIsWellFormed(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	isolate(t)
 	url := serveWith(t, func(_ *IncomingMessage, res *ServerResponse) {
-		res.SetHeader("x-latin1", "caf\u00E9\u00FF\u0080").End("a\xed\xa0\x80b\xed\xb0\x80")
+		res.SetHeader("x-latin1", "caf\u00E9\u00FF\u0080", nil).End("a\xed\xa0\x80b\xed\xb0\x80")
 	})
 	r := fetch(http.DefaultClient, "GET", url)
 	if r.err != nil {
@@ -63,20 +63,22 @@ func TestResponseBodyIsWellFormed(t *testing.T) { //nolint:paralleltest // isola
 }
 
 // setHeader throws in Node for a name that isn't a token and for a value
-// with a character it can't send; each message here was measured on Node
-// 24.18. A header already sent is reported first.
+// with a character it can't send, and so does this, Node's error, which a
+// try can catch (M6 plan D9); each String() here was measured on Node
+// 24.18. A lone surrogate in the name stays in the message, as in Node's
+// string. A header already sent is reported first.
 func TestSetHeaderValidatesLikeNode(t *testing.T) {
 	t.Parallel()
 
 	fresh := func() *ServerResponse { return &ServerResponse{w: httptest.NewRecorder(), status: 200} }
 	for _, c := range []struct {
 		name, header, value string
-		want                string // "" means it must not panic
+		want                string // "" means it must not throw
 	}{
 		{"space in name", "x y", "v", `TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token ["x y"]`},
 		{"bad name and value", "x y", "\xed\xa0\x80", `TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token ["x y"]`},
 		{"empty name", "", "v", `TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token [""]`},
-		{"lone surrogate in name", "x-\xed\xa0\x80", "v", "TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token [\"x-\uFFFD\"]"},
+		{"lone surrogate in name", "x-\xed\xa0\x80", "v", "TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token [\"x-\xed\xa0\x80\"]"},
 		{"colon in name", "x:y", "v", `TypeError [ERR_INVALID_HTTP_TOKEN]: Header name must be a valid HTTP token ["x:y"]`},
 		{"lone surrogate in value", "x-lone", "a\xed\xa0\x80b", `TypeError [ERR_INVALID_CHAR]: Invalid character in header content ["x-lone"]`},
 		{"past U+00FF", "x-100", "\u0100", `TypeError [ERR_INVALID_CHAR]: Invalid character in header content ["x-100"]`},
@@ -89,14 +91,14 @@ func TestSetHeaderValidatesLikeNode(t *testing.T) {
 		{"tab and spaces", "x-tab", " a\tb ", ""},
 		{"U+00FF", "x-ff", "\u00FF\u0080", ""},
 	} {
-		got := panicked(func() { fresh().SetHeader(c.header, c.value) })
+		got := throws(func() { fresh().SetHeader(c.header, c.value, nil) })
 		if got != c.want {
-			t.Errorf("%s: panic = %q, want %q", c.name, got, c.want)
+			t.Errorf("%s: threw %q, want %q", c.name, got, c.want)
 		}
 	}
 	late := fresh()
-	late.WriteHead(200)
-	if got := panicked(func() { late.SetHeader("x y", "\xed\xa0\x80") }); !strings.Contains(got, "ERR_HTTP_HEADERS_SENT") {
-		t.Errorf("after the head, panic = %q, want ERR_HTTP_HEADERS_SENT first", got)
+	late.WriteHead(200, nil)
+	if got := throws(func() { late.SetHeader("x y", "\xed\xa0\x80", nil) }); !strings.Contains(got, "ERR_HTTP_HEADERS_SENT") {
+		t.Errorf("after the head, threw %q, want ERR_HTTP_HEADERS_SENT first", got)
 	}
 }

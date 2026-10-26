@@ -118,10 +118,11 @@ func TestCondsMatchNode(t *testing.T) {
 	matchesNode(t, buildProgram(t, "conds", condsProgram), nodeConds, 20)
 }
 
-// TestAssertionFailuresSayWhatNodeDoes: a `!` on a value that is empty stops
-// the program, exit 2 with nothing printed, saying what Node does instead.
-// Node 24.18 printed NaN for the first, and threw this TypeError, exit 1, for
-// the second.
+// TestAssertionFailuresSayWhatNodeDoes: a `!` on a value that is empty
+// does what Node 24.18 does with it. Node printed NaN for the first, where
+// cakebear stops the program, exit 2 with nothing printed, saying so. Node
+// threw a TypeError, exit 1, for the second, and so does cakebear (M6 plan
+// D9), its report ending as Node's does under --stack-trace-limit=0.
 func TestAssertionFailuresSayWhatNodeDoes(t *testing.T) {
 	t.Parallel()
 
@@ -139,9 +140,13 @@ function get(): P | null {
 }
 const p: P | null = get();
 console.log(p!.x);
-`, "cakebear: p is null, though a ! asserted it isn't (Node throws TypeError: Cannot read properties of null (reading 'x'))"},
+`, "[TypeError: Cannot read properties of null (reading 'x')]"},
 	} {
 		bin := buildProgram(t, "asserted", tt.src)
+		if !strings.HasPrefix(tt.want, "cakebear: ") {
+			checkUncaught(t, bin, "", tt.want)
+			continue
+		}
 		var stdout, stderr strings.Builder
 		cmd := exec.Command(bin)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr

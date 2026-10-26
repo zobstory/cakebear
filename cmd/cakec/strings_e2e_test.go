@@ -1,11 +1,6 @@
 package main
 
-import (
-	"errors"
-	"os/exec"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // stringsProgram covers the M4 strings step (~/Desktop/cakebear/m4-strings-plan.md):
 //   - template literals of strings, numbers and booleans, String() and
@@ -60,10 +55,10 @@ func TestStringsMatchNode(t *testing.T) {
 	matchesNode(t, buildProgram(t, "strings", stringsProgram), nodeStrings, 20)
 }
 
-// TestStringBuiltinsPanicAsNodeThrows: what Node throws for, cakebear panics
-// for, with Node's message (exit 2, where Node exits 1), until M6 brings
-// errors.
-func TestStringBuiltinsPanicAsNodeThrows(t *testing.T) {
+// TestStringBuiltinsThrowAsNode: what Node throws for, cakebear throws for,
+// Node's error (M6 plan D9), which nothing catches here, so the program ends
+// as Node's does, its report as Node's under --stack-trace-limit=0.
+func TestStringBuiltinsThrowAsNode(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct{ name, expr, want string }{
@@ -75,20 +70,7 @@ func TestStringBuiltinsPanicAsNodeThrows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			bin := buildProgram(t, "throws", "export {};\nconsole.log(\"before\");\nconsole.log("+tt.expr+");\n")
-			var stdout, stderr strings.Builder
-			cmd := exec.Command(bin)
-			cmd.Stdout, cmd.Stderr = &stdout, &stderr
-			err := cmd.Run()
-			var exit *exec.ExitError
-			if !errors.As(err, &exit) || exit.ExitCode() != 2 {
-				t.Fatalf("%v, want exit 2; stderr:\n%s", err, stderr.String())
-			}
-			if got := strings.ReplaceAll(stderr.String(), "\n\t", "\n"); !strings.Contains(got, tt.want) {
-				t.Errorf("stderr is\n%s\nwant it to hold Node's message %q", stderr.String(), tt.want)
-			}
-			if stdout.String() != "before\n" {
-				t.Errorf("stdout = %q, want only what ran before the panic", stdout.String())
-			}
+			checkUncaught(t, bin, "before\n", "["+tt.want+"]")
 		})
 	}
 }
