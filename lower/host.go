@@ -164,7 +164,7 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 		return nil, true
 	}
 
-	call := &ir.HostCall{Op: spec.op, Typ: l.typeOf(n), Span: l.span(n)}
+	call := &ir.HostCall{Op: spec.op, Typ: l.typeOf(n), Span: l.calleeCaret(l.span(n), n)}
 	// A method needs its receiver. A free function reached through a
 	// namespace import (`http.createServer`) has none: `http` is not a value.
 	if m.iface != "" {

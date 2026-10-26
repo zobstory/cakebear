@@ -99,9 +99,10 @@ func (e *Let) ExprSpan() Span     { return e.Span }
 
 // OrUndefined is t, or a maybe of it: the type of a read that is undefined
 // where there is no t to read, past an array's end, say (D9). A maybe is one
-// already, its undefined the read's.
+// already, its undefined the read's, and so is an unknown, which holds
+// undefined itself.
 func OrUndefined(t Type) Type {
-	if t.Kind == KindMaybe {
+	if t.Kind == KindMaybe || t == Unknown {
 		return t
 	}
 	return MaybeOf(t)

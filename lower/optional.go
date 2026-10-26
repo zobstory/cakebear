@@ -49,7 +49,7 @@ func (l *lowerer) inExpr(n *ast.Node, b *ast.BinaryExpression) ir.Expr {
 		l.failf(n, "in with %q, which isn't a property of %s, is not supported yet", key.Text(), t.Shape)
 		return nil
 	}
-	return &ir.HasField{Object: obj, Field: i, Span: l.span(n)}
+	return &ir.HasField{Object: obj, Field: i, Span: l.caretAfter(l.span(n), b.Left)}
 }
 
 // deleteStatement lowers the statement `delete o.p`, p an optional property:
@@ -75,5 +75,10 @@ func (l *lowerer) deleteStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		l.invalidf(stmt, "delete of %s, which isn't optional", f.Name)
 		return nil, true
 	}
-	return []ir.Stmt{&ir.FieldDelete{Object: obj, Field: i, Span: l.span(stmt)}}, true
+	// V8 records the object, or for a name, the delete itself.
+	at, object := l.span(stmt), target.AsPropertyAccessExpression().Expression
+	if records(object) {
+		at = l.recordedCaret(at, object)
+	}
+	return []ir.Stmt{&ir.FieldDelete{Object: obj, Field: i, Span: at}}, true
 }

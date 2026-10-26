@@ -42,6 +42,16 @@ func BoxMaybe[T any](m Maybe[T]) any {
 	return nil
 }
 
+// UnknownOrUndefined is OrUndefined for a read of an unknown, an element of
+// an `unknown[]`: the element as it is, or undefined, which an unknown holds
+// itself, when there is none.
+func UnknownOrUndefined(u any, ok bool) any {
+	if !ok {
+		return nil
+	}
+	return u
+}
+
 // Unbox is u as the T TypeScript has narrowed it to, by typeof, instanceof
 // or a test of its own (ir.Unbox). The narrowing can be unsound, as when a
 // callback assigns the variable between the test and the use: then this

@@ -113,6 +113,17 @@ func (l *lowerer) coalesce(n *ast.Node) ir.Expr {
 		return nil
 	}
 	xt := x.ExprType()
+	if xt == ir.Unknown {
+		// Tested as it is (D5), and so is the whole: the checker's type for
+		// it, `{} | D`, is no type the subset holds.
+		if d = l.box(b.Right, d); d == nil {
+			return nil
+		}
+		return l.hold(x, func(held func() ir.Expr) ir.Expr {
+			test := &ir.IsEmpty{Value: held(), Undefined: true, Null: true, Span: l.span(b.Left)}
+			return &ir.Cond{Test: test, Then: d, Else: held(), Typ: ir.Unknown, Span: l.span(n)}
+		})
+	}
 	if xt.Kind != ir.KindMaybe {
 		return x
 	}
@@ -280,7 +291,12 @@ func (l *lowerer) coalesceAssign(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		cur = &ir.IndexGet{Array: get.Array, Index: get.Index, Typ: ir.OrUndefined(get.Typ), OrUndefined: true, Span: get.Span}
 	}
 	t := cur.ExprType()
-	if t.Kind != ir.KindMaybe {
+	switch {
+	case t == ir.Unknown:
+		if d = l.box(b.Right, d); d == nil {
+			return nil, true
+		}
+	case t.Kind != ir.KindMaybe:
 		return nil, true // never null or undefined, so never assigned
 	}
 	if d = into(d, writtenAs(cur)); !d.ExprType().Equal(writtenAs(cur)) {

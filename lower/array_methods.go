@@ -58,7 +58,7 @@ func (l *lowerer) arrayMethod(n *ast.Node, c *ast.CallExpression, access *ast.Pr
 	t := arr.ExprType()
 	elem := *t.Elem
 	visitor := func(result ir.Type) ir.Type { return ir.FuncType([]ir.Type{elem, ir.Number, t}, result) }
-	op := &ir.ArrayOp{Method: m, Array: arr, Span: l.span(n)}
+	op := &ir.ArrayOp{Method: m, Array: arr, Span: l.calleeCaret(l.span(n), n)}
 
 	switch m {
 	case ir.ArrayMap:

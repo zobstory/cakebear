@@ -29,6 +29,17 @@ type Span struct {
 	End   int
 	Line  int // 1-based
 	Col   int // 1-based
+	// Caret is where the report of an error thrown here points, when that
+	// isn't Line and Col: where V8 records the operation, such as a method
+	// call at the method's name, which may be on a line of its own (M6 plan
+	// D6). The zero Pos is Line and Col.
+	Caret Pos
+}
+
+// Pos is a place in a source file: a 1-based line and column.
+type Pos struct {
+	Line int
+	Col  int
 }
 
 func (s Span) String() string {

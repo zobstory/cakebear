@@ -232,13 +232,19 @@ func (l *lowerer) maybeOperands(n *ast.Node, op ir.BinaryOp, left, right ir.Expr
 }
 
 // undefinedReturns gives every bare `return` in body, and the end of it, the
-// value undefined, when the function returns a maybe (result, its element
-// for an async function): TypeScript lets such a function end, or return
-// nothing, where it returns undefined. Nested function literals have their
-// own results, and their own returns.
+// value undefined, when the function returns a maybe or an unknown (result,
+// its element for an async function): TypeScript lets such a function end,
+// or return nothing, where it returns undefined. Nested function literals
+// have their own results, and their own returns.
 func undefinedReturns(body []ir.Stmt, result ir.Type, span ir.Span) []ir.Stmt {
-	if result.Kind != ir.KindMaybe {
+	if result.Kind != ir.KindMaybe && result != ir.Unknown {
 		return body
+	}
+	undefined := func(span ir.Span) ir.Expr {
+		if result == ir.Unknown {
+			return &ir.Box{Value: &ir.UndefinedLit{Span: span}, Span: span}
+		}
+		return &ir.Empty{Typ: result, Span: span}
 	}
 	var fill func(stmts []ir.Stmt)
 	fill = func(stmts []ir.Stmt) {
@@ -246,7 +252,7 @@ func undefinedReturns(body []ir.Stmt, result ir.Type, span ir.Span) []ir.Stmt {
 			switch s := s.(type) {
 			case *ir.Return:
 				if s.Value == nil {
-					s.Value = &ir.Empty{Typ: result, Span: s.Span}
+					s.Value = undefined(s.Span)
 				}
 			case *ir.If:
 				fill(s.Then)
@@ -272,7 +278,7 @@ func undefinedReturns(body []ir.Stmt, result ir.Type, span ir.Span) []ir.Stmt {
 			return body
 		}
 	}
-	return append(body, &ir.Return{Value: &ir.Empty{Typ: result, Span: span}, Span: span})
+	return append(body, &ir.Return{Value: undefined(span), Span: span})
 }
 
 // returnedType is what a function's returns carry: its result, or for an

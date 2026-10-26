@@ -36,7 +36,7 @@ func (e *emitter) arrayLit(x *ir.ArrayLit) string {
 // indexGet is `xs[i]`, which panics outside the array (D8), or, where the
 // read may be undefined, is undefined there, as Node's is (M5 plan D9).
 func (e *emitter) indexGet(x *ir.IndexGet) string {
-	arr := e.receiver(x.Array, elementAccess(x.Index, false))
+	arr := e.receiver(x.Array, elementAccess(x.Index, false, x.Span))
 	if x.OrUndefined {
 		return e.orUndefined(x.Array, arr+".Lookup("+e.expr(x.Index)+")")
 	}
@@ -45,16 +45,19 @@ func (e *emitter) indexGet(x *ir.IndexGet) string {
 
 // orUndefined makes read, a runtime call giving an element of array and
 // whether there was one, the `T | undefined` of the IR's OrUndefined (D9):
-// a Maybe of the element, or for an array of maybes, the element itself,
-// whose own undefined is the read's.
+// a Maybe of the element, or for an array of maybes or of unknowns, the
+// element itself, whose own undefined is the read's.
 //
 //	cakebearrt.OrUndefined(xs.Pop())
 //	cakebearrt.MaybeOrUndefined(ms.Lookup(i))
 func (e *emitter) orUndefined(array ir.Expr, read string) string {
 	e.usesRuntime = true
 	wrap := "OrUndefined"
-	if elem := array.ExprType().Elem; elem != nil && elem.Kind == ir.KindMaybe {
+	switch elem := array.ExprType().Elem; {
+	case elem != nil && elem.Kind == ir.KindMaybe:
 		wrap = "MaybeOrUndefined"
+	case elem != nil && *elem == ir.Unknown:
+		wrap = "UnknownOrUndefined"
 	}
 	return rtPkg + "." + wrap + "(" + read + ")"
 }
@@ -69,7 +72,7 @@ func (e *emitter) indexSet(s *ir.IndexSet) string {
 		e.order = e.order || isCall(x) || innerCall(x)
 	}
 	defer func() { e.order = saved }()
-	return fmt.Sprintf("%s.Set(%s, %s)", e.receiver(s.Array, elementAccess(s.Index, true)), e.expr(s.Index), e.expr(s.Value))
+	return fmt.Sprintf("%s.Set(%s, %s)", e.receiver(s.Array, elementAccess(s.Index, true, s.Span)), e.expr(s.Index), e.expr(s.Value))
 }
 
 // arrayOp emits an array member (D16), each a method or a function of the
@@ -80,9 +83,9 @@ func (e *emitter) indexSet(s *ir.IndexSet) string {
 // (order.go). A method that takes a callback passes the domain the call
 // runs in, which the callback runs in too.
 func (e *emitter) arrayOp(x *ir.ArrayOp) string {
-	use := reading(x.Method.String())
+	use := reading(x.Method.String(), x.Span)
 	if x.Method == ir.ArraySetLength {
-		use = writing("length") // its String is "length ="
+		use = writing("length", x.Span) // its String is "length ="
 	}
 	arr := e.receiver(x.Array, use)
 	args := make([]string, len(x.Args))
@@ -185,7 +188,7 @@ func unjoinable(t ir.Type) string {
 func (e *emitter) forOf(s *ir.ForOf, pad string, depth int) {
 	name := mangle(s.Name)
 	fmt.Fprintf(&e.buf, "%s{\n", pad)
-	fmt.Fprintf(&e.buf, "%s\t%s := %s\n", pad, ofVar, e.fullAs(s.Array, iterating))
+	fmt.Fprintf(&e.buf, "%s\t%s := %s\n", pad, ofVar, e.fullAs(s.Array, iterating(s.Span)))
 	fmt.Fprintf(&e.buf, "%s\tfor %s := 0; %s < %s.Len(); %s++ {\n", pad, ofIndex, ofIndex, ofVar, ofIndex)
 	fmt.Fprintf(&e.buf, "%s\t\t%s := %s.At(%s)\n", pad, name, ofVar, ofIndex)
 	fmt.Fprintf(&e.buf, "%s\t\t_ = %s\n", pad, name)

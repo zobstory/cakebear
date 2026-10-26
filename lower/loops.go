@@ -125,13 +125,18 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		stored = u.Value
 		sum = intoMaybe(sum, writtenAs(stored))
 	}
+	// V8 records `--x` at x, and `x--` and `x -= v` at the operator.
+	at := l.caretAfter(l.span(stmt), target)
+	if expr.Kind == ast.KindPrefixUnaryExpression {
+		at = l.recordedCaret(l.span(stmt), target)
+	}
 	switch get := stored.(type) {
 	case *ir.FieldGet:
-		return []ir.Stmt{&ir.FieldSet{Object: get.Object, Field: get.Field, Value: sum, Span: l.span(stmt)}}, true
+		return []ir.Stmt{&ir.FieldSet{Object: get.Object, Field: get.Field, Value: sum, Span: at}}, true
 	case *ir.IndexGet:
-		return []ir.Stmt{&ir.IndexSet{Array: get.Array, Index: get.Index, Value: sum, Span: l.span(stmt)}}, true
+		return []ir.Stmt{&ir.IndexSet{Array: get.Array, Index: get.Index, Value: sum, Span: at}}, true
 	case *ir.ArrayOp: // xs.length
-		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: get.Array, Args: []ir.Expr{sum}, Typ: ir.Void, Span: l.span(stmt)}
+		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: get.Array, Args: []ir.Expr{sum}, Typ: ir.Void, Span: at}
 		return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
 	}
 	name, module := l.ref(target)

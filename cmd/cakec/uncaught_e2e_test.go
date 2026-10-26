@@ -13,8 +13,8 @@ import (
 // the output so far, then on stderr a report, then exit code 1. The report
 // ends with the error as Node prints it under --stack-trace-limit=0, a
 // blank line, and cakebear's version where Node prints its own. Above that
-// comes the source excerpt of where it points, once lowering gives the
-// emitter its sites (M6 step 3); until then there is none.
+// come the place it points at and the source excerpt, which
+// TestUncaughtReportsQuoteAsNode holds to Node's.
 
 // checkUncaught runs bin, expecting it to print stdout, then end with the
 // uncaught error whose report Node 24.18 ended with body, under

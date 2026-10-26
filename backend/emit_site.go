@@ -16,8 +16,12 @@ const siteTable = "ts_sites"
 // (runtime/thrown.go), the place an uncaught error's report points at (M6
 // plan D6): a throw, a `new Error`, or a call the runtime throws for. Each
 // place is one entry of the program's site table, however many calls name
-// it. A span with no file is a place the report doesn't know: nil.
+// it. The place is the span's caret, where lowering set one, and otherwise
+// its start. A span with no file is a place the report doesn't know: nil.
 func (e *emitter) siteArg(at ir.Span) string {
+	if at.Caret.Line > 0 {
+		at.Line, at.Col = at.Caret.Line, at.Caret.Col
+	}
 	if at.File == "" || at.Line < 1 {
 		return "nil"
 	}

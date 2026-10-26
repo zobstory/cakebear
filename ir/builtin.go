@@ -1,9 +1,6 @@
 package ir
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 // Builtin is one of the standard library's string and number functions the
 // subset compiles (the M4 strings step): a string method, a conversion, a
@@ -41,7 +38,10 @@ const (
 	StrIndex // s[i] typed string, which panics past the end, as xs[i] does (M4 D8)
 	StrIndexOrUndefined
 
-	ToString     // String(x), x.toString(), a template's ${x}: x a primitive
+	ToString     // String(x), a template's ${x}: x a primitive
+	// x.toString(): ToString of x, read as a method's receiver, so a
+	// null or undefined x throws, where String(x) carries on with it.
+	ToStringMethod
 	NumToFixed   // n.toFixed(digits)
 	NumFromStr   // Number(s)
 	NumParseInt  // parseInt(s, radix?)
@@ -96,6 +96,7 @@ var builtinSigs = map[Builtin]BuiltinSig{
 	StrIndex:            {"[i]", []Type{String, Number}, nil, String},
 	StrIndexOrUndefined: {"[i]", []Type{String, Number}, nil, MaybeOf(String)},
 	ToString:            {"String", nil, nil, String}, // one primitive, checked on its own
+	ToStringMethod:      {"toString", nil, nil, String},
 	NumToFixed:          {"toFixed", []Type{Number, Number}, nil, String},
 	NumFromStr:          {"Number", str1, nil, Number},
 	NumParseInt:         {"parseInt", str1, num1, Number},
@@ -170,10 +171,10 @@ func checkBuiltin(x *BuiltinCall) error {
 	if !x.Typ.Equal(sig.Result) {
 		return fmt.Errorf("%s gives a %s, not a %s", sig.Name, sig.Result, x.Typ)
 	}
-	if x.Fn == ToString {
+	if x.Fn == ToString || x.Fn == ToStringMethod {
 		// A maybe of one is "undefined" or "null" when it is empty (M5 D8).
 		if len(x.Args) != 1 || !ToStringable(x.Args[0].ExprType()) {
-			return errors.New("String takes one primitive, or a maybe of one, an Error or an unknown")
+			return fmt.Errorf("%s takes one primitive, or a maybe of one, an Error or an unknown", sig.Name)
 		}
 		return nil
 	}

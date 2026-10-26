@@ -99,8 +99,8 @@ if (r.error !== null) {
 	if g, ok := initOf(t, m, 6).(*ir.ErrorGet); !ok || g.Prop != ir.ErrorName {
 		t.Errorf("a.name is %#v", initOf(t, m, 6))
 	}
-	if c, ok := initOf(t, m, 7).(*ir.BuiltinCall); !ok || c.Fn != ir.ToString || c.Args[0].ExprType() != ir.Error {
-		t.Errorf("a.toString() is %#v, want ToString of the Error, as String(a) is", initOf(t, m, 7))
+	if c, ok := initOf(t, m, 7).(*ir.BuiltinCall); !ok || c.Fn != ir.ToStringMethod || c.Args[0].ExprType() != ir.Error {
+		t.Errorf("a.toString() is %#v, want the toString method of the Error, whose receiver is read", initOf(t, m, 7))
 	}
 	field := p.Shapes[0].Fields[0]
 	if field.Name != "error" || !field.Type.Equal(ir.MaybeOf(ir.Error)) {

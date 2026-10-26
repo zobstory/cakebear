@@ -172,7 +172,7 @@ func (l *lowerer) errorCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 		if e == nil {
 			return nil, true
 		}
-		return &ir.BuiltinCall{Fn: ir.ToString, Args: []ir.Expr{e}, Typ: ir.String, Span: l.span(n)}, true
+		return &ir.BuiltinCall{Fn: ir.ToStringMethod, Args: []ir.Expr{e}, Typ: ir.String, Span: l.calleeCaret(l.span(n), n)}, true
 	}
 	if c.Expression.Kind != ast.KindIdentifier {
 		return nil, false
@@ -284,6 +284,14 @@ func (l *lowerer) typeOfTest(n *ast.Node) (ir.Expr, bool) {
 // anything holding one, is refused.
 func (l *lowerer) boxed(n *ast.Node, v ir.Expr) ir.Expr {
 	if v.ExprType() == ir.Unknown || l.slotType(n) != ir.Unknown {
+		return v
+	}
+	return l.box(n, v)
+}
+
+// box is v, the value of n, as an unknown holds it, whatever n's slot.
+func (l *lowerer) box(n *ast.Node, v ir.Expr) ir.Expr {
+	if v.ExprType() == ir.Unknown {
 		return v
 	}
 	v = asNumber(v)

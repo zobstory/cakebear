@@ -113,9 +113,9 @@ func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 		// An optional property is a maybe that an object may leave out (M5
 		// plan D3). Its type has undefined in it unless the program sets
 		// exactOptionalPropertyTypes, but a read of an absent one gives
-		// undefined either way.
+		// undefined either way. An unknown holds undefined itself.
 		optional := flags&ast.SymbolFlagsOptional != 0
-		if optional && ft.Kind != ir.KindMaybe {
+		if optional && ft.Kind != ir.KindMaybe && ft != ir.Unknown {
 			ft = ir.MaybeOf(ft)
 		}
 		fields = append(fields, ir.Field{Name: name, Type: ft, Optional: optional})
@@ -293,7 +293,7 @@ func (l *lowerer) fieldGet(n *ast.Node) (ir.Expr, bool) {
 		return nil, true
 	}
 	shape := recv.ExprType().Shape
-	get := &ir.FieldGet{Object: recv, Field: i, Typ: shape.Fields[i].Type, Span: l.span(n)}
+	get := &ir.FieldGet{Object: recv, Field: i, Typ: shape.Fields[i].Type, Span: l.caretAt(l.span(n), access.Name())}
 	return narrowed(get, l.typeOf(n), l.span(n)), true
 }
 
@@ -311,7 +311,7 @@ func (l *lowerer) fieldSet(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
 	if recv == nil || v == nil {
 		return nil, true
 	}
-	return []ir.Stmt{&ir.FieldSet{Object: recv, Field: i, Value: v, Span: l.span(stmt)}}, true
+	return []ir.Stmt{&ir.FieldSet{Object: recv, Field: i, Value: v, Span: l.caretAfter(l.span(stmt), target)}}, true
 }
 
 // exact holds a value of an object type to the slot it fills (D5): the

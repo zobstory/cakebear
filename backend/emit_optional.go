@@ -12,8 +12,9 @@ import (
 // table's business: the runtime prints and serialises the keys the table
 // lists, so a property's key moves with it, onto the table when the program
 // writes it and off when it deletes it (runtime.Layout's With and Without).
-// The struct field holds a Maybe, which is undefined, its zero, whenever the
-// object lacks the property, so a read needs no look at the table.
+// The struct field holds a Maybe, or an unknown's any, which is undefined,
+// its zero, whenever the object lacks the property, so a read needs no look
+// at the table.
 //
 // A write to an optional property, and a delete of one, is a method of the
 // shape's struct, one per field and kind, generated for those the program
@@ -74,7 +75,7 @@ func (e *emitter) fieldDelete(s *ir.FieldDelete) string {
 	saved := e.order
 	e.order = innerCall(s.Object)
 	defer func() { e.order = saved }()
-	return e.object(s.Object, deleting) + "." + deleterName(s.Field) + "()"
+	return e.object(s.Object, deleting(s.Span)) + "." + deleterName(s.Field) + "()"
 }
 
 // hasField emits `"f" in obj` as a look at obj's table, which lists a
@@ -82,7 +83,7 @@ func (e *emitter) fieldDelete(s *ir.FieldDelete) string {
 // undefined. Has is a call, so Go orders it among the calls around it, and
 // obj.ts_layout is read before it, lexically.
 func (e *emitter) hasField(x *ir.HasField) string {
-	return e.object(x.Object, searching(keyOf(x.Object, x.Field))) + "." + layoutField + ".Has(" + strconv.Itoa(x.Field) + ")"
+	return e.object(x.Object, searching(keyOf(x.Object, x.Field), x.Span)) + "." + layoutField + ".Has(" + strconv.Itoa(x.Field) + ")"
 }
 
 // optionalMethods renders the setters and deleters of s's fields that the
@@ -104,9 +105,13 @@ func (e *emitter) optionalMethods(b *strings.Builder, s *ir.Shape) {
 		if e.optionals[optionalOp{shape: s, field: i, delete: true}] {
 			// The value goes with the key, so a read of the field reads
 			// undefined without looking at the table.
+			zero := typ + "{}"
+			if f.Type == ir.Unknown {
+				zero = "nil"
+			}
 			fmt.Fprintf(b, "// %s is `delete o%s`.\n", deleterName(i), propertyAccess(f.Name))
 			fmt.Fprintf(b, "func (o *%s) %s() {\n", name, deleterName(i))
-			fmt.Fprintf(b, "\to.%s = o.%[1]s.Without(%d)\n\to.%s = %s{}\n}\n\n", layoutField, i, field, typ)
+			fmt.Fprintf(b, "\to.%s = o.%[1]s.Without(%d)\n\to.%s = %s\n}\n\n", layoutField, i, field, zero)
 		}
 	}
 }

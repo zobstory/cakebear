@@ -125,6 +125,16 @@ func TestOptionalFields(t *testing.T) {
 		t.Errorf("delete from a number: %v", err)
 	}
 
+	// An unknown holds undefined itself, so it is optional as it is.
+	var unknowns Shapes
+	u := unknowns.Intern("", []Field{{Name: "b", Type: Unknown, Optional: true}})
+	if err := (&Program{Modules: []*Module{{Name: "t"}}, Shapes: unknowns.All()}).Validate(); err != nil {
+		t.Errorf("an optional unknown: %v", err)
+	}
+	if got := u.String(); got != "{ b?: unknown }" {
+		t.Errorf("the optional unknown's shape is %q", got)
+	}
+
 	var bad Shapes
 	bad.Intern("", []Field{{Name: "b", Type: String, Optional: true}})
 	p := &Program{Modules: []*Module{{Name: "t"}}, Shapes: bad.All()}
