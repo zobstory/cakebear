@@ -17,9 +17,9 @@ import (
 // must be in a bundled lib. The interface is spread across five of them, and a
 // program that augments it has added members with nothing behind them.
 //
-// What M2 leaves out is refused by name: reject and errors (M6), adopting one
-// promise into another, .then and the other promise methods, top-level await,
-// and a timer callback that is anything but `() => void`.
+// What is still refused by name: adopting one promise into another, .then
+// and the other promise methods, an async executor, and a timer callback
+// that is anything but `() => void`. reject came with errors (M6 step 4).
 
 // firstTopLevelAwait returns file's first await outside any function, or nil.
 // An ES module's top-level code may await, and then runs as an async body (M2
@@ -214,24 +214,26 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 		return nil
 	}
 	params := exec.Parameters()
-	if len(params) > 1 {
-		l.failf(params[1], "reject is not supported yet; it comes with errors, in M6")
-		return nil
-	}
 	if !l.closureShapeOK(exec) {
 		return nil
 	}
 
 	// resolve is typed `(value: T | PromiseLike<T>) => void`. The union is
 	// there for adopting another promise, which resolvesWithPromise refuses,
-	// so what is left is a plain function (ir.ResolveType).
+	// so what is left is a plain function (ir.ResolveType). reject is typed
+	// `(reason?: any) => void`, and takes its reason as an unknown holds it
+	// (ir.RejectType): a call boxes it (boxedArgs), and leaving it out
+	// passes undefined.
 	elem := *typ.Elem
-	if len(params) == 1 {
-		if sym := l.checker.GetSymbolAtLocation(params[0].Name()); sym != nil {
+	for i, t := range []ir.Type{ir.ResolveType(elem), ir.RejectType()} {
+		if i >= len(params) || params[i].Name().Kind != ast.KindIdentifier {
+			continue
+		}
+		if sym := l.checker.GetSymbolAtLocation(params[i].Name()); sym != nil {
 			if l.resolvers == nil {
 				l.resolvers = map[*ast.Symbol]ir.Type{}
 			}
-			l.resolvers[sym] = ir.ResolveType(elem)
+			l.resolvers[sym] = t
 		}
 	}
 	executor := l.closureFor(exec, ir.ExecutorType(elem).Sig, nil, true)

@@ -108,6 +108,58 @@ func must[T any](t *testing.T, x any, what string) T {
 
 var voidPromise = ir.PromiseOf(ir.Void)
 
+// TestLowerReject (M6 step 4): an executor's reject is its second
+// parameter, `(reason: unknown) => void`, and a call boxes the reason, as an
+// unknown holds it, whatever TypeScript's any let through: an Error, a
+// string, or nothing, which is undefined.
+func TestLowerReject(t *testing.T) {
+	t.Parallel()
+
+	m := lowerClean(t, `function check(code: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (code > 0) {
+      reject(new RangeError("bad"));
+    } else if (code < 0) {
+      reject();
+    } else {
+      reject("plain");
+    }
+  });
+}
+`)
+	np := must[*ir.NewPromise](t, must[*ir.Return](t, m.Funcs[0].Body[0], "check's statement").Value, "check's return value")
+	exec := must[*ir.FuncLit](t, np.Executor, "the executor")
+	if len(exec.Params) != 2 || exec.Params[1].Name != "reject" || !exec.Params[1].Type.Equal(ir.RejectType()) {
+		t.Fatalf("executor params = %+v, want resolve, then reject: (unknown) => void", exec.Params)
+	}
+	var reasons []ir.Expr
+	var walk func(stmts []ir.Stmt)
+	walk = func(stmts []ir.Stmt) {
+		for _, st := range stmts {
+			switch st := st.(type) {
+			case *ir.If:
+				walk(st.Then)
+				walk(st.Else)
+			case *ir.ExprStmt:
+				call := must[*ir.Call](t, st.Expr, "a statement")
+				if call.Callee != "reject" || len(call.Args) != 1 {
+					t.Fatalf("call %#v, want reject with one argument", call)
+				}
+				reasons = append(reasons, call.Args[0])
+			}
+		}
+	}
+	walk(exec.Body)
+	if len(reasons) != 3 {
+		t.Fatalf("found %d rejects, want 3", len(reasons))
+	}
+	for i, want := range []ir.Type{ir.Error, ir.Undefined, ir.String} {
+		if box, ok := reasons[i].(*ir.Box); !ok || box.Value.ExprType() != want {
+			t.Errorf("reject %d's reason is %#v, want a %s boxed", i+1, reasons[i], want)
+		}
+	}
+}
+
 // sleep.ts: a plain function returning a promise its executor resolves from a
 // timer, and an async function awaiting it.
 func TestLowerSleep(t *testing.T) {
@@ -366,7 +418,6 @@ func TestAsyncRefusals(t *testing.T) {
 			"await needs a promise; awaiting a number is not supported yet"},
 		{"returning a promise from async", g + "async function f(): Promise<number> {\n  return g();\n}\n",
 			"an async function returning a promise is not supported yet"},
-		{"reject", "const p: Promise<void> = new Promise((resolve, reject) => {});\n", "reject is not supported yet; it comes with errors, in M6"},
 		{"resolve with a promise", g + "const p: Promise<number> = new Promise((resolve) => {\n  resolve(g());\n});\n",
 			"resolving a promise with another promise is not supported yet"},
 		{"executor not inline", "function ex(resolve: () => void): void {}\nconst p: Promise<void> = new Promise(ex);\n",
