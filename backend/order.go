@@ -151,6 +151,18 @@ func operands(x ir.Expr) []ir.Expr {
 		return []ir.Expr{x.Array, x.Index}
 	case *ir.ArrayOp:
 		return append([]ir.Expr{x.Array}, x.Args...)
+	case *ir.NewError:
+		return []ir.Expr{x.Message}
+	case *ir.ErrorGet:
+		return []ir.Expr{x.Error}
+	case *ir.Box:
+		return []ir.Expr{x.Value}
+	case *ir.Unbox:
+		return []ir.Expr{x.Value}
+	case *ir.InstanceOf:
+		return []ir.Expr{x.Value}
+	case *ir.TypeOf:
+		return []ir.Expr{x.Value}
 	default:
 		panic(fmt.Sprintf("backend: evaluation order has no case for %T", x))
 	}

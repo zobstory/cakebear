@@ -62,6 +62,14 @@ func inspectStmt(s Stmt, visit func(node any)) {
 	case *ForOf:
 		inspectExpr(s.Array, visit)
 		inspectStmts(s.Body, visit)
+	case *Throw:
+		inspectExpr(s.Value, visit)
+	case *Try:
+		inspectStmts(s.Body, visit)
+		if s.Catch != nil {
+			inspectStmts(s.Catch.Body, visit)
+		}
+		inspectStmts(s.Finally, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for statement %T", s))
 	}
@@ -139,6 +147,18 @@ func inspectExpr(e Expr, visit func(node any)) {
 	case *ArrayOp:
 		inspectExpr(e.Array, visit)
 		inspectExprs(e.Args, visit)
+	case *NewError:
+		inspectExpr(e.Message, visit)
+	case *ErrorGet:
+		inspectExpr(e.Error, visit)
+	case *Box:
+		inspectExpr(e.Value, visit)
+	case *Unbox:
+		inspectExpr(e.Value, visit)
+	case *InstanceOf:
+		inspectExpr(e.Value, visit)
+	case *TypeOf:
+		inspectExpr(e.Value, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for expression %T", e))
 	}

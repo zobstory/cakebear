@@ -134,6 +134,8 @@ func (p *Program) checkNode(node any) error {
 		return checkTruthy(n)
 	case *Wrap, *Unwrap, *Empty, *IsEmpty, *Cond, *Let:
 		return checkMaybeNode(n)
+	case *Throw, *Try, *NewError, *ErrorGet, *Box, *Unbox, *InstanceOf, *TypeOf:
+		return checkErrorNode(n)
 	case *Append:
 		return checkAppend(n)
 	case *ForOf:

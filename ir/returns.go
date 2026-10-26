@@ -33,6 +33,14 @@ func checkReturns(body []Stmt, want Type) error {
 			err = checkReturns(s.Body, want)
 		case *ForOf:
 			err = checkReturns(s.Body, want)
+		case *Try:
+			err = checkReturns(s.Body, want)
+			if err == nil && s.Catch != nil {
+				err = checkReturns(s.Catch.Body, want)
+			}
+			if err == nil {
+				err = checkReturns(s.Finally, want)
+			}
 		}
 		if err != nil {
 			return err

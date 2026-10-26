@@ -51,6 +51,12 @@ const (
 	// types admit, so the IR keeps no record of them: `T | null` flows into a
 	// `T | null | undefined` slot unchanged, as TypeScript allows.
 	KindMaybe
+	// KindUnknown is TypeScript's `unknown` (M6 plan D5): a value of any type
+	// the subset holds, boxed (errors.go). It has no fields.
+	KindUnknown
+	// KindError is an Error of a built-in kind (M6 plan D4), which the value
+	// carries. It has no fields: its properties are ErrorGet's.
+	KindError
 )
 
 // HostType names a value the host runtime owns, such as the object a Node
@@ -287,6 +293,10 @@ func (t Type) String() string {
 			return "(" + t.Elem.String() + ") | null | undefined"
 		}
 		return t.Elem.String() + " | null | undefined"
+	case KindUnknown:
+		return "unknown"
+	case KindError:
+		return "Error"
 	default:
 		return "invalid"
 	}
