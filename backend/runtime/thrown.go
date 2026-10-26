@@ -54,6 +54,8 @@ type Site struct {
 	Line, Col int
 	// Text is the source line, as Node prints it: with its types blanked,
 	// as Node's type stripping blanks them (R5), and no line terminator.
+	// With none, the report gives the location alone, and with no File, no
+	// location: the site is unknown, as a nil one is.
 	Text string
 }
 

@@ -179,15 +179,3 @@ func UnknownToString(u any) string {
 	}
 	return joinString(u, nil)
 }
-
-// JSONStringifyUnknown is JSON.stringify(u, null, space) for an unknown,
-// which may be undefined: JSON.stringify gives undefined for it, not a
-// string. TypeScript's lib types the call `string`, so lowering must give
-// it `string | undefined` for an unknown, or refuse it. site is the call's,
-// for a cycle (JSONStringify).
-func JSONStringifyUnknown(u any, gap JSONGap, site *Site) Maybe[string] {
-	if u == nil {
-		return Maybe[string]{}
-	}
-	return Some(JSONStringify(u, gap, site))
-}

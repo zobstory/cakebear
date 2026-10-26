@@ -76,9 +76,9 @@ func Exit() {
 func uncaughtReport(t *Thrown, p phase) string {
 	var b strings.Builder
 	if e, ok := t.V.(*Error); ok {
-		site := t.Site
-		if e.site != nil && (site == nil || p.pointsAtCreation()) {
-			site = e.site
+		site := known(t.Site)
+		if made := known(e.site); made != nil && (site == nil || p.pointsAtCreation()) {
+			site = made
 		}
 		if site != nil {
 			writeExcerpt(&b, site)
@@ -86,9 +86,9 @@ func uncaughtReport(t *Thrown, p phase) string {
 		}
 		b.WriteString(Inspect(e))
 	} else {
-		if t.Site != nil {
+		if site := known(t.Site); site != nil {
 			b.WriteByte('\n')
-			writeExcerpt(&b, t.Site)
+			writeExcerpt(&b, site)
 		}
 		b.WriteString(Format(t.V))
 	}
@@ -96,12 +96,25 @@ func uncaughtReport(t *Thrown, p phase) string {
 	return b.String()
 }
 
-// writeExcerpt writes where site is, its line, and a caret under it.
+// known is site, or nil for one that names no file: a place nobody knows.
+func known(site *Site) *Site {
+	if site == nil || site.File == "" {
+		return nil
+	}
+	return site
+}
+
+// writeExcerpt writes where site is, its line, and a caret under it. A
+// site with no Text, which the emitter passes until lowering gives it the
+// line, has its location alone.
 func writeExcerpt(b *strings.Builder, site *Site) {
 	b.WriteString(fileURL(site.File))
 	b.WriteByte(':')
 	b.WriteString(strconv.Itoa(site.Line))
 	b.WriteByte('\n')
+	if site.Text == "" {
+		return
+	}
 	b.WriteString(site.Text)
 	b.WriteByte('\n')
 	b.WriteString(caretLine(site.Text, site.Col))

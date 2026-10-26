@@ -15,7 +15,7 @@ import (
 // JSON.stringify was given, if any, and what Node made of them, a string or
 // the TypeError it threw. OutU is a string holding a lone surrogate, as its
 // code units, which only a gap can put in the output. Any says the value is
-// an unknown, and Undef that Node gave undefined for it (M6).
+// an unknown (M6).
 type jsonEntry struct {
 	Value  json.RawMessage `json:"value"`
 	Space  json.RawMessage `json:"space"`
@@ -23,7 +23,6 @@ type jsonEntry struct {
 	Out    *string         `json:"out"`
 	OutU   []uint16        `json:"outU"`
 	Throws *string         `json:"throws"`
-	Undef  bool            `json:"undef"`
 }
 
 // wtf8 is a string of UTF-16 code units as the runtime holds it: UTF-8,
@@ -61,28 +60,6 @@ func stringify(v any, gap JSONGap) (out string, panicked any) {
 	return JSONStringify(v, gap, nil), nil
 }
 
-// undefinedJSON stands for the undefined JSONStringifyUnknown gives.
-const undefinedJSON = "(undefined)"
-
-// stringifyUnknown is stringify for an unknown: JSONStringifyUnknown, its
-// undefined as undefinedJSON.
-func stringifyUnknown(v any, gap JSONGap) (out string, panicked any) {
-	defer func() {
-		switch p := recover().(type) {
-		case nil:
-		case *Thrown:
-			panicked = throws(func() { panic(p) })
-		default:
-			panicked = p
-		}
-	}()
-	m := JSONStringifyUnknown(v, gap, nil)
-	if m.IsUndefined() {
-		return undefinedJSON, nil
-	}
-	return m.Must("the JSON"), nil
-}
-
 // cyclePanic is how stringify fails where Node throws err: with err itself,
 // a TypeError a try can catch (M6 plan D9).
 func cyclePanic(err string) string { return err }
@@ -108,9 +85,6 @@ func checkJSONEntry(t *testing.T, line int, e jsonEntry) bool {
 		}
 	}
 	got, panicked := stringify(v, gap)
-	if e.Any {
-		got, panicked = stringifyUnknown(v, gap)
-	}
 	switch {
 	case e.Throws != nil:
 		if panicked != cyclePanic(*e.Throws) {
@@ -120,11 +94,6 @@ func checkJSONEntry(t *testing.T, line int, e jsonEntry) bool {
 	case panicked != nil:
 		t.Errorf("entry %d: panicked: %v", line, panicked)
 		return false
-	case e.Undef:
-		if got != undefinedJSON {
-			t.Errorf("entry %d: gave %q, want undefined, as Node gives (value %s)", line, got, e.Value)
-			return false
-		}
 	default:
 		want := wtf8(e.OutU)
 		if e.Out != nil {

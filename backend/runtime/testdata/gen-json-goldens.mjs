@@ -17,9 +17,7 @@
 // "\uD800"): {"u":[<UTF-16 code unit>...]}. A line has, in place of out,
 //   "outU":[<code unit>...]   when the output holds a lone surrogate, which
 //                             only a gap cut through a pair puts there;
-//   "throws":"<String(err)>"  when JSON.stringify threw: a cycle;
-//   "undef":true              when it gave undefined, as it does for an
-//                             unknown holding undefined (UNKNOWN only).
+//   "throws":"<String(err)>"  when JSON.stringify threw: a cycle.
 // A line of ERROR or UNKNOWN (M6) may also say "any":true, when its value
 // is an unknown: those sections hold Errors and unknowns (golden-codec.mjs).
 //
@@ -79,9 +77,8 @@ function v(x) {
   }
 }
 
-// record is what Node makes of one entry: its output, or what it threw, or
-// that it gave undefined, which only an unknown's entry may.
-function record(value, space, any) {
+// record is what Node makes of one entry: its output, or what it threw.
+function record(value, space) {
   validate([value], { forJSON: true });
   if (space !== undefined) {
     const keys = Object.keys(space);
@@ -98,7 +95,6 @@ function record(value, space, any) {
     if (!(err instanceof TypeError) || !err.message.startsWith('Converting circular structure to JSON\n')) throw err;
     return { throws: String(err) };
   }
-  if (out === undefined && any) return { undef: true };
   if (typeof out !== 'string') throw new Error('JSON.stringify gave no string');
   return out.isWellFormed() ? { out } : { outU: codeUnits(out) };
 }
@@ -491,9 +487,10 @@ function sectionMAYBE() {
 // ERROR: an Error is its own enumerable properties (R27): {} for every one
 // the program makes, and {"code":…} for Node's own, wherever it is, under
 // the gaps that change the layout. UNKNOWN: unknowns of every kind, an
-// unknown[] mixing them, undefined left out of an object and null in an
-// array, as for a maybe, and undefined at the top level, which gives
-// undefined; and a cycle through unknowns, which throws.
+// unknown[] mixing them, and undefined left out of an object and null in an
+// array, as for a maybe; and a cycle through unknowns, which throws.
+// Top-level undefined is left out: JSON.stringify gives undefined, not a
+// string, and lowering refuses a bare unknown as it refuses a bare maybe.
 
 const ERR = (kind, m, code) => ({ err: kind, ...(m === undefined ? {} : { m }), ...(code === undefined ? {} : { code }) });
 const UA = (items, id) => ({ ...A(items, id), any: true });
@@ -528,9 +525,12 @@ function sectionUNKNOWN() {
     UO([['u', E(undefined)], ['n', E(null)], ['s', S('x')]]),
   ];
   for (const x of each) {
+    if (x.e === 'undefined') continue;
     for (const space of M6_SPACES) addU(r, x, space);
   }
   for (const space of M6_SPACES) {
+    addU(r, UA([E(undefined)]), space);
+    addU(r, UA([E(undefined), N(1), E(undefined)]), space);
     addU(r, UA(each), space);
     addU(r, UO(each.map((x, i) => [`k${i}`, x])), space);
     addU(r, UO([['u', E(undefined)]]), space);
@@ -560,7 +560,7 @@ const index = {};
 entries.forEach(({ section, value, space, any }, i) => {
   let result;
   try {
-    result = record(value, space, any);
+    result = record(value, space);
   } catch (err) {
     err.message = `${section} entry ${i}: ${err.message}`;
     throw err;
@@ -582,7 +582,7 @@ if (reread.pop() !== '') throw new Error('no trailing newline');
 let mismatches = 0;
 for (const [i, text] of reread.entries()) {
   const { value, space, any, ...result } = JSON.parse(text);
-  if (JSON.stringify(record(value, space, any)) !== JSON.stringify(result)) {
+  if (JSON.stringify(record(value, space)) !== JSON.stringify(result)) {
     mismatches++;
     if (mismatches <= 5) console.error(`line ${i + 1}: output differs`);
   }

@@ -106,7 +106,8 @@ func (e *jsonEncoder) value(v any, via jsonKey) {
 		e.buf = append(e.buf, "null"...)
 	case nil:
 		// An unknown's undefined, as a Maybe's below: an object leaves it
-		// out, and JSONStringifyUnknown takes it at the top level.
+		// out, an array writes null, and lowering refuses a bare unknown,
+		// whose JSON.stringify may give undefined.
 		if !via.isIndex {
 			panic("cakebear: JSON.stringify of undefined, which returns undefined rather than a string")
 		}

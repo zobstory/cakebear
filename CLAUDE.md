@@ -339,12 +339,14 @@ Step 2, the runtime, is done, with nothing lowered to it yet
   checked as `Must` is; `TypeOf`, `InstanceOf`, `TruthyUnknown` and
   `UnknownToString` are typeof, instanceof, truthiness and ToString, and
   inspect, `JSON.stringify` and join take an unknown's values wherever
-  they are. `JSONStringifyUnknown` gives undefined for undefined.
+  they are: an undefined one is left out of an object and null in an
+  array, as a maybe's is.
 - A `Site` is a place in the source: file, line, UTF-16 column and the
   line with its types blanked, which the emitter makes at package level and
   passes by pointer (`backend/emit_site.go` passes nil until step 3). A
   throw carries its statement's, a `new Error` its own, and a runtime
-  function that throws the call's.
+  function that throws the call's. One with no line gives the report its
+  location alone, and one with no file is no site.
 - An uncaught throw ends the program as Node's ends (D6): the generated
   main defers `Exit` in place of `Flush`, which writes the output so far,
   then Node's report, then exits 1. The report is `file:///…:LINE`, the
@@ -368,7 +370,7 @@ Step 2, the runtime, is done, with nothing lowered to it yet
 - The runtime never calls program code under a lock or midway through
   changing a value, since a throw unwinds through it (D10); `sort` sorts a
   copy (`TestThrowsThroughCallbacksMatchNode`, R23).
-- The inspect and JSON goldens hold 836 and 228 more outputs recorded from
+- The inspect and JSON goldens hold 836 and 233 more outputs recorded from
   Node with Errors and unknowns, String() of each too, in sections after
   the old ones, which are byte for byte as they were.
 

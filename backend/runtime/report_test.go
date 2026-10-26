@@ -79,6 +79,14 @@ func TestReportsPointWhereNodeDoes(t *testing.T) {
 		{"made nowhere", &Thrown{V: NewError(ErrorBase, "m", nil), Site: thrown}, inModule, "file:///CASES/x.ts:2\nthrown\n^\n\n[Error: m]" + version},
 		{"thrown nowhere", &Thrown{V: NewError(ErrorBase, "m", made)}, inTimer, "file:///CASES/x.ts:1\nmade\n^\n\n[Error: m]" + version},
 		{"no site", &Thrown{V: NewError(ErrorType, "t", nil)}, inModule, "[TypeError: t]" + version},
+		// A site with no line has its location alone; one with no file is
+		// no site at all.
+		{"no text", &Thrown{V: NewError(ErrorBase, "m", &Site{File: "/CASES/x.ts", Line: 3, Col: 7})}, inModule,
+			"file:///CASES/x.ts:3\n\n[Error: m]" + version},
+		{"no text, a string", &Thrown{V: "m", Site: &Site{File: "/CASES/x.ts", Line: 3, Col: 7}}, inModule,
+			"\nfile:///CASES/x.ts:3\nm" + version},
+		{"no file", &Thrown{V: NewError(ErrorBase, "m", &Site{Line: 3}), Site: thrown}, inModule,
+			"file:///CASES/x.ts:2\nthrown\n^\n\n[Error: m]" + version},
 		{"a string", &Thrown{V: "m", Site: thrown}, inModule, "\nfile:///CASES/x.ts:2\nthrown\n^\nm" + version},
 		{"undefined, no site", &Thrown{V: nil}, inTimer, "undefined" + version},
 	} {
