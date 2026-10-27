@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"errors"
-	"io"
 	"math"
 	"net"
 	"net/http"
 	"strconv"
 	"syscall"
+	"unsafe"
 )
 
 // node:http, as much of it as types/node-http.d.ts declares. Each exported
@@ -132,7 +132,7 @@ func portNumber(f float64) (int, bool) {
 // parked are ended (parked.go).
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	d := newDomain()
-	res := &ServerResponse{w: w, status: http.StatusOK, d: d}
+	res := &ServerResponse{w: w, status: http.StatusOK, head: r.Method == http.MethodHead, d: d}
 	detached := false
 	defer func() {
 		p := recover()
@@ -229,6 +229,7 @@ type ServerResponse struct {
 	status      int
 	headersSent bool
 	ended       bool
+	head        bool    // the request is a HEAD, which Node answers with no body
 	d           *Domain // the request's
 }
 
@@ -268,8 +269,22 @@ func (r *ServerResponse) WriteHead(status float64, site *Site) *ServerResponse {
 		throwCoded(ErrorRange, "ERR_HTTP_INVALID_STATUS_CODE", "Invalid status code: "+numberForDisplay(status), site)
 	}
 	r.status = int(code)
+	// Node frames the body once writeHead has stored the headers, not
+	// knowing its length yet: chunked, an empty one too, unless the program
+	// set a Content-Length. net/http would give a body small enough to buffer
+	// a length instead; a Transfer-Encoding set here stops that, and net/http
+	// sends its own in its place, or none where no body is allowed.
+	if !r.head && bodyAllowed(r.status) && r.w.Header().Get("Content-Length") == "" {
+		r.w.Header().Set("Transfer-Encoding", "chunked")
+	}
 	r.sendHeaders()
 	return r
+}
+
+// bodyAllowed reports whether a response of this status has a body: not a
+// 1xx, a 204 or a 304.
+func bodyAllowed(status int) bool {
+	return status >= 200 && status != http.StatusNoContent && status != http.StatusNotModified
 }
 
 // End is res.end(chunk?): it sends the headers if they have not gone, then the
@@ -277,6 +292,12 @@ func (r *ServerResponse) WriteHead(status float64, site *Site) *ServerResponse {
 // to write does nothing, as in Node; one with a chunk is a write after the end.
 // The chunk goes out as Node encodes it, in UTF-8 with a lone surrogate as
 // U+FFFD.
+//
+// Framed as Node frames it (measured on Node 24.18): before writeHead, the
+// body's length is known, so it goes with a Content-Length, 0 for none, unless
+// the program set one; after it, chunked (WriteHead). A HEAD request gets
+// neither, and no body. The body is one write: through io.WriteString,
+// net/http's buffer copied it out in 4 KB pieces, each a chunk of its own.
 func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	if r.ended {
 		if len(chunk) > 0 {
@@ -284,9 +305,19 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 		}
 		return r
 	}
-	r.sendHeaders()
+	body := ""
 	for _, c := range chunk {
-		_, _ = io.WriteString(r.w, wellFormed(c))
+		body += wellFormed(c)
+	}
+	if !r.headersSent && !r.head && bodyAllowed(r.status) && r.w.Header().Get("Content-Length") == "" {
+		r.w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	}
+	r.sendHeaders()
+	if body != "" && !r.head {
+		// Write neither keeps nor changes the bytes it is given (io.Writer's
+		// contract), so it is passed the string's own, with no copy of a body
+		// that may be large.
+		_, _ = r.w.Write(unsafe.Slice(unsafe.StringData(body), len(body)))
 	}
 	r.ended = true
 	return r
