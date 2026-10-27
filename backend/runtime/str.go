@@ -232,18 +232,17 @@ func (b *strBuilder) string() string { return string(b.b) }
 
 // endsHigh and startsLow report whether s ends in a high half or starts
 // with a low one, the two sides of a seam that joins.
+// endsHigh and startsLow are the tests every concatenation makes at each
+// seam, so each is one expression the compiler inlines: a high half is ED A0
+// to ED AF, a low one ED B0 to ED BF, then a continuation byte, which is what
+// half reads.
 func endsHigh(s string) bool {
 	n := len(s)
-	u, ok := rune(0), false
-	if n >= 3 {
-		u, ok = half(s[n-3], s[n-2], s[n-1])
-	}
-	return ok && u < 0xdc00
+	return n >= 3 && s[n-3] == 0xed && s[n-2] >= 0xa0 && s[n-2] <= 0xaf && s[n-1]&0xc0 == 0x80
 }
 
 func startsLow(s string) bool {
-	u, ok := surrogateAt(s, 0)
-	return ok && u >= 0xdc00
+	return len(s) >= 3 && s[0] == 0xed && s[1] >= 0xb0 && s[1] <= 0xbf && s[2]&0xc0 == 0x80
 }
 
 // StrConcat is `+` on strings, and a template literal's pieces: the strings
