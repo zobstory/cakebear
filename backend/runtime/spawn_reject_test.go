@@ -89,11 +89,12 @@ func TestSpawnResultIsCopiedWhileACallWaits(t *testing.T) {
 		})
 	})
 	finishWithin(t, d, 5*time.Second)
+	// Read first, so a race build sees the read beside the push.
+	if got.Len() != 1 {
+		t.Errorf("the caller's array has %d elements, want 1, as it was returned", got.Len())
+	}
 	if got == original {
 		t.Fatal("the caller got the array a call parked in the spawn still changes, not a copy")
-	}
-	if got.Len() != 1 {
-		t.Errorf("the caller's copy has %d elements, want 1, as it was returned", got.Len())
 	}
 }
 

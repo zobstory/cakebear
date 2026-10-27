@@ -19,17 +19,14 @@ func never(d *Domain) *Promise[struct{}] {
 	return NewPromiseVoid(d, func(*Domain, func(*Domain), func(*Domain, any)) {})
 }
 
-// goroutinesSettleTo waits until at most limit goroutines are running,
-// failing with the count if they never are.
-func goroutinesSettleTo(t *testing.T, what string, limit int) {
-	t.Helper()
+// leftAfter is how many more goroutines than before are running once they
+// settle at most 5 above it, or after 2 s.
+func leftAfter(before int) int {
 	deadline := time.Now().Add(2 * time.Second)
-	for runtime.NumGoroutine() > limit {
-		if time.Now().After(deadline) {
-			t.Fatalf("%s: %d goroutines are left, want at most %d", what, runtime.NumGoroutine(), limit)
-		}
+	for runtime.NumGoroutine() > before+5 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
+	return runtime.NumGoroutine() - before
 }
 
 // TestAbandonedDomainsLeaveNoGoroutines: 100 requests each, every way a
@@ -79,7 +76,11 @@ func TestAbandonedDomainsLeaveNoGoroutines(t *testing.T) { //nolint:paralleltest
 			fetch(client, "GET", base+path)
 		}
 		waitUntil(t, "the detached work to finish", func() bool { return liveHandles.Load() == 0 })
-		goroutinesSettleTo(t, "after 100 requests to "+path, before+5)
+		left := leftAfter(before)
+		t.Logf("100 requests to %s: %d goroutines more than before", path, left)
+		if left > 5 {
+			t.Errorf("100 requests to %s left %d goroutines behind, want none", path, left)
+		}
 	}
 }
 
@@ -115,7 +116,11 @@ func TestFinishedSpawnsLeaveNoGoroutines(t *testing.T) { //nolint:paralleltest /
 		}
 	})
 	finishWithin(t, d, 5*time.Second)
-	goroutinesSettleTo(t, "after 200 spawns", before+5)
+	left := leftAfter(before)
+	t.Logf("200 spawns: %d goroutines more than before", left)
+	if left > 5 {
+		t.Errorf("200 spawns left %d goroutines behind, want none", left)
+	}
 }
 
 // TestAbortRunsNoMoreOfTheProgram: an aborted call resumes into nothing,
