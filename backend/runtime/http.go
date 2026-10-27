@@ -132,7 +132,10 @@ func portNumber(f float64) (int, bool) {
 // parked are ended (parked.go).
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	d := newDomain()
-	res := &ServerResponse{w: w, status: http.StatusOK, head: r.Method == http.MethodHead, d: d}
+	res := &ServerResponse{
+		w: w, status: http.StatusOK, head: r.Method == http.MethodHead, d: d,
+		http10: !r.ProtoAtLeast(1, 1), noKeepAlive: r.Close, // for HTTP/1.0, net/http sets Close unless it asked
+	}
 	detached := false
 	defer func() {
 		p := recover()
@@ -230,6 +233,8 @@ type ServerResponse struct {
 	headersSent bool
 	ended       bool
 	head        bool    // the request is a HEAD, which Node answers with no body
+	http10      bool    // the request is HTTP/1.0, which has no chunks (frame)
+	noKeepAlive bool    // and it didn't ask to keep its connection
 	d           *Domain // the request's
 }
 
@@ -269,16 +274,43 @@ func (r *ServerResponse) WriteHead(status float64, site *Site) *ServerResponse {
 		throwCoded(ErrorRange, "ERR_HTTP_INVALID_STATUS_CODE", "Invalid status code: "+numberForDisplay(status), site)
 	}
 	r.status = int(code)
-	// Node frames the body once writeHead has stored the headers, not
-	// knowing its length yet: chunked, an empty one too, unless the program
-	// set a Content-Length. net/http would give a body small enough to buffer
-	// a length instead; a Transfer-Encoding set here stops that, and net/http
-	// sends its own in its place, or none where no body is allowed.
-	if !r.head && bodyAllowed(r.status) && r.w.Header().Get("Content-Length") == "" {
-		r.w.Header().Set("Transfer-Encoding", "chunked")
-	}
+	r.frame(-1)
 	r.sendHeaders()
 	return r
+}
+
+// frame sets the headers framing the body as Node frames it, as they go:
+// length is the body's, known at end(), or -1 at writeHead, which stores the
+// headers before any body is written (measured on Node 24.18).
+//
+//   - A Content-Length the program set is kept.
+//   - Otherwise, before writeHead, a Content-Length, 0 for no body; after
+//     it, chunked, an empty body too. net/http would give a body small
+//     enough to buffer a length; a Transfer-Encoding set here stops that,
+//     and net/http sends its own in its place.
+//   - Neither where no body is allowed, or for a HEAD.
+//   - HTTP/1.0 has no chunks, so there, unless the program set a length, the
+//     body runs to the end of the connection, before writeHead too, and the
+//     connection closes: Node keeps an HTTP/1.0 connection only for a length
+//     the program set and a request asking it to.
+func (r *ServerResponse) frame(length int) {
+	h := r.w.Header()
+	own := h.Get("Content-Length") != ""
+	body := !r.head && bodyAllowed(r.status)
+	switch {
+	case r.http10:
+		if (!own || r.noKeepAlive) && h.Get("Connection") == "" {
+			h.Set("Connection", "close")
+		}
+		if !own && body {
+			h.Set("Transfer-Encoding", "chunked") // on HTTP/1.0 net/http drops it, and sends no length
+		}
+	case own || !body:
+	case length < 0:
+		h.Set("Transfer-Encoding", "chunked")
+	default:
+		h.Set("Content-Length", strconv.Itoa(length))
+	}
 }
 
 // bodyAllowed reports whether a response of this status has a body: not a
@@ -293,11 +325,10 @@ func bodyAllowed(status int) bool {
 // The chunk goes out as Node encodes it, in UTF-8 with a lone surrogate as
 // U+FFFD.
 //
-// Framed as Node frames it (measured on Node 24.18): before writeHead, the
-// body's length is known, so it goes with a Content-Length, 0 for none, unless
-// the program set one; after it, chunked (WriteHead). A HEAD request gets
-// neither, and no body. The body is one write: through io.WriteString,
-// net/http's buffer copied it out in 4 KB pieces, each a chunk of its own.
+// Before writeHead the body's length is known, so frame gives it a
+// Content-Length. A HEAD request gets no body. The body is one write: through
+// io.WriteString, net/http's buffer copied it out in 4 KB pieces, each a
+// chunk of its own.
 func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	if r.ended {
 		if len(chunk) > 0 {
@@ -309,8 +340,8 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 	for _, c := range chunk {
 		body += wellFormed(c)
 	}
-	if !r.headersSent && !r.head && bodyAllowed(r.status) && r.w.Header().Get("Content-Length") == "" {
-		r.w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	if !r.headersSent {
+		r.frame(len(body))
 	}
 	r.sendHeaders()
 	if body != "" && !r.head {
@@ -340,8 +371,8 @@ func (r *ServerResponse) writeAfterEnd() {
 }
 
 // sendHeaders commits the status line and headers. net/http still buffers
-// them until the handler writes enough body or returns, which is why a short
-// response gets a Content-Length, as Node's res.end(chunk) does.
+// them until the body is written or the handler returns, and frame has set
+// what frames the body by then.
 //
 // net/http would also sniff a Content-Type from the body when the program set
 // none (`text/plain; charset=utf-8`, or `text/html` for markup), where Node
