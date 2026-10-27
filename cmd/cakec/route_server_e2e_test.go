@@ -22,7 +22,10 @@ import (
 // JSON.stringify (step 9), objects and arrays (steps 5 to 7) throughout. Since
 // M5 it reads optional properties, a sale price that may be null, a query
 // parameter that may be undefined, find's maybe, ?., ??, truthiness, a default
-// parameter and conditional spread, and JSON leaves out what is absent.
+// parameter and conditional spread, and JSON leaves out what is absent. Since
+// M6 (its check 9) a bad query is a RangeError the program throws, or the
+// URIError decodeURIComponent throws, and a not-found an Error; route catches
+// each at its top and answers 400 or 404, which the race build serves too.
 
 // routeReplies is what Node 24.18 answered, running the same sources, to
 // each request: status, Content-Type and body.
@@ -40,8 +43,14 @@ var routeReplies = []struct {
 	{"GET", "/items?tag=tea&q=chai", 200, "application/json", "[{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
 	{"GET", "/items?q=stra%C3%9Fe", 200, "application/json", "[{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25}]\n"},
 	{"GET", "/items?limit=2", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25}]\n"},
-	{"GET", "/items?limit=abc", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?limit=abc", 400, "application/json", "{\"error\":\"limit must be a whole number, not \\\"abc\\\"\"}\n"},
+	{"GET", "/items?limit=1.5", 400, "application/json", "{\"error\":\"limit must be a whole number, not \\\"1.5\\\"\"}\n"},
+	{"GET", "/items?limit=-1", 400, "application/json", "{\"error\":\"limit must be a whole number, not \\\"-1\\\"\"}\n"},
+	{"GET", "/items?limit=0", 200, "application/json", "[]\n"},
+	{"GET", "/items?limit=", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
 	{"GET", "/items?tag=", 200, "application/json", "[{\"id\":1,\"name\":\"Green tea\",\"price\":4.5,\"note\":\"loose leaf\"},{\"id\":2,\"name\":\"Stra\u00dfe cake\",\"price\":1.75,\"was\":2.25},{\"id\":3,\"name\":\"Iced coffee\",\"price\":3.75},{\"id\":4,\"name\":\"Chai \U0001f600\",\"price\":4}]\n"},
+	{"GET", "/items?q=%E0", 400, "application/json", "{\"error\":\"URI malformed\"}\n"},
+	{"GET", "/items?q=%ZZ", 400, "application/json", "{\"error\":\"URI malformed\"}\n"},
 	{"GET", "/items/1", 200, "application/json", "{\n  \"id\": 1,\n  \"name\": \"Green tea\",\n  \"price\": 4.5,\n  \"note\": \"loose leaf\"\n}\n"},
 	{"GET", "/items/2", 200, "application/json", "{\n  \"id\": 2,\n  \"name\": \"Stra\u00dfe cake\",\n  \"price\": 1.75,\n  \"was\": 2.25\n}\n"},
 	{"GET", "/items/3", 200, "application/json", "{\n  \"id\": 3,\n  \"name\": \"Iced coffee\",\n  \"price\": 3.75\n}\n"},
@@ -50,6 +59,7 @@ var routeReplies = []struct {
 	{"GET", "/first?tag=cold", 200, "text/plain", "Iced coffee\n"},
 	{"GET", "/first?tag=none", 200, "text/plain", "none\n"},
 	{"GET", "/first", 200, "text/plain", "none\n"},
+	{"GET", "/first?tag=%E0%A4", 400, "application/json", "{\"error\":\"URI malformed\"}\n"},
 	{"GET", "/menu", 200, "text/plain; charset=utf-8", "Green tea      $4.50 (loose leaf)\nStra\u00dfe cake    $1.75\nIced coffee    $3.75\nChai \U0001f600        $4.00\n"},
 	{"GET", "/nope", 404, "application/json", "{\"error\":\"no route /nope\"}\n"},
 	{"POST", "/items", 405, "application/json", "{\"error\":\"POST is not allowed\"}\n"},

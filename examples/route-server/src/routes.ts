@@ -23,10 +23,6 @@ function json(status: number, body: string): Reply {
   return { status: status, type: "application/json", body: body + "\n" };
 }
 
-function notFound(what: string): Reply {
-  return json(404, JSON.stringify({ error: `no ${what}` }));
-}
-
 function summary(it: Item): Summary {
   const sale: number | null | undefined = it.sale;
   return {
@@ -40,11 +36,34 @@ function summary(it: Item): Summary {
 
 // route answers one request. Under cakebear requests run in parallel, so it
 // may share nothing that can change: items and service are frozen, and what
-// it builds is its own. The race rule checks that, through every module.
+// it builds is its own, the errors it throws included. The race rule checks
+// that, through every module.
+//
+// What a GET can't be answered with, answer throws, and route catches it here.
+// Without classes (M12), an error's kind says what went wrong: a RangeError or
+// a URIError is a bad query, query.ts's own or decodeURIComponent's, and a
+// plain Error names something that isn't there.
 export function route(method: string, url: string): Reply {
   if (method !== "GET") {
     return json(405, JSON.stringify({ error: `${method} is not allowed` }));
   }
+  try {
+    return answer(url);
+  } catch (e) {
+    if (e instanceof RangeError || e instanceof URIError) {
+      return json(400, JSON.stringify({ error: e.message }));
+    }
+    if (e instanceof Error && e.name === "Error") {
+      return json(404, JSON.stringify({ error: e.message }));
+    }
+    // Anything else is a bug, so it goes on: it would crash Node's server,
+    // and under cakebear it ends only this request.
+    throw e;
+  }
+}
+
+// answer is a GET's reply.
+function answer(url: string): Reply {
   const path: string = pathOf(url);
   if (path === "/") {
     return json(200, JSON.stringify({ service: service.name, version: service.version, items: items.length }));
@@ -65,7 +84,7 @@ export function route(method: string, url: string): Reply {
     const id: number = Number(path.slice("/items/".length));
     const it: Item | undefined = items.find((it: Item): boolean => it.id === id);
     if (!it) {
-      return notFound(`item ${path.slice(7)}`);
+      throw new Error(`no item ${path.slice(7)}`);
     }
     return json(200, JSON.stringify(summary(it), null, 2));
   }
@@ -78,5 +97,5 @@ export function route(method: string, url: string): Reply {
     const lines: string[] = items.map((it: Item): string => `${it.name.padEnd(14)} $${(it.sale ?? it.price).toFixed(2)}${it.note ? ` (${it.note})` : ""}`);
     return { status: 200, type: "text/plain; charset=utf-8", body: lines.join("\n") + "\n" };
   }
-  return notFound(`route ${path}`);
+  throw new Error(`no route ${path}`);
 }
