@@ -224,9 +224,15 @@ type Capture struct {
 // inspected, separated by spaces. Node treats a first string followed by
 // more arguments as a format, so lowering allows one there only if it is a
 // literal with no `%` in it (M4 plan D12).
+//
+// It is console.info and console.debug too, which Node writes where log
+// writes, and with Stderr, console.error and console.warn (M6 step 6).
 type ConsoleLog struct {
 	Args []Expr
-	Span Span
+	// Stderr writes the line to stderr, after whatever stdout holds, so the
+	// two keep the program's order where they meet, as Node's do.
+	Stderr bool
+	Span   Span
 }
 
 // Convert is an explicit conversion to one of cakebear's extension types,

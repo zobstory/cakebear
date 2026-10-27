@@ -516,6 +516,23 @@ amended 2026-10-27 by zob's call):
   the server serving on. An Error the runtime wrote to on each read fails
   it with data races (mutation).
 
+Step 6, console's other members, is done (`lower/console.go`,
+`runtime.LogError`):
+- `console.info` and `console.debug` write where `console.log` does, and
+  `console.error` and `console.warn` to stderr, all formatted as `log`
+  formats them, as Node 24.18 does (measured). `ir.ConsoleLog.Stderr` marks
+  the two.
+- stdout is buffered and stderr isn't, so `LogError` writes what stdout
+  holds first: where the two streams meet, a terminal or one pipe, the lines
+  are in the program's order, as Node's, which writes each at once.
+  `errMu` is taken inside `outMu`, the one order the two are held in.
+- `console` is recognised as the global no module of the program's own
+  declares, not by its spelling, so a program's own `console` is an
+  ordinary value. Any other member of console is refused by name.
+- `TestConsoleStreamsMatchNode` holds stdout, stderr and the two in one
+  pipe to Node's, 20 runs, and `TestConsoleInHandlersUnderRace` logs
+  through every member from handlers in a race-detector build.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -1390,7 +1407,10 @@ Since M6 step 3 (`lower/errors.go`), errors:
   `??=`, and converted, printed, joined and serialised as what it holds;
 - `e?.message` and the rest through an `Error | null`, and `String()` and
   templates of one;
-- a function returning `never`, which is void, and `return fail()` of one.
+- a function returning `never`, which is void, and `return fail()` of one;
+- since step 6, `console.info` and `console.debug`, which write where
+  `console.log` does, and `console.error` and `console.warn`, which write
+  to stderr, each printing as `console.log` prints.
 
 Refused by name: throwing a function, a promise or a host value, or
 anything holding one (a catch would print it); a destructured catch

@@ -36,7 +36,8 @@ package runtime
 // unwinds through the runtime's own frames. So the runtime never calls
 // program code while it holds a lock or is partway through changing a value
 // (D10): outMu, errMu, layoutsMu and an inbox's lock are only ever held
-// around runtime code, and Sort sorts a copy, so a comparator that throws
+// around runtime code (errMu inside outMu in LogError, and never the other
+// way round), and Sort sorts a copy, so a comparator that throws
 // leaves the array as it was, as in Node (R23,
 // TestThrowsThroughCallbacksMatchNode).
 

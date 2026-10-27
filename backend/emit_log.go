@@ -17,9 +17,12 @@ import (
 // bare null or undefined (ir.NullLit, ir.UndefinedLit) has no value to pass:
 // alone it is LogNull() or LogUndefined(), and among other values an empty
 // Maybe, which Log prints as the literal it stands for.
+//
+// console.error and console.warn (x.Stderr) always go through LogError,
+// which prints as Log does, on stderr, after what stdout holds.
 func (e *emitter) consoleLog(x *ir.ConsoleLog) string {
 	e.usesRuntime = true
-	if len(x.Args) == 1 {
+	if len(x.Args) == 1 && !x.Stderr {
 		if t := x.Args[0].ExprType(); t == ir.Null || t == ir.Undefined {
 			log, _ := logFunc(t)
 			return fmt.Sprintf("%s.%s()", rtPkg, log)
@@ -41,7 +44,11 @@ func (e *emitter) consoleLog(x *ir.ConsoleLog) string {
 			args[i] = e.expr(a)
 		}
 	}
-	return fmt.Sprintf("%s.Log(%s)", rtPkg, strings.Join(args, ", "))
+	log := "Log"
+	if x.Stderr {
+		log = "LogError"
+	}
+	return fmt.Sprintf("%s.%s(%s)", rtPkg, log, strings.Join(args, ", "))
 }
 
 // logFunc names the runtime function that prints a value of type t as

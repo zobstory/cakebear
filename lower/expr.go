@@ -293,9 +293,10 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 func (l *lowerer) call(n *ast.Node) ir.Expr {
 	c := n.AsCallExpression()
 
-	// console.log is an intrinsic rather than a method call (ir.ConsoleLog).
-	if isConsoleLog(c.Expression) {
-		return l.consoleLog(n, c)
+	// console.log and its siblings are intrinsics rather than method calls
+	// (ir.ConsoleLog).
+	if m, ok := l.consoleMember(c.Expression); ok {
+		return l.consoleLog(n, c, m)
 	}
 
 	if out, handled := l.hostCall(n, c); handled {
@@ -451,15 +452,4 @@ func (l *lowerer) validateLiteral(brand string, value ir.Expr) string {
 	default:
 		return ""
 	}
-}
-
-func isConsoleLog(n *ast.Node) bool {
-	if n.Kind != ast.KindPropertyAccessExpression {
-		return false
-	}
-	access := n.AsPropertyAccessExpression()
-	return access.Expression.Kind == ast.KindIdentifier &&
-		access.Expression.Text() == "console" &&
-		access.Name() != nil &&
-		access.Name().Text() == "log"
 }
