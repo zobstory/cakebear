@@ -1,0 +1,19 @@
+# cakebear's own Dependabot config. Upstream's lived at the root of
+# typescript-go and went with the rebase onto microsoft/TypeScript.
+#
+# GitHub Actions only. go.mod is upstream's file: the golden rule keeps it
+# untouched, and the next sync replaces it, so a Go module bump has no place
+# here. Upstream's own updates arrive with the weekly sync instead.
+#
+# One grouped PR a month. Its bumps are folded into whatever PR is open at
+# the time, and the Dependabot PR closed once that merges.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"

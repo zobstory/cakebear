@@ -35,6 +35,7 @@ README.md
 .gitattributes
 .claude/
 .github/CODEOWNERS
+.github/dependabot.yml
 .github/upstream-sync-pr-body.md
 .github/workflows/cakebear-ci.yml
 .github/workflows/cakebear-sync-upstream.yml

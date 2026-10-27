@@ -184,8 +184,17 @@ Under typescript-go it was a submodule that nobody cloned.
 - A sync PR carries the `upstream-sync` label. That label switches CI's
   golden-rule job from "no upstream file changed" to "every upstream file
   matches `scripts/upstream-ref`".
-- Actions is disabled on this repository, so no checks run on a PR. Run the
-  gates in "Build / test / run" locally and say in the PR what passed.
+- Actions runs `cakebear-ci.yml` on every PR (enabled 2026-10-27; free, since
+  the repository is public and the jobs use standard runners). Run the gates
+  in "Build / test / run" locally too, and say in the PR what passed.
+- Dependabot watches GitHub Actions only (`.github/dependabot.yml`), monthly,
+  in one grouped PR. Fold its bumps into whatever PR is open, and close its
+  PR once that merges. Never Go modules: `go.mod` is upstream's file.
+- A PR the weekly sync opens with the workflow's own token starts no
+  workflow, as GitHub runs none for that token's events, so a sync PR gets
+  no CI on its own. Running `cakebear-ci` by hand on one takes the "no
+  upstream file changed" path, which a sync fails by design: run its gates
+  locally until that is fixed.
 
 ## Upstream sync
 
@@ -1029,11 +1038,11 @@ null and undefined: maybes, narrowing, `?.`, `??` and `!`, optional
 properties, the members that may give undefined, truthiness and
 conditional spread, and optional and default parameters.
 
-The repository is on GitHub. Actions is disabled there, so pushes and PRs run
-nothing. The only workflows in the tree are cakebear's own:
-`cakebear-ci.yml` checks our code and `cakebear-sync-upstream.yml` opens the
-weekly sync. Upstream's workflows live at the monorepo root and are not synced,
-so enabling Actions no longer fires their matrix.
+The repository is on GitHub, with Actions enabled since 2026-10-27. The only
+workflows in the tree are cakebear's own: `cakebear-ci.yml` checks our code
+on every PR and `cakebear-sync-upstream.yml` opens the weekly sync, Mondays
+at 06:00 UTC. Upstream's workflows live at the monorepo root and are not
+synced, so their matrix never fires here.
 
 ### On extracting the backend into its own module
 
