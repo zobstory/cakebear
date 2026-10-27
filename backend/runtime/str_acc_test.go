@@ -101,19 +101,44 @@ func TestAccCachesTheLength(t *testing.T) {
 
 	var a StrAcc
 	s := a.Append(strings.Repeat("a", accMin), "b")
-	if !a.asc || !a.newest(s) {
-		t.Fatalf("after an ASCII append: asc %v, newest %v; want both", a.asc, a.newest(s))
+	if a.ascii != 0 {
+		t.Errorf("an append scanned %d bytes; only Length should", a.ascii)
+	}
+	if got := a.Length(s); got != float64(accMin+1) || a.wide || a.ascii != accMin+1 || !a.newest(s) {
+		t.Fatalf("after an ASCII append: Length %v, wide %v, ascii %d, newest %v; want %d, false, %d, true",
+			got, a.wide, a.ascii, a.newest(s), accMin+1, accMin+1)
 	}
 	older := s
 	s = a.Append(s, "c")
 	if a.newest(older) {
 		t.Errorf("a string with an append after it is still the newest")
 	}
-	s = a.Append(s, "é")
-	if a.asc {
-		t.Errorf("after appending é, the buffer is still taken to be ASCII")
+	if got := a.Length(s); got != float64(accMin+2) || a.ascii != accMin+2 {
+		t.Errorf("Length = %v with %d bytes seen, want %d, %d: it scans what came since the last", got, a.ascii, accMin+2, accMin+2)
 	}
-	if got := a.Length(s); got != float64(accMin+3) {
-		t.Errorf("Length = %v, want %d", got, accMin+3)
+	s = a.Append(s, "é")
+	if got := a.Length(s); got != float64(accMin+3) || !a.wide {
+		t.Errorf("after appending é: Length = %v, wide %v; want %d, true", got, a.wide, accMin+3)
+	}
+	s = a.Append(s, "d")
+	if got := a.Length(s); got != float64(accMin+4) {
+		t.Errorf("an append after é: Length = %v, want %d", got, accMin+4)
+	}
+}
+
+// TestAccLengthStartsAgain: a binding written another way starts a new
+// buffer, and what Length knew of the old one is forgotten. A count of ASCII
+// bytes left over from a longer buffer would pass over the é in this one.
+func TestAccLengthStartsAgain(t *testing.T) {
+	t.Parallel()
+
+	var a StrAcc
+	s := a.Append(strings.Repeat("a", 2*accMin), "b")
+	if got := a.Length(s); got != float64(2*accMin+1) {
+		t.Fatalf("Length = %v, want %d", got, 2*accMin+1)
+	}
+	s = a.Append("é"+strings.Repeat("c", accMin), "d") // not the newest: a new buffer
+	if got, want := a.Length(s), float64(accMin+2); got != want {
+		t.Errorf("Length of a new buffer starting é = %v, want %v", got, want)
 	}
 }
