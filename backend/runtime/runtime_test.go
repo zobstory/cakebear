@@ -30,6 +30,15 @@ func TestNumberToString(t *testing.T) {
 		// exponent's leading zero.
 		{"exponent upper bound", 1e21, "1e+21"},
 		{"just below exponent bound", 1e20, "100000000000000000000"},
+		// Below 2^53 an integer is its own digits; above, the shortest digits
+		// that round to it, padded with zeros (Node 24.18).
+		{"largest safe integer", 1<<53 - 1, "9007199254740991"},
+		{"2^53", 1 << 53, "9007199254740992"},
+		{"2^53 + 2", 1<<53 + 2, "9007199254740994"},
+		{"2^60", 1 << 60, "1152921504606847000"},
+		{"-2^60", -(1 << 60), "-1152921504606847000"},
+		{"2^63", 1 << 63, "9223372036854776000"},
+		{"an integer with a fraction's neighbour", 4503599627370495.5, "4503599627370495.5"},
 		{"small exponent", 1e-7, "1e-7"},
 		{"just above small bound", 1e-6, "0.000001"},
 		{"nan", math.NaN(), "NaN"},
