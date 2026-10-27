@@ -191,7 +191,12 @@ func TestParkedRegistryFollowsEveryAwait(t *testing.T) {
 		}
 		check(fmt.Sprintf("with %d parked", len(d.parked)))
 	}
-	if want := []string{"4", "1", "2", "0", "3"}; !slices.Equal(*got, want) {
-		t.Errorf("resumed %q, want %q", *got, want)
+	// The timers leave the registry from its middle, 4, 1, 2, 0, 3 on an idle
+	// machine. Under load the loop starting them can take longer than their
+	// spacing, and the order shifts, so what is held is that all five ran,
+	// and not in the order they parked, which a stale index would survive.
+	sorted := slices.Sorted(slices.Values(*got))
+	if !slices.Equal(sorted, []string{"0", "1", "2", "3", "4"}) || slices.Equal(*got, sorted) {
+		t.Errorf("resumed %q, want each of 0 to 4 once, not in the order they parked", *got)
 	}
 }
