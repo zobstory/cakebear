@@ -120,7 +120,7 @@ func (l *lowerer) numberCtor(n *ast.Node, args []*ast.Node) ir.Expr {
 	case ir.String, ir.Base64:
 		return &ir.BuiltinCall{Fn: ir.NumFromStr, Args: []ir.Expr{v}, Typ: ir.Number, Span: l.span(n)}
 	default:
-		l.failf(args[0], "Number() of a %s is not supported yet; only of a string or a number", t)
+		l.failf(args[0], "Number() of %s is not supported yet; only of a string or a number", aType(t))
 		return nil
 	}
 }

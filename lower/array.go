@@ -64,9 +64,12 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 		var v ir.Expr
 		if own {
 			// Its elements' slots are the outer slot's, no element type,
-			// so each is held to the literal's own.
+			// so each is held to the literal's own, boxed when that is
+			// unknown.
 			if v = l.exprOf(e); v != nil {
-				v = into(v, *t.Elem)
+				if v = into(v, *t.Elem); *t.Elem == ir.Unknown {
+					v = l.box(e, v) // errors.go
+				}
 			}
 		} else {
 			v = l.expr(e)
@@ -75,7 +78,7 @@ func (l *lowerer) arrayLit(n *ast.Node) ir.Expr {
 			return nil
 		}
 		if !v.ExprType().Equal(*t.Elem) {
-			l.failf(e, "an element of a %s can't be a %s", t, v.ExprType())
+			l.failf(e, "an element of %s can't be %s", aType(t), aType(v.ExprType()))
 			return nil
 		}
 		out.Elems = append(out.Elems, v)
@@ -138,7 +141,7 @@ func (l *lowerer) element(n *ast.Node, access *ast.ElementAccessExpression) (arr
 		l.failf(n, "writing a string's element is not supported: a string can't be changed")
 		return nil, nil, false
 	case t.Kind != ir.KindArray:
-		l.failf(n, "an element access on a %s is not supported yet; an object's property is read by its name", t)
+		l.failf(n, "an element access on %s is not supported yet; an object's property is read by its name", aType(t))
 		return nil, nil, false
 	}
 	if arr = l.expr(access.Expression); arr == nil {
@@ -328,7 +331,7 @@ func (l *lowerer) forOf(n *ast.Node) []ir.Stmt {
 	decl := list.Declarations.Nodes[0]
 	t := l.typeOf(s.Expression)
 	if t.Kind != ir.KindArray {
-		l.failf(s.Expression, "for…of over a %s is not supported yet; only over an array", t)
+		l.failf(s.Expression, "for…of over %s is not supported yet; only over an array", aType(t))
 		return nil
 	}
 	arr := l.expr(s.Expression)
