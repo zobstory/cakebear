@@ -495,6 +495,27 @@ Step 4, rejection, is done: the runtime by agent m6-async-rt
   six unhandled ones' ends, and `TestAsyncHandlerRejectionDropsOnlyItsConnection`
   an async handler's.
 
+Step 5, the race rule for errors, is done (`lower/frozen.go`; plan D10,
+amended 2026-10-27 by zob's call):
+- An Error is frozen wherever it came from, so a request handler or a
+  spawned function may use one made outside it, alone, as a maybe, or in a
+  frozen const. The plan's D10 refused it because `message` is writable, but
+  since step 3 lowering refuses every write to an Error's fields, it has no
+  other field a program can reach, and the runtime sets its own only while
+  making one: an Error never changes once made. ⚠ Revisit when an Error
+  gains a field that can change, Error's options (a cause) or the program's
+  own Error classes (M12).
+- An unknown is never frozen (step 3's sweep), since it may hold an object
+  that changes. A spawn's rejection reaches its caller copied while the
+  spawned domain may still run (step 4).
+- Done-check 7: `TestThrowingHandlersUnderRace` serves 200 requests, 50 at a
+  time, from a race-detector build, which it checks is one. Its handler
+  throws at once, rejects after an await, catches and answers 500, reads an
+  Error made outside it, and catches a spawn's throw of that Error: no race,
+  every answer as Node's where Node answers, the throwing ones dropped, and
+  the server serving on. An Error the runtime wrote to on each read fails
+  it with data races (mutation).
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -1659,7 +1680,9 @@ reference to any of it. TypeScript refuses writes through it. TypeScript
 does let a readonly property flow into a mutable one, though, which would
 make such a reference, so lowering refuses that flow (`readonlyFlow`),
 wherever a value fills a slot. A function, a promise or a host value inside
-makes a const not frozen: what it captures or stands for can change.
+makes a const not frozen: what it captures or stands for can change. An
+unknown doesn't either, since it may hold an object that can. An Error
+does, since it never changes once made (M6 step 5).
 
 M2 hit this invariant first, with promises. A `Promise` settles, so it is
 mutable state like any object. Lowering therefore refuses a handler that

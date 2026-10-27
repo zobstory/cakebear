@@ -60,6 +60,26 @@ createServer((req, res) => {
   res.end(conf.host);
 }).listen(3000);
 `},
+		// An Error never changes once made (M6 plan D10, amended).
+		{"an Error in a handler", `const notFound: Error = new RangeError("not found");
+const made: Error = Error("made by a call");
+createServer((req, res) => {
+  res.end(String(notFound) + made.message);
+}).listen(3000);
+`},
+		{"a maybe of an Error", `const none: Error | null = null;
+createServer((req, res) => {
+  res.end(String(none));
+}).listen(3000);
+`},
+		{"an Error in a frozen const, in a spawn", `interface Failure { readonly code: number; readonly err: Error }
+const failures: readonly Failure[] = [{ code: 404, err: new RangeError("not found") }];
+async function main(): Promise<void> {
+  const m: string = await spawn((): string => failures[0].err.message);
+  console.log(m);
+}
+main();
+`},
 		{"in a spawned function", `const routes: readonly Route[] = [{ path: "/", page: { title: "t", items: [] } }];
 async function main(): Promise<void> {
   const n: number = await spawn((): number => routes.length);

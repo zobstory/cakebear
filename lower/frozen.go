@@ -98,6 +98,15 @@ func (l *lowerer) deepReadonly(t *checker.Type, seen map[*checker.Type]bool) str
 		// What it holds is known only at run time, and may be an object
 		// held elsewhere: a call's result, say.
 		return "it is an unknown, which may hold an object or an array that can change"
+	case ir.KindError:
+		// An Error never changes once made: lowering refuses writes to its
+		// message and name (lower.go's assignment), it has no other field
+		// a program can reach, and the runtime sets its own only while
+		// making one. So any Error is frozen, wherever it came from (M6
+		// plan D10, amended 2026-10-27). ⚠ Revisit when an Error gains a
+		// field that can change: Error's options (a cause), or the
+		// program's own Error classes (M12).
+		return ""
 	case ir.KindInvalid:
 		return "it holds a type the backend cannot represent yet"
 	}
