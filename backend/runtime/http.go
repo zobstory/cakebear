@@ -29,10 +29,10 @@ import (
 // gives it, so requests run in parallel while the async code within one runs
 // in Node's order. Where Node throws (headers set after they were sent, a
 // status code out of range, a bad port) the runtime throws Node's error, code
-// and all (M6 plan D9, R34), which a try can catch. A throw nothing catches
-// ends only its request (D8): before the response ends its connection is
-// dropped, after it the response stands, and the report goes to stderr
-// either way. Node would end the whole server.
+// and all (M6 plan D9, R34), which a try can catch. A throw nothing catches,
+// or a rejection nothing handles, ends only its request (D8): before the
+// response ends its connection is dropped, after it the response stands, and
+// the report goes to stderr either way. Node would end the whole server.
 
 // listenHost is the address servers bind: every interface, as Node's default
 // is. Tests narrow it to loopback.
@@ -122,24 +122,33 @@ func portNumber(f float64) (int, bool) {
 // returns, and whatever the domain still has to do carries on on a goroutine
 // of its own, which keeps the process alive until it is done.
 //
-// A throw nothing caught ends the request, and only it (M6 plan D8): the
-// report goes to stderr, and the connection is dropped, quietly, unless the
-// response had already ended, in which case it stands. The domain is
-// abandoned with whatever it had left to do. A Go panic goes on to net/http,
-// which drops the connection and logs it with its stack, as before.
+// A throw nothing caught, or a rejection nothing handled (an async
+// handler's, after an await say), ends the request, and only it (M6 plan
+// D8): the report goes to stderr, and the connection is dropped, quietly,
+// unless the response had already ended, in which case it stands. A Go
+// panic goes on to net/http, which drops the connection and logs it with its
+// stack, as before. Either way the domain is abandoned with whatever it had
+// left to do, and so is one that ran out of work, and its async calls still
+// parked are ended (parked.go).
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	d := newDomain()
 	res := &ServerResponse{w: w, status: http.StatusOK, d: d}
+	detached := false
 	defer func() {
-		if p := recover(); p != nil {
-			t, ok := p.(*Thrown)
-			if !ok {
-				panic(p)
-			}
-			writeErr(uncaughtReport(t, d.running))
-			if !res.ended {
-				panic(http.ErrAbortHandler) // net/http drops the connection and logs nothing
-			}
+		p := recover()
+		if !detached {
+			d.abort()
+		}
+		if p == nil {
+			return
+		}
+		report, ok := failureReport(p, d.running)
+		if !ok {
+			panic(p)
+		}
+		writeErr(report)
+		if !res.ended {
+			panic(http.ErrAbortHandler) // net/http drops the connection and logs nothing
 		}
 	}()
 	d.running = inHandler
@@ -155,6 +164,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.pending() {
 		ref()
+		detached = true
 		go finishDetached(d)
 	}
 }
@@ -162,13 +172,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 // finishDetached runs what is left of a request's domain after its response.
 // Nothing recovers a panic on this goroutine, and the connection it could
 // have dropped is already finished, so a panic is reported, not fatal: a
-// throw as an uncaught one is (D8), and a Go panic with its value.
+// throw or a rejection as an uncaught one is (D8), and a Go panic with its
+// value.
 func finishDetached(d *Domain) {
 	defer unref()
+	defer d.abort()
 	defer func() {
 		if r := recover(); r != nil {
-			if t, ok := r.(*Thrown); ok {
-				writeErr(uncaughtReport(t, d.running))
+			if report, ok := failureReport(r, d.running); ok {
+				writeErr(report)
 				return
 			}
 			warnf("cakebear: after a response was sent: %v", r)

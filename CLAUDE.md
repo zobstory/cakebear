@@ -439,6 +439,62 @@ Step 3, throw and try lowered and emitted, is done (`lower/errors.go`,
   `TestUncaughtReportsQuoteAsNode` 35 whole reports, byte for byte but the
   path and the version.
 
+Step 4, rejection, is done: the runtime by agent m6-async-rt
+(`runtime/promise.go`, `rejection.go`, `parked.go`, `spawn.go`), and
+`reject` lowered (`lower/async.go`):
+- A Promise executor is `(resolve, reject) => void` (`ir.ExecutorType`), and
+  `reject` takes its reason as an unknown holds it (`ir.RejectType`): a call
+  boxes it, whatever TypeScript's `any` let through, and `reject()` passes
+  undefined. An executor declaring only resolve is padded to that.
+- A throw out of an async body or an executor rejects its promise, and so
+  does `reject`. A throw before the first await rejects, and the caller
+  carries on (R15). A promise settles once, and a later resolve, reject or
+  executor throw is ignored without a word (R16). `Await` of a rejected
+  promise throws the same `*Thrown` again, so a catch binds the very value
+  (R18), and a rejection takes a resolution's microtask hops (R17):
+  `order-await.ts`, m6-node's c3-02, holds 36 lines of them to Node.
+- Each drain ends as Node's `processTicksAndRejections` does, checking the
+  promises rejected since the last with nothing awaiting them; one awaited
+  later in the same drain is handled (R11). The first still unhandled ends
+  the domain with an `*unhandledRejection` no try can catch: main reports it
+  and exits 1 after its output (R9, R10), a request ends alone (D8), and a
+  spawned domain raises it in its caller. `Exit` drains main once more, so
+  a program that never runs the loop is checked too.
+- The report of an Error rejection is an uncaught throw's, pointing where
+  the error was made, as Node's points at its top frame (R12). Any other
+  reason is Node's `UnhandledPromiseRejection` as under
+  `--stack-trace-limit=0`, `[UnhandledPromiseRejection: … reason "m".] {
+  code: 'ERR_UNHANDLED_REJECTION' }`, the reason named as V8 names it
+  (`[object Array]`, `#<Object>`), after the excerpt of the throw that
+  rejected the promise, and none for `reject(v)`, which has no site (R13).
+- A top-level await's rejection is an uncaught throw, not R13's report
+  (R14), five microtasks after it, as Node's loader reports it
+  (`moduleHops`, measured on Node 24.18: the awaits in its ESM loader, so a
+  later Node may differ, which the tla goldens would show at once).
+- `spawn`: a throw out of fn, or a rejection of the promise it returns,
+  rejects the spawn's promise in the caller, the reason copied while the
+  spawned domain may still run (D10). A failure nothing in the spawned
+  domain catches is uncaught in its caller before the result, as under
+  Node, and after it is reported, ending the program when main spawned it.
+- The parked registry (D7): a domain that will never run again ends the
+  async calls still waiting in it, each resuming into `runtime.Goexit`,
+  which runs none of the program. That domain is a request that failed, ran
+  out of work or finished its work after the response, or a spawned domain
+  that is done. 100 requests left 100 goroutines behind without it, on each
+  of five ways a domain is abandoned, and none with it; an await costs
+  3.8 ns more, 1.5%.
+- Fixed: a spawn's result went to its caller uncopied while a call parked in
+  the spawned domain could still change it, a data race `-race` reports.
+  "May still run" counts queued microtasks and parked calls now, not only
+  timers.
+- 38 runs recorded from Node (`testdata/gen-async-goldens.mjs`), of 19
+  programs written as the emitter writes them, hold stdout, the exit code
+  and the report, 20 runs each for main, and a handler's response and
+  report. Through cakec, `TestRejectionsMatchNode` holds a program of every
+  way a rejection arises to Node, 20 runs, `TestUnhandledRejectionsEndAsNode`
+  six unhandled ones' ends, and `TestAsyncHandlerRejectionDropsOnlyItsConnection`
+  an async handler's.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -1060,9 +1116,10 @@ Since M2 (`lower/async.go`):
 - `await` of a promise;
 - `Promise<T>` as a type, recognised only when every declaration of it is in a
   bundled lib;
-- `new Promise((resolve) => …)` with the executor written inline. `resolve`
-  is a plain function: `(value: T) => void`, or `() => void` for
-  `Promise<void>`;
+- `new Promise((resolve, reject) => …)` with the executor written inline.
+  `resolve` is a plain function: `(value: T) => void`, or `() => void` for
+  `Promise<void>`; `reject`, since M6 step 4, takes any data value as its
+  reason, an unknown;
 - `setTimeout(callback, delay)` and `clearTimeout(id)`, the DOM's, recognised
   by being declared only in `lib.dom.d.ts`. The callback must be `() => void`,
   and the id is a `number`;
@@ -1359,7 +1416,6 @@ a promise; the standard library's other globals (`NaN`, `Math`,
 libs declare them. A program's own function of the same name is unaffected.
 
 Not yet, from M2, each refused by name:
-- `reject` (M6 step 4);
 - adopting one promise into another, through `resolve(p)` or an async `return p`
   (await it instead);
 - `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
@@ -1629,7 +1685,7 @@ not listed here that behaves differently is a bug.
 | A CPU-heavy request handler | blocks every other request | the others are still served (8 `fib(38)` requests: ~1.3× one, vs Node's ~7.7×) |
 | `console.log` order across requests | one at a time, per event-loop turn | interleaved, nondeterministic (each line whole) |
 | A handler returns without `res.end()` | the request hangs until it times out | an empty 200, plus a one-line warning on stderr |
-| A throw nothing catches in a request handler, the program's own or one of node:http's (headers after they were sent, a bad status code, a header name that isn't a token, a header value with a character past U+00FF or a control), or a write after `end` (M6 D8) | the uncaught exception kills the server | only that request ends: its connection is dropped before `res.end()`, the response stands after it, the report goes to stderr as Node's would, and the server serves on |
+| A throw nothing catches in a request handler, the program's own or one of node:http's (headers after they were sent, a bad status code, a header name that isn't a token, a header value with a character past U+00FF or a control), a rejection nothing handles in its domain (an async handler's, before or after an await), or a write after `end` (M6 D8) | the uncaught exception kills the server | only that request ends: its connection is dropped before `res.end()`, the response stands after it, the report goes to stderr as Node's would, and the server serves on |
 | A header value with spaces at either end | sent as written | trimmed, as `net/http` writes every header |
 | A request line holding raw bytes from 0x80 up | a 400 | served: each such byte is one U+FFFD in `req.url` |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
@@ -1646,7 +1702,7 @@ not listed here that behaves differently is a bug.
 | Async code in *different* requests after an `await` | interleaved on one thread | in parallel (8 requests that await then compute `fib(38)`: ~1.2× one, vs Node's ~7.2×) |
 | `setTimeout`'s return value | a `Timeout` object | a `number`, as the DOM's declaration types it |
 | The cost of one `await` | ~32 ns | ~224 ns: a goroutine handoff |
-| A throw in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr as an uncaught throw is, and the process stays up; a Go panic there as `cakebear: after a response was sent: …` |
+| A throw, or a rejection nothing handles, in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr as an uncaught throw is, and the process stays up; a Go panic there as `cakebear: after a response was sent: …` |
 | A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |
 | A top-level `await` that never settles | exit 13, with a warning naming the file, the line and the source line | exit 13, with a warning naming only the file |
 | Top-level `await` in a file with no import or export | runs: Node detects the module syntax | TS1375, as from `tsc`: add `export {}` |
@@ -1656,7 +1712,7 @@ not listed here that behaves differently is a bug.
 | Growing `length` (D9) | holes | a panic; shrinking is allowed |
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce`, `findIndex`, `find` or `findLast` (D9) | skips the indices it removed (`findIndex`, `find` and `findLast` read them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
-| A `spawn`'s object or array result, while the spawn has work left (D11) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
+| A `spawn`'s object or array result, or what it rejects with, while the spawned domain may still run: a timer, a microtask queued or a call parked (D11, M6 D10) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
 | A write to a property of a value that is null or undefined, `u!.p = f()` | runs `f()`, then throws | throws Node's TypeError before `f()` runs (M5 step 4) |
 | `x!` on a value that is null or undefined, used as a value (M5 step 4) | carries on with it | a panic: `cakebear: m is undefined, though a ! asserted it isn't (Node carries on with undefined)`, exit 2. Reading, writing, deleting or iterating it, or `in`, throws the TypeError Node throws (M6 D9) |
@@ -1665,7 +1721,9 @@ not listed here that behaves differently is a bug.
 | An Error's stack (M6 D4) | `Name: message`, then V8's frames | `Name: message` alone: no frames are kept, so `console.log(err)` prints `[Error: m]`, as Node prints under `--stack-trace-limit=0` |
 | The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs, by its bare path for a file with no import or export, which it runs as CommonJS; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code (`node:internal/…`) for node:http's errors, and at an ES module's top level for a non-Error, for an error a builtin throws, and for an Error whose stack was read before the throw | ends `cakebear <version>`; names the source's path at build time, always as a `file://` URL; prints the error with none (above); gives no advice; points at the program's throw, its call or the Error's creation, the caret where V8 would record it. A string made too long by `+`, a pad or a replace has no source excerpt |
 | A recursion that never ends (M6 D3) | a `RangeError: Maximum call stack size exceeded` a try can catch | Go's `fatal error: stack overflow`, past every catch, exit 2 |
-| A throw leaving an async function or a spawned one, until M6 step 4 (D7) | rejects the function's promise; the caller carries on, and `await` throws it, which a try around the await catches | before the function's first `await`, raised in the caller at once, as a synchronous throw is; after one, or from a spawned function, reported as uncaught past every try, exit 1. A throw caught inside the function is fine |
+| The report of a rejection nothing handles whose reason isn't an Error (R13) | `node:internal/process/promises:392` and its line, then `UnhandledPromiseRejection: …` with Node's frames and a `code` block | the same error as Node prints it under `--stack-trace-limit=0`, `[UnhandledPromiseRejection: …] { code: 'ERR_UNHANDLED_REJECTION' }`, after the excerpt of the throw that rejected the promise; none for `reject(v)` |
+| A failure nothing catches in a spawned function's own work, its timer's throw or a rejection nothing there handles, from a request's spawn or after the spawn's result (M6 D7) | under the shim, an uncaught exception: the process dies | before the result, uncaught in the caller: a request's spawn ends only that request (D8), and main's ends main as Node's does. After the result, reported on stderr, and it ends the program only when main spawned it |
+| A spawn's promise rejected before anything awaits it | under the shim fn runs in the first microtask, so the rejection comes in the first drain, and is unhandled unless awaited in it | it comes when the spawned function fails, in parallel, and is unhandled only if nothing awaits it by then: `const p = spawn(f); await sleep(10); await p` may catch what Node dies of |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
 the `Date` header, and when a response is chunked rather than given a

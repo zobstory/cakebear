@@ -438,7 +438,7 @@ func TestCondAwaitsInABranch(t *testing.T) {
 	timer := &ir.HostCall{Op: ir.HostSetTimeout, Typ: ir.Number, Span: span, Args: []ir.Expr{
 		arrow(nil, ir.Void, do(callOf("resolve", ir.Void, stable("v", ir.Number)))), num(10),
 	}}
-	executor := &ir.FuncLit{Params: param("resolve", resolve), Result: ir.Void, Typ: ir.ExecutorType(ir.Number), Span: span, Body: []ir.Stmt{do(timer)}}
+	executor := &ir.FuncLit{Params: append(param("resolve", resolve), ir.Param{Type: ir.RejectType(), Span: span}), Result: ir.Void, Typ: ir.ExecutorType(ir.Number), Span: span, Body: []ir.Stmt{do(timer)}}
 	later := &ir.FuncLit{Params: param("c", ir.Boolean), Result: numP, Async: true, Typ: ir.FuncType([]ir.Type{ir.Boolean}, numP), Span: span,
 		Body: []ir.Stmt{ret(cond(c, delay(5), num(6)))}}
 	m := &ir.Module{Name: "t", File: "/src/t.ts", Async: true,

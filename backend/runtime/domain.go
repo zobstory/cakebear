@@ -49,6 +49,11 @@ type Domain struct {
 	// tick is a failure Node would raise on the next tick, which comes
 	// before the next microtask (writeAfterEnd).
 	tick *Thrown
+	// rejected holds the promises rejected with nothing awaiting them since
+	// the last drain, which ends by checking them again (rejection.go).
+	rejected []*settlement
+	// parked holds the async calls waiting in an Await (parked.go).
+	parked []*Co
 
 	// The inbox is the one part of a domain other goroutines touch: a spawned
 	// domain posts its result here. It has its own lock, and wake tells the
@@ -100,7 +105,9 @@ func (d *Domain) queueMicrotask(f func()) { d.micro = append(d.micro, f) }
 // drain runs microtasks until there are none, including the ones queued while
 // it runs, as Node does after each macrotask. A failure due on the next tick
 // is raised first, and before each microtask, as Node runs process.nextTick
-// callbacks before promise reactions.
+// callbacks before promise reactions. Last, as Node's
+// processTicksAndRejections does, it ends the domain if a rejection is
+// still unhandled (rejection.go).
 func (d *Domain) drain() {
 	for {
 		if t := d.tick; t != nil {
@@ -117,6 +124,9 @@ func (d *Domain) drain() {
 		f()
 	}
 	d.micro, d.microHead = d.micro[:0], 0
+	if len(d.rejected) > 0 {
+		d.checkRejections()
+	}
 }
 
 // runTask runs f as one macrotask: f itself, then every microtask it leads to.

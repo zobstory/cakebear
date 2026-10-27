@@ -110,6 +110,21 @@ func fillArgs(args []ir.Expr, params []ir.Type, span ir.Span) []ir.Expr {
 	return args
 }
 
+// boxedArgs boxes each argument that a parameter of the callee's takes as an
+// unknown, where the checker's slot for it is none: reject's reason, which
+// TypeScript types any (ir.RejectType). An argument a slot boxed already is
+// left as it is. It reports false once it has refused one.
+func (l *lowerer) boxedArgs(nodes []*ast.Node, args []ir.Expr, params []ir.Type) bool {
+	for i, pt := range params {
+		if pt == ir.Unknown && i < len(nodes) && i < len(args) {
+			if args[i] = l.box(nodes[i], args[i]); args[i] == nil { // errors.go
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // opening is the statements the prologues give, in the parameters' order.
 func opening(prologues []func() []ir.Stmt) []ir.Stmt {
 	var out []ir.Stmt

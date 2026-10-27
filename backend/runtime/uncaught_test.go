@@ -48,8 +48,9 @@ func loadUncaught(t *testing.T) map[string]uncaughtCase {
 const nodeHint = "(Use `node --trace-uncaught ...` to show where the exception was thrown)\n"
 
 // cakebearsReport is the report cakebear makes of c, by its rule
-// (gen-uncaught-goldens.mjs). A throw-site case has none from Node: want is
-// its excerpt.
+// (gen-uncaught-goldens.mjs, gen-async-goldens.mjs). A throw-site or
+// rejection-value case has none from Node: want is its excerpt, or "" for
+// none.
 func cakebearsReport(t *testing.T, c uncaughtCase, want string) string {
 	t.Helper()
 	const nodeVersion = "\nNode.js v24.18.0\n"
@@ -66,9 +67,19 @@ func cakebearsReport(t *testing.T, c uncaughtCase, want string) string {
 	case "header-from-frames":
 		lines := strings.SplitAfterN(c.Frames.Stderr, "\n", 4)
 		return strings.Join(lines[:3], "") + "\n" + body
+	case "rejection-value":
+		// R13's UnhandledPromiseRejection is an Error, reported as one.
+		if want == "" {
+			return body
+		}
+		return want + "\n" + body
 	}
-	// A non-Error has no blank line between the caret and the value.
+	// A non-Error has no blank line between the caret and the value, and
+	// none before the value when there is no excerpt.
 	value := limit0[strings.Index(limit0, "    ^\n")+6:]
+	if want == "" {
+		return value
+	}
 	return "\n" + want + value
 }
 

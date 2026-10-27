@@ -31,7 +31,7 @@ func sleepFunc() *ir.Func {
 	return &ir.Func{
 		Name: "sleep", Params: []ir.Param{{Name: "ms", Type: ir.Number, Span: span}}, Result: voidPromise, Span: span,
 		Body: []ir.Stmt{&ir.Return{Span: span, Value: &ir.NewPromise{Typ: voidPromise, Span: span, Executor: &ir.FuncLit{
-			Params: []ir.Param{{Name: "resolve", Type: resolveVoid, Span: span}},
+			Params: []ir.Param{{Name: "resolve", Type: resolveVoid, Span: span}, {Type: ir.RejectType(), Span: span}},
 			Result: ir.Void, Typ: ir.ExecutorType(ir.Void), Span: span,
 			Body: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.HostCall{
 				Op: ir.HostSetTimeout, Typ: ir.Number, Span: span,
@@ -67,7 +67,7 @@ func TestEmitAsyncSleepShape(t *testing.T) {
 	mustParse(t, got)
 	for _, want := range []string{
 		"func sleep(ts_domain *cakebearrt.Domain, ms float64) *cakebearrt.Promise[struct{}] {\n",
-		"\treturn cakebearrt.NewPromiseVoid(ts_domain, func(ts_domain *cakebearrt.Domain, resolve func(*cakebearrt.Domain)) {\n",
+		"\treturn cakebearrt.NewPromiseVoid(ts_domain, func(ts_domain *cakebearrt.Domain, resolve func(*cakebearrt.Domain), _ func(*cakebearrt.Domain, any)) {\n",
 		"\t\tcakebearrt.SetTimeout(ts_domain, resolve, ms)\n",
 		"func ts_main(ts_domain *cakebearrt.Domain) *cakebearrt.Promise[struct{}] {\n",
 		"\treturn cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) struct{} {\n",
@@ -148,7 +148,7 @@ func TestEmitAsyncValues(t *testing.T) {
 	resolveNum := ir.ResolveType(ir.Number)
 	h := &ir.Func{Name: "h", Result: numPromise, Span: span, Body: []ir.Stmt{
 		&ir.Return{Span: span, Value: &ir.NewPromise{Typ: numPromise, Span: span, Executor: &ir.FuncLit{
-			Params: []ir.Param{{Name: "resolve", Type: resolveNum, Span: span}},
+			Params: []ir.Param{{Name: "resolve", Type: resolveNum, Span: span}, {Type: ir.RejectType(), Span: span}},
 			Result: ir.Void, Typ: ir.ExecutorType(ir.Number), Span: span,
 			Body: []ir.Stmt{&ir.ExprStmt{Span: span, Expr: &ir.Call{
 				Callee: "resolve", Typ: ir.Void, Span: span, Args: []ir.Expr{num(41)},
@@ -160,7 +160,7 @@ func TestEmitAsyncValues(t *testing.T) {
 	for _, want := range []string{
 		"\treturn cakebearrt.Async(ts_domain, func(ts_co *cakebearrt.Co) float64 {\n",
 		"\t\treturn (cakebearrt.Await(ts_co, h(ts_domain)) + 1.0)\n\t})\n}\n",
-		"\treturn cakebearrt.NewPromise(ts_domain, func(ts_domain *cakebearrt.Domain, resolve func(*cakebearrt.Domain, float64)) {\n",
+		"\treturn cakebearrt.NewPromise(ts_domain, func(ts_domain *cakebearrt.Domain, resolve func(*cakebearrt.Domain, float64), _ func(*cakebearrt.Domain, any)) {\n",
 		"\t\tresolve(ts_domain, 41.0)\n",
 	} {
 		if !strings.Contains(got, want) {

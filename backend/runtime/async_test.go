@@ -15,7 +15,7 @@ import (
 // program's stdout with Node's and another can run many copies at once.
 
 func sleepFn(d *Domain, ms float64) *Promise[struct{}] {
-	return NewPromiseVoid(d, func(d *Domain, resolve func(*Domain)) {
+	return NewPromiseVoid(d, func(d *Domain, resolve func(*Domain), _ func(*Domain, any)) {
 		SetTimeout(d, resolve, ms)
 	})
 }
@@ -221,7 +221,7 @@ func TestSecondResolveDoesNothing(t *testing.T) {
 
 	d := newDomain()
 	var resolve func(*Domain, float64)
-	p := NewPromise(d, func(_ *Domain, r func(*Domain, float64)) { resolve = r })
+	p := NewPromise(d, func(_ *Domain, r func(*Domain, float64), _ func(*Domain, any)) { resolve = r })
 	if p.settled {
 		t.Fatal("settled before resolve was called")
 	}
@@ -239,7 +239,8 @@ func TestPromiseOutsideItsDomainPanics(t *testing.T) {
 
 	home, other := newDomain(), newDomain()
 	var resolve func(*Domain)
-	p := NewPromiseVoid(home, func(_ *Domain, r func(*Domain)) { resolve = r })
+	var reject func(*Domain, any)
+	p := NewPromiseVoid(home, func(_ *Domain, r func(*Domain), j func(*Domain, any)) { resolve, reject = r, j })
 
 	awaited := panicked(func() {
 		Async(other, func(co *Co) struct{} { return Await(co, p) })
@@ -249,6 +250,9 @@ func TestPromiseOutsideItsDomainPanics(t *testing.T) {
 	}
 	if got := panicked(func() { resolve(other) }); got != errCrossDomain {
 		t.Errorf("resolving from another domain panicked with %q, want %q", got, errCrossDomain)
+	}
+	if got := panicked(func() { reject(other, "x") }); got != errCrossDomain {
+		t.Errorf("rejecting from another domain panicked with %q, want %q", got, errCrossDomain)
 	}
 }
 

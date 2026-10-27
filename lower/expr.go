@@ -372,6 +372,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	// is, still takes the callee's parameter type.
 	if ft := l.typeOf(c.Expression); ft.Kind == ir.KindFunc && ft.Sig != nil {
 		call.Args = fillArgs(call.Args, ft.Sig.Params, l.span(n)) // params.go
+		if c.Arguments != nil && !l.boxedArgs(c.Arguments.Nodes, call.Args, ft.Sig.Params) {
+			return nil
+		}
 	}
 	if l.resolvesWithPromise(n, call) {
 		return nil

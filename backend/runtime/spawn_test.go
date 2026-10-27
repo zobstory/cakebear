@@ -146,7 +146,7 @@ func TestNeverSettlingSpawnReleasesTheCaller(t *testing.T) {
 	var p *Promise[struct{}]
 	d.runTask(func() {
 		p = SpawnAsync(d, func(s *Domain) *Promise[struct{}] {
-			return NewPromiseVoid(s, func(*Domain, func(*Domain)) {})
+			return NewPromiseVoid(s, func(*Domain, func(*Domain), func(*Domain, any)) {})
 		})
 	})
 	done := make(chan struct{})
