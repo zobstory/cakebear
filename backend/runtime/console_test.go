@@ -9,7 +9,7 @@ import (
 // console.warn write what stdout holds first, so one stream holding both, as
 // a terminal or a pipe does, has the lines in the program's order, as Node
 // writes them, each at once.
-func TestLogErrorKeepsTheProgramsOrder(t *testing.T) {
+func TestLogErrorKeepsTheProgramsOrder(t *testing.T) { //nolint:paralleltest // swaps the runtime's process-wide stdout and stderr
 	both := &syncBuffer{}
 	savedOut, savedErr := out, errOut
 	outMu.Lock()
