@@ -41,7 +41,7 @@ func (l *lowerer) inExpr(n *ast.Node, b *ast.BinaryExpression) ir.Expr {
 	}
 	t := obj.ExprType()
 	if t.Kind != ir.KindObject {
-		l.failf(n, "in on a %s is not supported yet; it takes an object", t)
+		l.failf(n, "in on %s is not supported yet; it takes an object", aType(t))
 		return nil
 	}
 	i := t.Shape.Index(key.Text())

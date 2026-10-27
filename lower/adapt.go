@@ -31,7 +31,11 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 	if slot := l.slotType(n); slot.Kind == ir.KindArray && holdsUnknown(slot) && !slot.Equal(v.ExprType()) {
 		// An array holds values of its element type only, so one of
 		// numbers isn't one of unknowns, which TypeScript allows.
-		l.failf(n, "%s can't be used as %s yet: an array holds values of one type in cakebear, so build one of unknowns instead", aType(v.ExprType()), aType(slot))
+		if v.ExprType() == ir.Unknown {
+			l.failf(n, "an unknown narrowed to an array, as Array.isArray narrows it, is not supported yet")
+		} else {
+			l.failf(n, "%s can't be used as %s yet: an array holds values of one type in cakebear, so build one of unknowns instead", aType(v.ExprType()), aType(slot))
+		}
 		return nil
 	}
 	if !l.exact(n, v) {
@@ -60,12 +64,14 @@ func (l *lowerer) fitField(n *ast.Node, v ir.Expr, t ir.Type) ir.Expr {
 		return v
 	}
 	switch got := v.ExprType(); {
+	case t == ir.Unknown:
+		return l.box(n, v) // errors.go
 	case got.Kind == ir.KindFunc && t.Kind == ir.KindFunc:
 		return l.adapt(n, v, t)
 	case got.Kind == ir.KindObject && t.Kind == ir.KindObject:
-		l.failf(n, "a %s can't be used as a %s: an object has exactly the fields of its type in cakebear%s", got, t, extraFields(got.Shape, t.Shape))
+		l.failf(n, "%s can't be used as %s: an object has exactly the fields of its type in cakebear%s", aType(got), aType(t), extraFields(got.Shape, t.Shape))
 	default:
-		l.failf(n, "a %s can't be used as a %s", got, t)
+		l.failf(n, "%s can't be used as %s", aType(got), aType(t))
 	}
 	return nil
 }

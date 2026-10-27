@@ -257,9 +257,37 @@ Straße cake    $1.75
 …
 ```
 
+What a request gets wrong is thrown, and `route` catches it at its top.
+Without classes yet, an error's kind says what went wrong: a bad query is a
+`RangeError` the program throws, or the `URIError` that `decodeURIComponent`
+throws, and a missing item is a plain `Error`:
+
+```ts
+  try {
+    return answer(url);
+  } catch (e) {
+    if (e instanceof RangeError || e instanceof URIError) {
+      return json(400, JSON.stringify({ error: e.message }));
+    }
+    if (e instanceof Error && e.name === "Error") {
+      return json(404, JSON.stringify({ error: e.message }));
+    }
+    throw e;
+  }
+```
+
+```console
+$ curl 'localhost:3000/items?limit=abc'
+{"error":"limit must be a whole number, not \"abc\""}
+$ curl 'localhost:3000/items?q=%E0'
+{"error":"URI malformed"}
+$ curl localhost:3000/items/9
+{"error":"no item 9"}
+```
+
 The same sources run unmodified under Node, and answer every request the same
 way, byte for byte: status, `Content-Type` and body
-(`TestRouteServerServes`).
+(`TestRouteServerServes`, 29 requests).
 
 Requests run in parallel, so a handler may only read state nothing can
 change. A `const` whose type is `readonly` all the way down, and which is built
@@ -267,7 +295,7 @@ from literals, qualifies: it is *frozen*. Make `items` a plain `Item[]` and
 the build is refused, through the function the handler calls, with the fix:
 
 ```console
-src/main.ts:23:24: cannot compile yet: this handler runs on many requests at once, so it can't call `route()`, which uses `items` in data.ts, an array created outside the handler, which isn't frozen: its type isn't readonly all the way down: an Item[] is mutable; write `readonly Item[]`
+src/main.ts:30:24: cannot compile yet: this handler runs on many requests at once, so it can't call `route()`, which uses `items` in data.ts, an array created outside the handler, which isn't frozen: its type isn't readonly all the way down: an Item[] is mutable; write `readonly Item[]`
 ```
 
 ## Parallel work: `spawn`
@@ -318,18 +346,27 @@ Supported today:
   literals such as `"get" | "post"`;
 - `import` from `node:http`, and the members its bundled declarations list;
   `async` functions and arrows, `await`, including at the top level of a
-  module, `Promise<T>`, `new Promise((resolve) => …)`, `setTimeout` /
-  `clearTimeout`, and `spawn`;
+  module, `Promise<T>`, `new Promise((resolve, reject) => …)`, `setTimeout`
+  / `clearTimeout`, and `spawn`;
+- **errors**: `throw`, and `try`/`catch`/`finally` with every way out;
+  `Error` and its built-in kinds (`TypeError`, `RangeError`, …) as values,
+  printed and serialised as Node writes them; `unknown`, which a `catch`
+  binds, narrowed by `instanceof`, `typeof`, `===` and truthiness; rejection
+  through `async`, `await`, `reject` and `spawn`; the errors the runtime
+  throws where Node throws, catchable, with Node's messages; an error nothing
+  catches ending the program with Node's exit code and report; and
+  `console.error`, `.warn`, `.info` and `.debug`;
 - programs of several modules, with named imports and exports of top-level
   functions and `const`s, renamed or not, and import cycles.
 
-Not yet: `throw`, `try` and `reject` (next, M6); other unions, classes,
-generics, RegExp, `URL`, mixed-type `+` (a template literal does it), `var`,
-loose equality but `== null`, imports from anything but `node:http` and the
-program's own modules, default exports, `import * as` a module of your own,
-re-exports, exporting a `let`, rest parameters, bitwise operators, `.then`
-and `Promise.all`, and the standard library's other globals (`Math`, `Date`,
-`setInterval`, …).
+Not yet: imports by a non-relative path, and re-exports (next, M7); other
+unions, classes (an Error class of your own too), generics, RegExp, `URL`,
+`any`, mixed-type `+` (a template literal does it), `var`, loose equality but
+`== null`, imports from anything but `node:http` and the program's own
+modules, default exports, `import * as` a module of your own, exporting a
+`let`, rest parameters, bitwise operators, `.then`, `.catch`, `.finally` and
+`Promise.all`, `JSON.parse`, and the standard library's other globals
+(`Math`, `Date`, `setInterval`, …).
 
 Programs are compared against Node for behavioural equivalence, down to
 `console.log(-0)` and `1e-7`, with one deliberate exception: request handlers
@@ -337,8 +374,9 @@ run in parallel, where Node runs them one at a time. Async code within one
 request, or within the main program, keeps Node's order exactly. The compiler refuses
 shared mutable state in a handler, so that difference cannot become a data
 race. [`CLAUDE.md`](CLAUDE.md) lists the other accepted differences, such as log
-lines interleaving across requests and response header names being
-canonicalised.
+lines interleaving across requests, response header names being
+canonicalised, and a throw a handler doesn't catch ending only its own
+request, where Node's server would crash.
 
 ## Contributing
 

@@ -78,9 +78,15 @@ func (l *lowerer) conditional(n *ast.Node) ir.Expr {
 			return nil
 		}
 		then, els = into(then, t), into(els, t)
+		if t == ir.Unknown {
+			// Its own type, with no unknown's slot to box each branch.
+			if then, els = l.box(c.WhenTrue, then), l.box(c.WhenFalse, els); then == nil || els == nil {
+				return nil
+			}
+		}
 	}
 	if !then.ExprType().Equal(t) || !els.ExprType().Equal(t) {
-		l.failf(n, "a conditional choosing between a %s and a %s is not supported yet", then.ExprType(), els.ExprType())
+		l.failf(n, "a conditional choosing between %s and %s is not supported yet", aType(then.ExprType()), aType(els.ExprType()))
 		return nil
 	}
 	return &ir.Cond{Test: test, Then: then, Else: els, Typ: t, Span: l.span(n)}
@@ -185,8 +191,10 @@ func (l *lowerer) chain(n *ast.Node) ir.Expr {
 		l.held[head] = h
 		return l.exprOf(n)
 	}
+	// The chain is a maybe of its last link, or an unknown when that is one,
+	// which holds undefined itself.
 	t := l.typeOf(n)
-	if t.Kind != ir.KindMaybe {
+	if t.Kind != ir.KindMaybe && t != ir.Unknown {
 		l.failf(n, "this optional chain has a type the backend cannot represent yet%s", l.reason())
 		return nil
 	}
@@ -197,6 +205,13 @@ func (l *lowerer) chain(n *ast.Node) ir.Expr {
 			return nil
 		}
 		test := &ir.IsEmpty{Value: held(), Undefined: true, Null: true, Span: l.span(head)}
+		if t == ir.Unknown {
+			if inner = l.box(n, inner); inner == nil {
+				return nil
+			}
+			undefined := &ir.Box{Value: &ir.UndefinedLit{Span: l.span(n)}, Span: l.span(n)}
+			return &ir.Cond{Test: test, Then: undefined, Else: inner, Typ: t, Span: l.span(n)}
+		}
 		return &ir.Cond{Test: test, Then: &ir.Empty{Typ: t, Span: l.span(n)}, Else: intoMaybe(inner, t), Typ: t, Span: l.span(n)}
 	})
 }

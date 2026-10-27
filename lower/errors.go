@@ -272,9 +272,17 @@ func (l *lowerer) typeOfTest(n *ast.Node) (ir.Expr, bool) {
 	if v == nil {
 		return nil, true
 	}
-	if v.ExprType() != ir.Unknown {
-		l.failf(operand, "typeof of %s is not supported yet; it is known while compiling", aType(v.ExprType()))
-		return nil, true
+	if t := v.ExprType(); t != ir.Unknown {
+		// A maybe's tag is its state's, and a check of a value TypeScript
+		// already types is common defensive code: either is tested on the
+		// value boxed, as an unknown holds it, so it is evaluated once.
+		if what := ir.Unserializable(t, nil); what != "" {
+			l.failf(operand, "typeof of %s is not supported yet: it holds %s", aType(t), what)
+			return nil, true
+		}
+		if v = l.box(operand, v); v == nil {
+			return nil, true
+		}
 	}
 	var test ir.Expr = &ir.TypeOf{Value: v, Tag: t, Span: l.span(n)}
 	if op == ast.KindExclamationEqualsEqualsToken || op == ast.KindExclamationEqualsToken {
@@ -294,12 +302,40 @@ func (l *lowerer) never(n *ast.Node, v ir.Expr) bool {
 // boxed holds v to an unknown's slot, when n's is one (D5): a value of any
 // other type is boxed, an extension type widened to the number it is first.
 // An unknown holds only data, so a function, a promise or a host value, or
-// anything holding one, is refused.
+// anything holding one, is refused. An operand of `||` or `&&` has the whole's
+// slot, so it is left as it is, and the whole is boxed once.
 func (l *lowerer) boxed(n *ast.Node, v ir.Expr) ir.Expr {
-	if v.ExprType() == ir.Unknown || l.slotType(n) != ir.Unknown || awaited(n) {
+	if v.ExprType() == ir.Unknown || l.slotType(n) != ir.Unknown || awaited(n) || isLogical(outside(n)) {
 		return v
 	}
 	return l.box(n, v)
+}
+
+// outside is what n is part of, past any parentheses around it.
+func outside(n *ast.Node) *ast.Node {
+	p := n.Parent
+	for p != nil && p.Kind == ast.KindParenthesizedExpression {
+		p = p.Parent
+	}
+	return p
+}
+
+// isLogical reports whether n is `a || b` or `a && b`.
+func isLogical(n *ast.Node) bool {
+	if n == nil || n.Kind != ast.KindBinaryExpression {
+		return false
+	}
+	k := n.AsBinaryExpression().OperatorToken.Kind
+	return k == ast.KindBarBarToken || k == ast.KindAmpersandAmpersandToken
+}
+
+// branch reports whether n, past its parentheses, is a branch of p, a `?:`,
+// rather than its condition.
+func branch(n, p *ast.Node) bool {
+	if p == nil || p.Kind != ast.KindConditionalExpression {
+		return false
+	}
+	return ast.SkipParentheses(p.AsConditionalExpression().Condition) != ast.SkipParentheses(n)
 }
 
 // awaited reports whether n is what an await waits for, whose slot the
@@ -365,13 +401,14 @@ func mentionsUnknown(t ir.Type) bool {
 // (array_methods.go, numbers.go), as emptyOutside does for maybes, so such a
 // slot is none the IR holds (slotType), and nothing is boxed into it. An
 // unknown only an instantiation gave, as `unknown[]`'s push takes one, is a
-// slot like any.
+// slot like any. An operand of `||` or `&&`, and a branch of `?:`, have the
+// whole's slot, so what that is fills is looked for past them.
 func (l *lowerer) libraryTyped(n *ast.Node) bool {
 	if l.libraryDeclaresUnknown(n) {
 		return true
 	}
 	p := n.Parent
-	for p != nil && p.Kind == ast.KindParenthesizedExpression {
+	for p != nil && (p.Kind == ast.KindParenthesizedExpression || isLogical(p) || branch(n, p)) {
 		n, p = p, p.Parent
 	}
 	var fn *ast.Node

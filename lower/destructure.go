@@ -102,7 +102,7 @@ func (l *lowerer) bindPattern(pattern *ast.Node, source ir.Expr, mutable bool) [
 		l.failf(pattern, "destructuring %s, a node:http value, is not supported yet; read its members instead, as in `req.url`", t)
 		return nil
 	default:
-		l.failf(pattern, "destructuring a %s is not supported yet; only an object", t)
+		l.failf(pattern, "destructuring %s is not supported yet; only an object", aType(t))
 		return nil
 	}
 	shape := source.ExprType().Shape

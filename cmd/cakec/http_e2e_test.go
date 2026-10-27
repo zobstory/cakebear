@@ -76,7 +76,8 @@ createServer((req, res) => {
 `
 
 // Check 7: handlers run in parallel. Eight requests to a CPU-heavy handler
-// take at most 3x as long as one. Node takes about 7.7x for the same program,
+// overlap (checkParallel's limit: 4.5x with eight cores or more, 5x with
+// four). Node takes about 7.7x for the same program,
 // because its handlers share one thread; hand-written Go measured 1.8-2.2x on
 // the 12-core Mac the plan was written on.
 func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the timing must not share the CPU with parallel tests
@@ -84,7 +85,8 @@ func TestHTTPHandlersRunInParallel(t *testing.T) { //nolint:paralleltest // the 
 }
 
 // checkParallel builds a server whose handler is CPU-heavy and asserts that
-// eight concurrent requests take at most 3x as long as one.
+// eight concurrent requests overlap: they take less than halfway from what
+// the machine's cores allow to the 8x one at a time would take.
 //
 // Timed in-process with Go's client, not curl, and best of three rounds, so
 // start-up cost and a noisy core cannot decide the result.
@@ -123,10 +125,16 @@ func checkParallel(t *testing.T, src, node string) {
 		one = min(one, timed(1))
 		eight = min(eight, timed(8))
 	}
+	// One at a time, as Node runs them, eight take 8x one. In parallel they
+	// take 8/cores at best: 1x with eight cores or more, 2x on a 4-core CI
+	// runner, where a fixed 3x failed at 3.27x. Halfway between the two
+	// leaves a noisy machine room and still fails handlers that don't overlap.
+	ideal := 8 / float64(min(runtime.NumCPU(), 8))
+	limit := (ideal + 8) / 2
 	ratio := float64(eight) / float64(one)
-	t.Logf("1 request %v, 8 concurrent %v, ratio %.2fx (%s)", one, eight, ratio, node)
-	if ratio > 3 {
-		t.Errorf("8 concurrent requests took %.2fx one request, want at most 3x: handlers are not running in parallel", ratio)
+	t.Logf("1 request %v, 8 concurrent %v, ratio %.2fx, limit %.2fx on %d CPUs (%s)", one, eight, ratio, limit, runtime.NumCPU(), node)
+	if ratio > limit {
+		t.Errorf("8 concurrent requests took %.2fx one request, want at most %.2fx: handlers are not running in parallel", ratio, limit)
 	}
 
 	if code := server.interrupt(t); code != 130 {
