@@ -113,7 +113,13 @@ func Run() {
 // do and p is still pending, nothing can ever settle it: Node exits 13 with a
 // warning then, and so does this. Node's warning also names the line of the
 // pending await; this one names only the file.
+//
+// A rejection of p, a throw out of the module's top-level code or an await
+// of a rejected promise there, is reported as an uncaught throw, as Node's
+// loader reports it (R14), and as many microtasks later (moduleHops): until
+// then other async code runs on, and no timer.
 func RunModule(p *Promise[struct{}], file string) {
+	p.then(func() { p.failAfter(moduleHops) })
 	Run()
 	if !p.settled {
 		Flush()

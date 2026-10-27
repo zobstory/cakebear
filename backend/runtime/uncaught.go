@@ -54,47 +54,71 @@ func (p phase) pointsAtCreation() bool { return p == inModule || p == inMicrotas
 
 // Exit is deferred first by the generated main, in place of Flush. A throw
 // that reached main, from its top-level code, a timer, a microtask or the
-// listen callback, ends the process as it ends Node's: the output so far,
-// the report, and exit code 1. Any other panic goes on up from here, after
-// the output, so the crash still shows where it began, marked [recovered,
-// repanicked].
+// listen callback, or a rejection nothing handled there (rejection.go), ends
+// the process as it ends Node's: the output so far, the report, and exit
+// code 1. Any other panic goes on up from here, after the output, so the
+// crash still shows where it began, marked [recovered, repanicked].
+//
+// A program that ended normally has its microtasks drained once more, which
+// is a check for rejections: a program with no await or timer never calls
+// Run, yet an async call's throw, or a reject, may have left one (R9).
 func Exit() {
 	r := recover()
+	if r == nil {
+		r = settle(mainDomain)
+	}
 	Flush()
 	if r == nil {
 		return
 	}
-	t, ok := r.(*Thrown)
+	report, ok := failureReport(r, mainDomain.running)
 	if !ok {
 		panic(r)
 	}
-	writeErr(uncaughtReport(t, mainDomain.running))
+	writeErr(report)
 	exit(1)
+}
+
+// settle drains d and gives back what that panicked with, if anything.
+func settle(d *Domain) (r any) {
+	defer func() { r = recover() }()
+	d.drain()
+	return nil
 }
 
 // uncaughtReport is the report of t, a throw nothing caught while p ran.
 func uncaughtReport(t *Thrown, p phase) string {
-	var b strings.Builder
 	if e, ok := t.V.(*Error); ok {
 		site := known(t.Site)
 		if made := known(e.site); made != nil && (site == nil || p.pointsAtCreation()) {
 			site = made
 		}
-		if site != nil {
-			writeExcerpt(&b, site)
-			b.WriteByte('\n')
-		}
-		b.WriteString(Inspect(e))
-	} else {
-		if site := known(t.Site); site != nil {
-			b.WriteByte('\n')
-			writeExcerpt(&b, site)
-		}
-		b.WriteString(Format(t.V))
+		return errorReport(e, site)
 	}
-	b.WriteString("\n\ncakebear " + Version + "\n")
+	var b strings.Builder
+	if site := known(t.Site); site != nil {
+		b.WriteByte('\n')
+		writeExcerpt(&b, site)
+	}
+	b.WriteString(Format(t.V))
+	b.WriteString(versionLines)
 	return b.String()
 }
+
+// errorReport is the report of an Error, pointing at site, if it is known.
+func errorReport(e *Error, site *Site) string {
+	var b strings.Builder
+	if site != nil {
+		writeExcerpt(&b, site)
+		b.WriteByte('\n')
+	}
+	b.WriteString(Inspect(e))
+	b.WriteString(versionLines)
+	return b.String()
+}
+
+// versionLines end a report, in place of Node's `Node.js v24.18.0`.
+const versionLines = "\n\ncakebear " + Version + "\n"
 
 // known is site, or nil for one that names no file: a place nobody knows.
 func known(site *Site) *Site {

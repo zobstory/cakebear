@@ -239,7 +239,8 @@ func TestPromiseOutsideItsDomainPanics(t *testing.T) {
 
 	home, other := newDomain(), newDomain()
 	var resolve func(*Domain)
-	p := NewPromiseVoid(home, func(_ *Domain, r func(*Domain), _ func(*Domain, any)) { resolve = r })
+	var reject func(*Domain, any)
+	p := NewPromiseVoid(home, func(_ *Domain, r func(*Domain), j func(*Domain, any)) { resolve, reject = r, j })
 
 	awaited := panicked(func() {
 		Async(other, func(co *Co) struct{} { return Await(co, p) })
@@ -249,6 +250,9 @@ func TestPromiseOutsideItsDomainPanics(t *testing.T) {
 	}
 	if got := panicked(func() { resolve(other) }); got != errCrossDomain {
 		t.Errorf("resolving from another domain panicked with %q, want %q", got, errCrossDomain)
+	}
+	if got := panicked(func() { reject(other, "x") }); got != errCrossDomain {
+		t.Errorf("rejecting from another domain panicked with %q, want %q", got, errCrossDomain)
 	}
 }
 
