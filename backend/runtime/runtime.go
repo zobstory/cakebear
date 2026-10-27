@@ -152,6 +152,19 @@ func LogUndefined()      { writeLine("undefined") }
 // server's process never reaches the deferred Flush until it exits, so
 // buffering would hold "listening on …" back indefinitely; a batch program
 // keeps the buffer, which is the reason it exists.
+// LogError is console.error and console.warn: the line console.log would
+// write, on stderr. What stdout holds goes out first, so where the two
+// streams meet, a terminal or one pipe, the lines keep the program's order,
+// as Node's do, which writes each at once (M6 step 6). errMu is taken
+// inside outMu, the one order the two are ever held in.
+func LogError(args ...any) {
+	s := wellFormed(Format(args...))
+	outMu.Lock()
+	defer outMu.Unlock()
+	_ = out.Flush()
+	writeErr(s + "\n")
+}
+
 func writeLine(s string) {
 	s = wellFormed(s)
 	outMu.Lock()
