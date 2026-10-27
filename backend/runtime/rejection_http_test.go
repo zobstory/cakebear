@@ -80,7 +80,7 @@ func asyncHandlerValueCase(d *Domain, req *IncomingMessage, res *ServerResponse)
 // server serves on.
 func TestAsyncHandlerRejectionsEndOnlyTheirRequest(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
 	cases := loadAsync(t)
-	for _, c := range []struct {
+	for _, c := range []struct { //nolint:paralleltest // isolate swaps process-wide runtime state
 		name    string
 		handler func(*Domain, *IncomingMessage, *ServerResponse)
 		excerpt string
@@ -95,7 +95,7 @@ func TestAsyncHandlerRejectionsEndOnlyTheirRequest(t *testing.T) { //nolint:para
 		{"async-handler-value/string", asyncHandlerValueCase,
 			"file:///CASES/async-handler-value.ts:14\n  if (req.url === \"/string\") throw \"a string\";\n" + strings.Repeat(" ", 29) + "^\n"},
 		{"async-handler-value/number", asyncHandlerValueCase, "file:///CASES/async-handler-value.ts:16\n  throw 42;\n  ^\n"},
-	} { //nolint:paralleltest // isolate swaps process-wide runtime state
+	} {
 		t.Run(c.name, func(t *testing.T) {
 			golden, ok := cases[c.name]
 			if !ok {

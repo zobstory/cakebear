@@ -151,14 +151,14 @@ func unhandledNoLoop(d *Domain) {
 }
 
 func TestUnhandledRejectionsEndMainAsNode(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
-	for name, program := range map[string]func(*Domain){
+	for name, program := range map[string]func(*Domain){ //nolint:paralleltest // isolate swaps process-wide runtime state
 		"unhandled-drain":       unhandledDrain,
 		"unhandled-after-await": unhandledAfterAwait,
 		"unhandled-in-timer":    unhandledInTimer,
 		"unhandled-after-timer": unhandledAfterTimer,
 		"unhandled-slow-first":  unhandledSlowFirst,
 		"unhandled-no-loop":     unhandledNoLoop,
-	} { //nolint:paralleltest // isolate swaps process-wide runtime state
+	} {
 		t.Run(name, func(t *testing.T) { matchAsync(t, name, program, "") })
 	}
 }
@@ -187,7 +187,7 @@ func unhandledValue(reason any, thrown bool) func(*Domain) {
 // TestUnhandledValuesReportAsNode: R13's report, the reason named as Node
 // names it, with an excerpt only where a throw rejected the promise.
 func TestUnhandledValuesReportAsNode(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
-	for variant, reason := range map[string]any{
+	for variant, reason := range map[string]any{ //nolint:paralleltest // isolate swaps process-wide runtime state
 		"string":    "m",
 		"empty":     "",
 		"number":    5.0,
@@ -200,10 +200,10 @@ func TestUnhandledValuesReportAsNode(t *testing.T) { //nolint:paralleltest // is
 		"array":     NewArray[any](1.0, "two"),
 		"multiline": "a \"quoted\"\nsecond line",
 		"surrogate": "\xed\xa0\x80 lone", // "\uD800 lone", as the scanner stores it
-	} { //nolint:paralleltest // isolate swaps process-wide runtime state
+	} {
 		t.Run(variant, func(t *testing.T) { matchAsync(t, "unhandled-value/"+variant, unhandledValue(reason, false), "") })
 	}
-	t.Run("thrown", func(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
+	t.Run("thrown", func(t *testing.T) {
 		excerpt := "file:///CASES/unhandled-value.ts:11\n  throw reason;\n  ^\n"
 		matchAsync(t, "unhandled-value/thrown", unhandledValue("thrown from an async function", true), excerpt)
 	})
@@ -272,12 +272,12 @@ func tlaRejectedError(d *Domain) {
 // uncaught throw, not R13's report (R14), five microtasks after it, as
 // Node's loader reports it.
 func TestTopLevelAwaitRejectionsAreUncaught(t *testing.T) { //nolint:paralleltest // isolate swaps process-wide runtime state
-	for name, program := range map[string]func(*Domain){
+	for name, program := range map[string]func(*Domain){ //nolint:paralleltest // isolate swaps process-wide runtime state
 		"tla-throw":          tlaThrow,
 		"tla-sync-throw":     tlaSyncThrow,
 		"tla-rejected":       tlaRejected,
 		"tla-rejected-error": tlaRejectedError,
-	} { //nolint:paralleltest // isolate swaps process-wide runtime state
+	} {
 		t.Run(name, func(t *testing.T) { matchAsync(t, name, program, "") })
 	}
 }

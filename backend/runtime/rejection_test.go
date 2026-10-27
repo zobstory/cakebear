@@ -62,7 +62,7 @@ func matchAsync(t *testing.T, name string, program func(*Domain), excerpt string
 	if c.Rule != "ordering" {
 		want = cakebearsReport(t, c, excerpt)
 	}
-	for run := range 20 { //nolint:paralleltest // isolate swaps process-wide runtime state
+	for run := range 20 {
 		t.Run(strconv.Itoa(run), func(t *testing.T) {
 			stdout, stderr, code := runAsMain(t, program)
 			if stdout != c.Limit0.Stdout || code != c.Limit0.Exit {
@@ -227,7 +227,7 @@ func orderAwait(d *Domain) {
 			run(d, "G", rejectAfter(d, 0, "g")),
 		)
 		LogString("sync end")
-		for i := 0; i < runs.Len(); i++ {
+		for i := range runs.Len() {
 			Await(co, runs.Get(float64(i)))
 		}
 		LogString("all done")
@@ -315,7 +315,7 @@ func rejectedValues(d *Domain) {
 	}
 	reasons := NewArray[any](err, "m", 5.0, NegZero, true, box, list, nil, Null)
 	ts_module := Async(d, func(co *Co) struct{} {
-		for i := 0; i < reasons.Len(); i++ {
+		for i := range reasons.Len() {
 			reason := reasons.Get(float64(i))
 			if ts_t1 := Try(func() { Await(co, rejectNow(d, reason)) }); ts_t1 != nil {
 				e := ts_t1.V

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"runtime"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -170,7 +171,7 @@ func TestParkedRegistryFollowsEveryAwait(t *testing.T) {
 		for i, ms := range []float64{30, 10, 20, 40, 5} {
 			Async(d, func(co *Co) struct{} {
 				Await(co, sleepFn(d, ms))
-				log(fmt.Sprint(i))
+				log(strconv.Itoa(i))
 				return struct{}{}
 			})
 		}
