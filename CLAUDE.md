@@ -279,18 +279,28 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M6**, errors
+## Current phase: **M7**, modules, to plan
 
-P0–P5 and M1–M5 are done. **M6** is errors: `throw`,
+P0–P5 and M1–M6 are done. Next is **M7**, modules: `export … from`, and
+imports of the program's own source by a non-relative path, workspace
+packages and `@/` path aliases. It isn't planned yet, per the per-phase
+rule below. M6's re-measurement of wx-next (check 10, step 7 below) is the
+first input to its plan.
+
+M6, decided 2026-10-20 and done 2026-10-27, was errors: `throw`,
 `try`/`catch`/`finally`, `Error` and its built-in kinds as values, rejection
 through `async` and `await`, and `unknown`, which is what a `catch` binds.
-Its plan, decided 2026-10-20 at scope B, is
+Its plan, decided at scope B, is
 `~/Desktop/cakebear/m6-errors-plan.md`, sized by a measurement of wx-next
 (`spikes/m6-measure/`), Node's behaviour measured case by case
 (`spikes/m6-node/`) and a spike of the Go it compiles to (`spikes/m6-go/`).
 On its own M6 lowers few more files, 7, since error handling lives in the
 I/O code packages and imports block first; once M7 to M13 land, scope B is
-worth 122 files to scope A's 64.
+worth 122 files to scope A's 64. Its stretch, `.catch`, `.then(f, g)`,
+`.finally` and `Promise.reject`, was left out when step 7 closed it (zob,
+2026-10-27): it is worth 5 files more than B once M13 lands, since packages
+and imports block the files using it first. Those methods wait with
+`Promise.all`, refused since M2, until packages make them reachable.
 
 Step 0, what the research found in passing, is done (M6 plan D11):
 - `res.writeHead` converts its status as Node's `statusCode |= 0` does,
@@ -542,6 +552,65 @@ Step 6, console's other members, is done (`lower/console.go`,
   pipe to Node's, 20 runs, and `TestConsoleInHandlersUnderRace` logs
   through every member from handlers in a race-detector build.
 
+Step 7, M6's end to end, is done:
+- `examples/route-server` grew errors (check 9). A bad query is a
+  `RangeError` that query.ts throws (`?limit=abc`) or the `URIError` that
+  `decodeURIComponent` throws (`?q=%E0`), and a missing item or route is a
+  plain `Error`. `route` catches each at its top, answers 400 or 404 with
+  its message, and rethrows anything else. `TestRouteServerServes` holds 29
+  replies to Node's, and `TestRouteServerUnderRace` serves them from a race
+  build.
+- Check 10 re-measured wx-next (`spikes/m6-remeasure/`, agent
+  m6-remeasure), M5's end and M6's on the same snapshot:
+  - **Clean `.ts` files that lower:** 239 of 3,367 at M5's end (7.1%) and
+    244 at M6's (7.2%). Of the 3,059 with runtime code, 108 and then 113.
+  - **Clean:** 0 panics and 0 regressions, file by file, and every lowered
+    file builds.
+  - **The plan projected 7 more.** try, throw and Error alone blocked 8
+    files: 3 of them lower, and the other 5 reach `URL`, `Intl`, `fetch` and
+    `Date` inside their try blocks. 2 more lower through an unknown narrowed
+    by `typeof`.
+  - **M6's own refusals:** try, throw and Error went from 820 files to 0,
+    and unknown from 704 to 64. Behind them, lowering now reaches `as`, with
+    267 files casting an unknown, and `any`.
+- Fixed, from what check 10 found. None was any file's only blocker, so
+  the count stays:
+  - **A regression from M5:** `||`, `&&` or `?:` as what a callback returns,
+    where the library types the result unknown (filter's, find's, every's),
+    in 74 files. Each operand was boxed, so `||` and `&&` were refused and
+    `?:` was invalid IR. An operand of `||` or `&&` now takes the whole's
+    slot, and the whole is boxed once.
+  - **Shapes M6 meant to lower but refused:**
+    - an optional chain whose last link reads an unknown (53 files);
+    - a shorthand property into a field typed unknown (37);
+    - a `?:` choosing between a value and an unknown (9);
+    - an array literal typed `unknown[]` by its own elements (6).
+  - **`typeof` of a value whose type isn't unknown** is tested on it boxed.
+    A maybe's tag is its state's, which the refusal said was known while
+    compiling, and such a check of a known type is common defensive code.
+  - `TestUnknownSlotsMatchNode` holds a program of every shape to Node, 20
+    runs.
+- Done-check 11, CPU per request at M6's end (`spikes/m6-cpu/`,
+  2026-10-27), against M5's end in the same run on M5's route sources:
+  - **M6 cost nothing.** The route server takes 0.64–0.67× Node's at one
+    connection at both commits, and 1.15–1.41× at eight, with 3.3–4× Node's
+    throughput, in 22 MB against Node's 170.
+  - **The string builders** take 2.3–2.4× Node's at one connection and
+    3.5–3.8× at eight, as at M5's end.
+  - **A throw and catch per request**, the grown server's 404, costs
+    cakebear about 0.6 µs and Node about 5.4, since an Error here has no
+    frames to capture.
+  - 480 runs valid, 0 invalid, and 76,344 responses compared with Node's
+    byte for byte.
+- A profile of the string builders (`spikes/m6-cpu/PROFILE-2026-10-27.md`)
+  puts their gap in cakebear's string runtime more than in V8 against Go.
+  On Linux, three costs are about a third of building's CPU: number
+  formatting with no integer fast path, the ASCII scan on every append, and
+  the split-surrogate check on every part.
+- Two done-checks are met except for a part left out. Done-check 1 lists
+  labelled exits, but a labelled `break` or `continue` has been refused
+  since M4. Done-check 2 lists `{ cause }`, which no measured program passes.
+
 M5, decided 2026-10-15 and done 2026-10-20, was `null` and `undefined`:
 optional properties, `T | undefined`, `?.` and `??`, narrowing (by
 truthiness too), the members that return `T | undefined` (`find`, `at`,
@@ -572,21 +641,27 @@ None is planned yet, per the per-phase rule below: each is planned, and its
 place in the order checked against a fresh measurement, when it becomes the
 active phase.
 
-M5's re-measurement (check 9, `spikes/m5-remeasure/`, at `dbd8a82ba7`) found
-categories as large that the roadmap above doesn't have, not yet placed in
-its order. Each is the share of wx-next's clean `.ts` files it refuses, and
-in brackets the files it would still be the only blocker of once M6 to M14
-land:
-- index signatures and `Record`: 29.7% (100);
-- `any` and `unknown`: 25.8% (48);
-- intersections: 21.0% (260), the largest gap;
-- `as` and `satisfies`: 18.4% (36);
-- `typeof`: 18.0% (17);
-- `fetch`'s types: 15.8% (79);
-- `Date`: 13.2%; tuples: 12.5%; methods in object types: 8.8% (71).
+M6's re-measurement (check 10, `spikes/m6-remeasure/`, at `a751472aa0`)
+ranks the categories the roadmap above doesn't have, not yet placed in its
+order. Each is the share of wx-next's 3,367 clean `.ts` files it refuses,
+and in brackets the files it would still be the only blocker of once M7 to
+M14 land:
+- index signatures and `Record`: 31.8% (124);
+- `as` and `satisfies`: 24.6% (41), 267 files of them casting an unknown;
+- intersections: 21.3% (263), the largest gap;
+- `fetch`'s types: 17.3% (78);
+- `any`: 14.8% (47);
+- `Date`: 14.0% (27); tuples: 13.0% (39); `URL`: 12.2% (20); methods in
+  object types: 9.0%;
+- an unknown inspected as an object, `typeof u === "object"` and then `in`
+  or a read: 133 files, and destructuring one 41.
 
-On that curve, M7 is the largest step before packages: of the 232 files
-lowering then, M6 adds 7 and M7 207 more.
+M5's re-measurement (`spikes/m5-remeasure/`) ranked them the same way, but
+on an older snapshot, and with `any` and `unknown` counted together.
+
+On that curve, M7 is the largest step before packages. It is the only
+blocker of 211 files, which takes the 244 lowering at M6's end to 455
+(13.5%). M8 to M12 add 107 more, and M13 takes it to 952 (28.3%).
 
 Step 0, the fixes a port of real code found (D13), is done. `%`, products,
 extension-type arithmetic and literals (PR 47; "Numbers" and the type
@@ -1036,7 +1111,12 @@ shapes, arrays and their methods, destructuring, printing and
 strings step's template literals, string methods and number parsers. **M5**
 null and undefined: maybes, narrowing, `?.`, `??` and `!`, optional
 properties, the members that may give undefined, truthiness and
-conditional spread, and optional and default parameters.
+conditional spread, and optional and default parameters. **M6** errors:
+`throw`, `try`/`catch`/`finally`, `Error` and its built-in kinds, `unknown`,
+rejection through `async`, `await`, `reject` and `spawn`, the runtime's own
+errors catchable with Node's messages, an error nothing catches ending the
+program as Node ends it and only its own request in a handler, and console's
+other members.
 
 The repository is on GitHub, with Actions enabled since 2026-10-27. The only
 workflows in the tree are cakebear's own: `cakebear-ci.yml` checks our code
@@ -1414,6 +1494,10 @@ Since M6 step 3 (`lower/errors.go`), errors:
   end), narrowed by `instanceof` a kind, `typeof v === "tag"` (and `!==`,
   `==`, `!=`), `===` and `== null`, and truthiness, tested by `??` and
   `??=`, and converted, printed, joined and serialised as what it holds;
+  since step 7, reached by an optional chain, and filling an unknown's
+  field by a shorthand;
+- since step 7, `typeof v === "tag"` of any value holding only data, a maybe
+  too, tested on it boxed, as an unknown holds it;
 - `e?.message` and the rest through an `Error | null`, and `String()` and
   templates of one;
 - a function returning `never`, which is void, and `return fail()` of one;
@@ -1425,9 +1509,11 @@ Refused by name: throwing a function, a promise or a host value, or
 anything holding one (a catch would print it); a destructured catch
 binding, and one typed `any`; `any` itself; Error's options (a cause); a
 message that may be undefined; `instanceof` anything but an Error kind, and
-on anything but an unknown, an Error or a maybe of one; `typeof` of
-anything but an unknown, or compared with anything but a string literal; a
-function, a promise or a host value as an unknown; `JSON.stringify` of a
+on anything but an unknown, an Error or a maybe of one; `typeof` of a
+function, a promise or a host value, or compared with anything but a string
+literal; `in`, destructuring or a read on an unknown narrowed to an object,
+and an unknown narrowed to an array; a function, a promise or a host value
+as an unknown; `JSON.stringify` of a
 bare unknown, which may be undefined; a callback returning nothing where
 `() => unknown` is wanted; `console.log` with an unknown first among
 several arguments; an array of another type where an `unknown[]` is wanted;
