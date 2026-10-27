@@ -121,13 +121,17 @@ createServer(async (req, res) => {
 }
 
 // The program waits for a spawn it never awaits, as Node waits for a timer.
+// Main prints before it spawns: the spawn runs in parallel with what follows
+// it, so a line main printed after it could come first or second. The spawn
+// computes for a while first, so a program that didn't wait would end
+// without its line.
 func TestProgramWaitsForASpawn(t *testing.T) {
 	t.Parallel()
 
-	bin := buildProgram(t, "unawaited", `spawn(() => {
-  console.log("from the spawn");
+	bin := buildProgram(t, "unawaited", fibFn+`console.log("main done");
+spawn(() => {
+  console.log(`+"`from the spawn: ${fib(30)}`"+`);
 });
-console.log("main done");
 `)
-	matchesNode(t, bin, "main done\nfrom the spawn\n", 5)
+	matchesNode(t, bin, "main done\nfrom the spawn: 832040\n", 5)
 }
