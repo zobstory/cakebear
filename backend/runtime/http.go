@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -336,10 +337,7 @@ func (r *ServerResponse) End(chunk ...string) *ServerResponse {
 		}
 		return r
 	}
-	body := ""
-	for _, c := range chunk {
-		body += wellFormed(c)
-	}
+	body := wellFormed(strings.Join(chunk, "")) // end(chunk?) passes at most one
 	if !r.headersSent {
 		r.frame(len(body))
 	}

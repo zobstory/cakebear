@@ -176,12 +176,14 @@ func exchange(port int, req string, head bool) (connection, error) {
 		body = make([]byte, n)
 		_, err = io.ReadFull(r, body)
 	case got.te == "chunked":
-		for err == nil && !bytes.HasSuffix(body, []byte("0\r\n\r\n")) {
+		var chunks []byte
+		for err == nil && !bytes.HasSuffix(chunks, []byte("0\r\n\r\n")) {
 			var b byte
 			if b, err = r.ReadByte(); err == nil {
-				body = append(body, b)
+				chunks = append(chunks, b)
 			}
 		}
+		body = chunks
 	default:
 		body, err = io.ReadAll(r)
 		got.closed = true
