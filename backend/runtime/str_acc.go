@@ -16,9 +16,10 @@ import "unsafe"
 // let never crosses domains (the race rule), and within a domain only the
 // token holder runs, so StrAcc needs no atomics.
 type StrAcc struct {
-	buf []byte // len(buf) is the bytes the newest string covers
-	tip *byte  // that string's first byte, or nil when there is none
-	asc bool   // buf is all ASCII, so a code unit is a byte
+	buf   []byte // len(buf) is the bytes the newest string covers
+	tip   *byte  // that string's first byte, or nil when there is none
+	ascii int    // how many of buf's first bytes Length has seen are ASCII
+	wide  bool   // Length has seen a byte that isn't, so a byte isn't a code unit
 }
 
 // accMin is the shortest result kept in an accumulator. A shorter one is made
@@ -45,7 +46,7 @@ func (a *StrAcc) Append(s string, parts ...string) string {
 	if !a.newest(s) {
 		a.buf = make([]byte, 0, 2*total)
 		a.buf = append(a.buf, s...)
-		a.asc = isASCII(s)
+		a.ascii, a.wide = 0, false
 	}
 	if total > cap(a.buf) {
 		grown := make([]byte, len(a.buf), 2*total)
@@ -53,9 +54,6 @@ func (a *StrAcc) Append(s string, parts ...string) string {
 		a.buf = grown
 	}
 	for _, p := range parts {
-		if a.asc && !isASCII(p) {
-			a.asc = false
-		}
 		a.buf = append(a.buf, p...)
 	}
 	a.tip = unsafe.SliceData(a.buf)
@@ -66,11 +64,23 @@ func (a *StrAcc) Append(s string, parts ...string) string {
 // s is the newest string and all of it is ASCII, without the scan StrLength
 // makes. A loop reading `xml.length` as it appends took 2.45 s with the scan,
 // and 2.1 ms with this.
+//
+// Whether it is all ASCII is found here, not as it is appended: each Length
+// scans only the bytes appended since the last, which bytes the accumulator
+// never writes again, and a program that never reads the length scans
+// nothing. Scanning every append was a tenth of a page builder's CPU.
 func (a *StrAcc) Length(s string) float64 {
-	if a.asc && a.newest(s) {
-		return float64(len(s))
+	if !a.newest(s) {
+		return StrLength(s)
 	}
-	return StrLength(s)
+	if !a.wide && a.ascii < len(a.buf) {
+		a.ascii += asciiPrefix(unsafe.String(&a.buf[a.ascii], len(a.buf)-a.ascii))
+		a.wide = a.ascii < len(a.buf)
+	}
+	if a.wide {
+		return StrLength(s)
+	}
+	return float64(len(s))
 }
 
 // newest reports whether s is the string this accumulator made last.

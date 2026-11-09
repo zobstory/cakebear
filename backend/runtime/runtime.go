@@ -71,6 +71,15 @@ func NumberToString(f float64) string {
 
 	abs := math.Abs(f)
 
+	// An integer below 2^53 is its own digits: every integer there is a
+	// float64, so no shorter digits round to it. Above, they may: 2^60 is
+	// 1152921504606847000 (measured on Node 24.18). Formatting an integer
+	// takes a fraction of the shortest float form, and ids, counts and
+	// indices are most of the numbers a page prints.
+	if abs < 1<<53 && f == math.Trunc(f) {
+		return strconv.FormatInt(int64(f), 10)
+	}
+
 	// JavaScript switches to exponential notation outside [1e-6, 1e21).
 	if abs >= 1e21 || abs < 1e-6 {
 		return jsExponential(f)
