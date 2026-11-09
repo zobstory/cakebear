@@ -287,6 +287,66 @@ packages and `@/` path aliases. It isn't planned yet, per the per-phase
 rule below. M6's re-measurement of wx-next (check 10, step 7 below) is the
 first input to its plan.
 
+The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
+zob's call on 2026-10-27, from M6's profile of the string builders):
+- **Framing and connections as Node's** (`runtime/http.go`, `frame`):
+  `res.end(body)` before `writeHead` has a Content-Length, a response after
+  it is chunked, in one write, and HTTP/1.0 closes the connection unless the
+  program set a length. `TestResponseFramingMatchesNode` (28 cases) and
+  `TestConnectionsMatchNode` (48) hold it to Node, where 10 and 33 differed.
+- **Integers below 2^53 printed by `strconv.FormatInt`** in `NumberToString`,
+  which is what Number::toString gives there.
+- **The accumulator's ASCII test is lazy:** an append scans nothing, and a
+  `.length` read scans only what was appended since the last.
+- **The split-surrogate tests at a seam** are one inlined expression each.
+- ⚠ **The CPU bench compared unlike things until now.** `ab -k` speaks
+  HTTP/1.0, where Node keeps no connection unless the program set a
+  Content-Length, and the route server never does: every run since M5 had
+  Node on a connection per request and cakebear on one, which is where
+  "0.66× Node's CPU" came from. The bench now takes an HTTP/1.1 client,
+  `spikes/m6-cpu/tools/h1load`, which keeps every connection, all three
+  servers' alike (`--client`). M5's and M6's numbers below are marked.
+- **Like for like, on macOS** (`spikes/m6-cpu/results/perf-serve-mac/`,
+  HTTP/1.1, 216 runs, every response byte for byte as Node's), CPU per
+  request against Node's, before the step and after it:
+
+  | workload | c=1 before | c=1 after | c=8 before | c=8 after |
+  |---|---|---|---|---|
+  | route server, 4 routes | 1.30× | 1.30× | 2.86× | 2.95× |
+  | string builders, `/concat` | 2.75× | 1.29× | 3.99× | 1.90× |
+  | string builders, `/join` | 2.88× | 1.69× | 4.24× | 2.69× |
+  | the 15-day page, 92 KB | 3.48× | 1.39× | 3.08× | 2.62× |
+
+  - Throughput: at c=1 the route server and the page serve what Node does
+    (0.96–1.01×), `/concat` 1.08×; at c=8, 1.22×, 1.75× and 3.2×, on
+    several cores to Node's one, in 20–23 MB against 108–113.
+  - At c=8 cakebear's CPU per request rises (the route server's 27 µs to
+    40) where Node's falls (20 to 13), its one event loop batching: the
+    parallel server pays in scheduling.
+  - The route server's 2–3% more at c=8 after the step is probably the
+    chunked framing Node's rules call for where net/http sent a length,
+    not verified.
+  - The 15-day page is the hypermedia survey's (`agents/hypermedia-survey/`,
+    its own code); its "matches Node at c=1" was over `ab`, where Node paid
+    about 390 µs a request for the connection.
+- **Like for like, on Linux** (`spikes/perf-serve/`, Docker, Node 24.18 on
+  Alpine, arm64, 252 runs, every connection kept, every body Node's):
+
+  | workload | c=1 before | c=1 after | c=8 before | c=8 after |
+  |---|---|---|---|---|
+  | route server, `/items` | 1.30× | 1.32× | 3.15× | 3.17× |
+  | string builders, `/concat` | 1.71× | 0.99× | 2.31× | 1.34× |
+  | string builders, `/join` | 1.82× | 1.25× | 2.83× | 2.39× |
+  | the 15-day page | 1.32× | 1.15× | 2.29× | 1.93× |
+
+  - macOS's larger gap in building is mostly macOS: Go's darwin-only
+    `madvise` was a third of it in M6's profile.
+  - **GOGC=400, measured and not adopted** (the plan's item 5, zob's call):
+    against the default it cuts the builders' and the page's CPU by
+    22–37% (`/concat` 0.67× Node's at c=1, the page 0.89×) and the route
+    server's by 0–6%. Its memory cost isn't measured on Linux; on macOS M6's
+    profile measured 17–22% less CPU.
+
 M6, decided 2026-10-20 and done 2026-10-27, was errors: `throw`,
 `try`/`catch`/`finally`, `Error` and its built-in kinds as values, rejection
 through `async` and `await`, and `unknown`, which is what a `catch` binds.
@@ -594,7 +654,10 @@ Step 7, M6's end to end, is done:
   2026-10-27), against M5's end in the same run on M5's route sources:
   - **M6 cost nothing.** The route server takes 0.64–0.67× Node's at one
     connection at both commits, and 1.15–1.41× at eight, with 3.3–4× Node's
-    throughput, in 22 MB against Node's 170.
+    throughput, in 22 MB against Node's 170. ⚠ Not like for like: `ab -k`
+    speaks HTTP/1.0, where Node keeps no connection the program gave no
+    Content-Length, and cakebear kept every one, so Node paid a connection
+    per request. The serving perf step has it like for like.
   - **The string builders** take 2.3–2.4× Node's at one connection and
     3.5–3.8× at eight, as at M5's end.
   - **A throw and catch per request**, the grown server's 404, costs
@@ -669,7 +732,9 @@ extensions, below), and linear appends, ASCII-pattern search and `req.url`'s
 raw bytes (PR 48; "Strings", below). CPU per request against Node, done-check
 11, is measured by `spikes/m5-cpu/`: the route server takes 0.66× Node's at
 one connection and 1.25× at eight, with 3.7× its throughput. Step 8 has
-the measurement at M5's end.
+the measurement at M5's end. ⚠ Both are over `ab -k`'s HTTP/1.0, where
+Node kept no connection and cakebear every one (0 of 1.8 million requests
+against all 6 million): see the serving perf step for like for like.
 
 Step 1, the IR, is done, with nothing lowered to it yet (`ir/maybe.go`):
 - `KindMaybe` (`ir.MaybeOf(T)`) is `T | null | undefined`: a T, null or
@@ -866,9 +931,10 @@ Step 8, M5's end to end, is done:
   against step 0 in the same run and on the same sources, M4's route server
   and the string builders: M5 cost nothing. The route server takes 0.66×
   Node's at one connection and 1.32× at eight (step 0: 0.66× and 1.31×),
-  with 2.8× and 3.7× Node's throughput, in 21 MB against Node's 170. The
+  with 2.8× and 3.7× Node's throughput, in 21 MB against Node's 170
+  (⚠ Node on a connection per request, cakebear on one: see step 0). The
   string builders take 2.3× Node's at one connection and 3.5–3.7× at eight,
-  as at step 0.
+  as at step 0; neither server kept a connection there.
 
 M4's re-measurement of wx-next (check 9, below) found four lowering bugs,
 fixed after M4 closed: a function with no result type was lowered as void
@@ -1864,8 +1930,17 @@ not listed here that behaves differently is a bug.
 | A spawn's promise rejected before anything awaits it | under the shim fn runs in the first microtask, so the rejection comes in the first drain, and is unhandled unless awaited in it | it comes when the spawned function fails, in parallel, and is unhandled only if nothing awaits it by then: `const p = spawn(f); await sleep(10); await p` may catch what Node dies of |
 
 Not observable to the M1 programs and not yet compared: keep-alive timeouts,
-the `Date` header, and when a response is chunked rather than given a
-`Content-Length`. Add a row when one matters.
+the `Connection: keep-alive` and `Keep-Alive: timeout=5` Node sends over
+HTTP/1.1, where net/http leaves them implicit, and the `Date` header. Add a
+row when one matters. A response's framing, and whether its connection is
+kept, are Node's since the serving perf step, before M7
+(`TestResponseFramingMatchesNode`, 28 cases, and `TestConnectionsMatchNode`,
+48):
+- `res.end(body)` before `writeHead` has a `Content-Length`, a response
+  after it is chunked, and a HEAD, a 204 and a 304 have neither;
+- HTTP/1.0 has no chunks, so there a body the program gave no length runs
+  to the connection's end, which closes: Node keeps an HTTP/1.0 connection
+  only for a length the program set and a request asking for it.
 
 Related: because `number` is `float64`, integer-heavy TypeScript will run
 slower than equivalent Go. The refined numeric types (`i32`, `u64`) lowering
