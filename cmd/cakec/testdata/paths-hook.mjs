@@ -15,9 +15,33 @@ import { registerHooks } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+// jsonc is a tsconfig's text as JSON: TypeScript allows comments and trailing
+// commas, which JSON.parse doesn't. Strings are kept as they are.
+function jsonc(text) {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      const start = i;
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === "\\") i++;
+      out += text.slice(start, i + 1);
+    } else if (c === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      out += "\n";
+    } else if (c === "/" && text[i + 1] === "*") {
+      i = text.indexOf("*/", i + 2);
+      if (i < 0) break;
+      i++;
+    } else {
+      out += c;
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
 const config = path.resolve("tsconfig.json");
 const base = path.dirname(config);
-const rules = Object.entries(JSON.parse(fs.readFileSync(config, "utf8")).compilerOptions?.paths ?? {})
+const rules = Object.entries(JSON.parse(jsonc(fs.readFileSync(config, "utf8"))).compilerOptions?.paths ?? {})
   .map(([pattern, targets]) => {
     const star = pattern.indexOf("*");
     return {

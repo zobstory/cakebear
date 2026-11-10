@@ -136,6 +136,7 @@ bin/cakec build                       # the project in the nearest tsconfig.json
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build -p examples/http-project && examples/http-project/bin/server   # in three modules
+bin/cakec build -p examples/workspace && examples/workspace/bin/server   # an app and a linked package
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
 scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
@@ -437,6 +438,22 @@ proof:
 - A default export of an object literal is never frozen: the subset has no
   `as const`, so its type is mutable. The refusal says to declare a frozen
   const and `export default` its name, which is.
+
+Step 5, M7 end to end, is under way:
+- Done-check 10: `examples/workspace` is a server in a workspace, an app in
+  `app/` and a package, `@example/forecast`, in `packages/`, linked into
+  `node_modules` by a symlink the repo holds, as a package manager links a
+  workspace. The app imports its own modules through an `@/` alias and the
+  package by name; the package's barrel re-exports a frozen const and a
+  default export, and the app renders a page of HTML from them.
+  `TestWorkspaceServerServes` holds six requests' status, `Content-Type`
+  and body to Node 24.18's, and `TestWorkspaceServerUnderRace` serves 200 of
+  them, 8 at a time, from a race-detector build, with no race found.
+- `cmd/cakec/testdata/paths-hook.mjs` reads a tsconfig as TypeScript does,
+  comments and trailing commas included, where it took plain JSON.
+- Done-check 12: the generated Go of every example M7 began with is byte for
+  byte `09a2fbb98d`'s (`~/Desktop/cakebear/tools/same-go.sh`, which builds
+  both sides from one path, since sites embed the source's path).
 
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
