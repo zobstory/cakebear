@@ -162,6 +162,14 @@ func TestModuleRefusals(t *testing.T) {
 			"main.ts": useF}, "a top-level await is supported only in the entry module"},
 		{"a declaration file", map[string]string{"lib.d.ts": "export declare function f(): number;\n",
 			"main.ts": useF}, "imports from \"./lib\" are not supported; cakebear compiles node:http and the program's own TypeScript modules"},
+		{"import { type T } of a declaration file", map[string]string{"lib.d.ts": "export interface T {\n  n: number;\n}\n",
+			"main.ts": "import { type T } from \"./lib\";\nconst t: T = { n: 1 };\nconsole.log(t.n);\n"},
+			"`import { type … }` evaluates \"./lib\", as Node runs it, though it names only types, and cakebear compiles only node:http and the program's own TypeScript modules; write `import type { … }`, which evaluates nothing"},
+		{"export { type T } from", map[string]string{"types.ts": "export type T = number;\n", "mid.ts": "export { type T } from \"./types\";\nexport const one: number = 1;\n",
+			"main.ts": "import { one } from \"./mid\";\nconsole.log(one);\n"}, "re-exporting with `export … from` is not supported yet"},
+		{"a dynamic import()", map[string]string{"lib.ts": f,
+			"main.ts": "async function load(): Promise<number> {\n  const lib = await import(\"./lib\");\n  return lib.f();\n}\nconsole.log(await load());\nexport {};\n"},
+			"a dynamic `import()` is not supported yet: its value is a promise of the module's namespace object, which cakebear doesn't build; use a static import"},
 		{"a script the entry doesn't import", map[string]string{"util.ts": "function helper(): number {\n  return 1;\n}\n",
 			"main.ts": "console.log(helper());\nexport {};\n"}, "helper is declared in util.ts, which the entry module doesn't import"},
 	}
@@ -191,8 +199,10 @@ func TestImportedFunctionIsNotALibraryFunction(t *testing.T) {
 }
 
 // TestImportsAreEvaluationEdges: an import of the program's own module
-// evaluates it, unless it is `import type` or names only types. Both are
-// erased, as in TypeScript's emit, and so bring no module into the program.
+// evaluates it, unless it is `import type` or names types without saying so.
+// Both are erased, as in TypeScript's emit, and so bring no module into the
+// program. One whose every name says `type`, or that names nothing, evaluates
+// its module, as under Node (M7 plan D3, R7).
 func TestImportsAreEvaluationEdges(t *testing.T) {
 	t.Parallel()
 
@@ -203,18 +213,45 @@ func TestImportsAreEvaluationEdges(t *testing.T) {
 		"unused.ts": "export function unused(): number {\n  return 2;\n}\n",
 		"main.ts": "import type { Count } from \"./types\";\nimport { a } from \"./a\";\nimport \"./setup\";\n" +
 			"import { unused } from \"./unused\";\nimport { Name, type Tagged, type label } from \"./names\";\nimport { Id, id } from \"./mixed\";\n" +
-			"const n: Count = a();\nconsole.log(n);\n",
-		"names.ts": "export type Name = string;\nexport interface Tagged {\n  tag: string;\n}\nexport function label(): string {\n  return \"x\";\n}\nconsole.log(\"names\");\n",
-		"mixed.ts": "export type Id = number;\nexport function id(): number {\n  return 3;\n}\n",
+			"import { type Tag, type Mark } from \"./tagged\";\nimport {} from \"./empty\";\n" +
+			"const n: Count = a();\nconst t: Tag = \"t\";\nconsole.log(n, t);\n",
+		"names.ts":  "export type Name = string;\nexport interface Tagged {\n  tag: string;\n}\nexport function label(): string {\n  return \"x\";\n}\nconsole.log(\"names\");\n",
+		"mixed.ts":  "export type Id = number;\nexport function id(): number {\n  return 3;\n}\n",
+		"tagged.ts": "export type Tag = string;\nexport function Mark(): void {}\nconsole.log(\"tagged\");\n",
+		"empty.ts":  "console.log(\"empty\");\nexport {};\n",
 	}, "main.ts")
 	var imports []string
 	for _, file := range p.EntryModule().Imports {
 		imports = append(imports, filepath.Base(file))
 	}
-	if got, want := strings.Join(imports, " "), "a.ts setup.ts unused.ts mixed.ts"; got != want {
-		t.Errorf("main's imports = %s, want %s: an import evaluates, used or not, unless it names only types", got, want)
+	if got, want := strings.Join(imports, " "), "a.ts setup.ts unused.ts mixed.ts tagged.ts empty.ts"; got != want {
+		t.Errorf("main's imports = %s, want %s: an import evaluates, used or not, unless it names types without `type`", got, want)
 	}
-	if got, want := strings.Join(modulesOf(p), " "), "a.ts main.ts mixed.ts setup.ts unused.ts"; got != want {
+	if got, want := strings.Join(modulesOf(p), " "), "a.ts empty.ts main.ts mixed.ts setup.ts tagged.ts unused.ts"; got != want {
 		t.Errorf("modules = %s, want %s, with no types.ts or names.ts", got, want)
+	}
+}
+
+// TestTypeOnlyExportsAreErased (M7 plan D3, D11): `export type { … } from`,
+// `export type * from`, an `export { … } from` naming types without `type`,
+// and an export of a type the module imports or declares evaluate nothing, so
+// they are erased, not refused; an `import { type T }` still evaluates its
+// module.
+func TestTypeOnlyExportsAreErased(t *testing.T) {
+	t.Parallel()
+
+	p := mustLowerFiles(t, map[string]string{
+		"types.ts": "export type Count = number;\nconsole.log(\"types\");\n",
+		"more.ts":  "export interface More {\n  n: number;\n}\nconsole.log(\"more\");\n",
+		"names.ts": "export type Name = string;\nconsole.log(\"names\");\n",
+		"ids.ts":   "export type Id = number;\nconsole.log(\"ids\");\n",
+		"tags.ts":  "export type Tag = string;\nconsole.log(\"tags\");\n",
+		"barrel.ts": "export type { Count } from \"./types\";\nexport type * from \"./more\";\nexport { Name } from \"./names\";\n" +
+			"import type { Id } from \"./ids\";\nexport { Id };\nimport { type Tag } from \"./tags\";\nexport type { Tag };\n" +
+			"type Local = boolean;\nexport { Local };\nexport function f(): number {\n  return 1;\n}\n",
+		"main.ts": "import { f, type Count, type Id, type More } from \"./barrel\";\nconst n: Count = f();\nconst id: Id = n;\nconst m: More = { n: id };\nconsole.log(m.n);\n",
+	}, "main.ts")
+	if got, want := strings.Join(modulesOf(p), " "), "barrel.ts main.ts tags.ts"; got != want {
+		t.Errorf("modules = %s, want %s: of the type-only forms, only `import { type Tag }` evaluates its module", got, want)
 	}
 }

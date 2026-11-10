@@ -92,6 +92,21 @@ var multiModulePrograms = []struct {
 		},
 		"conf 8080\n8080 localhost 3 8081 1 { max: 9 }\nh\n",
 	},
+	{
+		// M7 plan D3 and R7: `import { type … }` evaluates its module, and
+		// `export type { … } from`, `export type * from` and
+		// `import type` don't. Recorded from Node 24.18 2026-11-10, 5 runs.
+		"type-only forms: which modules run",
+		map[string]string{
+			"types-a.ts": "console.log(\"types-a runs\");\nexport type A = number;\n",
+			"types-b.ts": "console.log(\"types-b runs\");\nexport interface B {\n  n: number;\n}\n",
+			"types-c.ts": "console.log(\"types-c runs\");\nexport type C = string;\n",
+			"types-d.ts": "console.log(\"types-d runs\");\nexport type D = boolean;\n",
+			"re.ts":      "export type { A } from \"./types-a.ts\";\nexport type * from \"./types-d.ts\";\nimport { type C } from \"./types-c.ts\";\nexport type { C };\nconsole.log(\"re runs\");\nexport const one: number = 1;\n",
+			"main.ts":    "import { type B } from \"./types-b.ts\";\nimport { one, type A, type C, type D } from \"./re.ts\";\n\nconst b: B = { n: one };\nconst a: A = 2;\nconst c: C = \"c\";\nconst d: D = true;\nconsole.log(b, a, c, d);\n",
+		},
+		"types-b runs\ntypes-c runs\nre runs\n{ n: 1 } 2 c true\n",
+	},
 }
 
 // TestMultiFileMatchesNode (checks 4, 5 and 6): each program prints what Node
