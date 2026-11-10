@@ -37,6 +37,8 @@ func (l *lowerer) failOutside(at, name *ast.Node, what string) {
 			switch {
 			case f == nil || f.IsDeclarationFile:
 				continue
+			case d.Flags&ast.NodeFlagsAmbient != 0:
+				l.failf(at, "%s is declared with `declare` in %s, so the program has no code for it; cakebear compiles only what the program defines", name.Text(), filepath.Base(string(f.FileName())))
 			case ast.IsInJSFile(f.AsNode()):
 				l.failf(at, "%s is declared in %s, a JavaScript module, which cakebear doesn't compile", name.Text(), filepath.Base(string(f.FileName())))
 			default:

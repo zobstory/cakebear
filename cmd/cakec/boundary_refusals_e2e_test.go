@@ -79,6 +79,16 @@ func TestBoundaryRefusals(t *testing.T) {
 			[]string{"main.ts:1:1: cannot compile yet: \"raw\" is TypeScript source under node_modules, which Node refuses to run (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING); link the package from outside node_modules, as a workspace does"},
 		},
 		{
+			"a JSON module",
+			map[string]string{
+				"tsconfig.json": `{ "compilerOptions": { "strict": true, "noEmit": true, "module": "esnext", "moduleResolution": "bundler", "resolveJsonModule": true }, "include": ["src"], "cakebear": { "main": "src/main.ts", "output": "app" } }`,
+				"src/data.json": `{ "n": 1 }`,
+				"src/main.ts":   "import data from \"./data.json\";\nconsole.log(data.n);\n",
+			},
+			nil,
+			[]string{"main.ts:1:1: cannot compile yet: data.json is a JSON module, which cakebear doesn't import yet; declare its data as a const in a .ts module"},
+		},
+		{
 			"one file by two paths, one through a symlinked directory",
 			map[string]string{
 				"tsconfig.json": boundaryConfig(nil),

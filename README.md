@@ -109,8 +109,11 @@ ignores. Paths in it are relative to the config, and `output` defaults to
 }
 ```
 
-The program is `main` and every module it imports, by a relative path,
-compiled into one binary. Each module's top-level code runs in the order Node
+The program is `main` and every module it imports or re-exports from,
+compiled into one binary. A module is reached by any specifier TypeScript
+resolves to the program's own source: a relative path, a tsconfig `paths`
+alias such as `@/…`, package.json `imports`, or a workspace package linked
+through `node_modules`. Each module's top-level code runs in the order Node
 runs an ES module graph, cycles included.
 [`examples/http-project`](examples/http-project) is a server in three
 modules. Its imports name their `.ts` files, so Node runs the same sources:
@@ -298,6 +301,49 @@ the build is refused, through the function the handler calls, with the fix:
 src/main.ts:30:24: cannot compile yet: this handler runs on many requests at once, so it can't call `route()`, which uses `items` in data.ts, an array created outside the handler, which isn't frozen: its type isn't readonly all the way down: an Item[] is mutable; write `readonly Item[]`
 ```
 
+## A workspace
+
+[`examples/workspace`](examples/workspace) is a server in a workspace: an app
+in `app/`, and a package, `@example/forecast`, in `packages/`, linked into
+`node_modules` as a package manager links a workspace. The app imports its
+own modules through an `@/` alias, and the package through its name. The
+package's barrel re-exports a frozen const and a default export:
+
+```ts
+// packages/forecast/src/index.ts
+export * from "./days.ts";
+export { default as describe } from "./describe.ts";
+
+// app/main.ts
+import { days, describe, type Day } from "@example/forecast";
+import page from "@/page.ts";
+```
+
+```console
+$ cakec build -p examples/workspace && examples/workspace/bin/server
+listening on http://localhost:3000
+$ curl localhost:3000/tue
+Tue: rain & wind, 18° / 11°
+$ curl localhost:3000/
+<!doctype html>
+<title>Three days</title>
+<ul>
+  <li><a href="/mon">Mon: sun, 21° / 12°</a></li>
+…
+```
+
+Node reads no tsconfig, so it can't resolve `@/` by itself. The resolve hook
+in [`cmd/cakec/testdata/paths-hook.mjs`](cmd/cakec/testdata/paths-hook.mjs)
+maps it as TypeScript does, and leaves Node's output as it is:
+
+```console
+$ cd examples/workspace && node --import ../../cmd/cakec/testdata/paths-hook.mjs app/main.ts
+```
+
+Every module runs once, in the order Node runs them, however many specifiers
+reach it. The race rule follows every re-export and alias to the declaration,
+so a handler reaching a `let` through the barrel is refused as directly.
+
 ## Parallel work: `spawn`
 
 `spawn` is Go's `go` for TypeScript. It runs a function on its own goroutine,
@@ -356,15 +402,19 @@ Supported today:
   throws where Node throws, catchable, with Node's messages; an error nothing
   catches ending the program with Node's exit code and report; and
   `console.error`, `.warn`, `.info` and `.debug`;
-- programs of several modules, with named imports and exports of top-level
-  functions and `const`s, renamed or not, and import cycles.
+- programs of several modules: named imports and exports of top-level
+  functions and `const`s, renamed or not; re-exports (`export … from`,
+  `export *`, re-exporting an import); default exports and imports; imports
+  by any specifier TypeScript resolves to the program's own source (aliases,
+  package.json `imports`, workspace links); `import { type T }` and the
+  type-only forms; and import cycles.
 
-Not yet: imports by a non-relative path, and re-exports (next, M7); other
+Not yet: other
 unions, classes (an Error class of your own too), generics, RegExp, `URL`,
 `any`, mixed-type `+` (a template literal does it), `var`, loose equality but
 `== null`, imports from anything but `node:http` and the program's own
-modules, default exports, `import * as` a module of your own, exporting a
-`let`, rest parameters, bitwise operators, `.then`, `.catch`, `.finally` and
+modules, `import * as` a module of your own, exporting a `let`, a dynamic
+`import()`, rest parameters, bitwise operators, `.then`, `.catch`, `.finally` and
 `Promise.all`, `JSON.parse`, and the standard library's other globals
 (`Math`, `Date`, `setInterval`, …).
 

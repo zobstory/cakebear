@@ -1,0 +1,17 @@
+{
+  // A workspace: the app in app/, and @example/forecast in packages/,
+  // linked into node_modules as a package manager links a workspace. app/
+  // imports its own modules through the `@/` alias below, which Node doesn't
+  // read: run the sources under Node with the resolve hook named in
+  // app/main.ts.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "paths": { "@/*": ["./app/*"] }
+  },
+  "include": ["app"],
+  "cakebear": { "main": "app/main.ts", "output": "bin/server" }
+}

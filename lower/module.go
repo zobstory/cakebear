@@ -226,3 +226,15 @@ func isLet(sym *ast.Symbol) bool {
 	return decl != nil && decl.Kind == ast.KindVariableDeclaration && decl.Parent != nil &&
 		decl.Parent.Flags&ast.NodeFlagsLet != 0
 }
+
+// strippedNamespace reports whether a module declaration is one Node strips
+// and TypeScript emits nothing for, so it is erased as an interface is: an
+// ambient one, `declare global { … }`, `declare module "x" { … }` or
+// `declare namespace N { … }`, or a namespace of types alone. A namespace
+// with code, and `module N { … }`, which Node refuses, stay refused.
+func strippedNamespace(n *ast.Node) bool {
+	if moduleKeyword(n) {
+		return false
+	}
+	return ast.HasSyntacticModifier(n, ast.ModifierFlagsAmbient) || typesOnly(n)
+}

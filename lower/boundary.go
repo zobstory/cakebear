@@ -89,6 +89,9 @@ func (p *program) outside(what string, spec *ast.Node) string {
 	name := spec.Text()
 	switch kind {
 	case moduleScript:
+		if filepath.Ext(string(f.FileName())) == ".json" {
+			return filepath.Base(string(f.FileName())) + " is a JSON module, which cakebear doesn't import yet; declare its data as a const in a .ts module"
+		}
 		return filepath.Base(string(f.FileName())) + " is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module"
 	case moduleDeclared:
 		if tspath.IsExternalModuleNameRelative(name) {
@@ -97,7 +100,7 @@ func (p *program) outside(what string, spec *ast.Node) string {
 		return quote(name) + " resolves to a declaration file, " + filepath.Base(string(f.FileName())) +
 			", and cakebear compiles TypeScript source: point the package's `types` at its source, or list a source condition before `types` in its exports (and in `customConditions`)"
 	case moduleMissing:
-		return what + " " + quote(name) + " are not supported: it resolves to no module"
+		return what + " " + quote(name) + " are not supported: TypeScript resolves it to no module, which a missing file, a script (a file with no import or export, which `export {}` makes a module) or a package with no types gives"
 	case moduleInNodeModules:
 		return quote(name) + " is TypeScript source under node_modules, which Node refuses to run (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING); link the package from outside node_modules, as a workspace does"
 	}

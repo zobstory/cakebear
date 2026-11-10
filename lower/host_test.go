@@ -190,7 +190,7 @@ func TestHostRefusals(t *testing.T) {
 		{"too few args", imp + `createServer();`, "createServer takes 1 argument, got 0"},
 		{"function as value", imp + `const cs = createServer;`, "createServer can only be called, not used as a value, yet"},
 		{"method as value", imp + `createServer((req, res) => { const e = res.end; });`, "ServerResponse.end can only be called, not used as a value, yet"},
-		{"a module that isn't there", `import { x } from "./lib";`, `imports from "./lib" are not supported: it resolves to no module`},
+		{"a module that isn't there", `import { x } from "./lib";`, `imports from "./lib" are not supported: TypeScript resolves it to no module`},
 		{"default import", `import http from "node:http";`, "a default import of node:http is not supported"},
 		{"log a host value", imp + `createServer((req, res) => { console.log(res); });`, "console.log cannot print a ServerResponse yet"},
 		{"log a function", "const f = (): number => 1;\nconsole.log(f);", "console.log cannot print a function yet"},

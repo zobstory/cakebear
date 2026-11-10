@@ -136,6 +136,7 @@ bin/cakec build                       # the project in the nearest tsconfig.json
 bin/cakec build examples/basic/main.ts
 bin/cakec build -o hello examples/http-hello/main.ts && ./hello   # a node:http server
 bin/cakec build -p examples/http-project && examples/http-project/bin/server   # in three modules
+bin/cakec build -p examples/workspace && examples/workspace/bin/server   # an app and a linked package
 bin/cakec build --checkers 8 --files-from list.txt   # large corpora
 scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
@@ -279,18 +280,68 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M7**, modules
+## Current phase: **S1**, talking to services, to plan
 
-P0–P5 and M1–M6 are done. **M7** is modules: re-exports (`export … from`,
-`export * from`, re-exporting an import), the program's own TypeScript
-source by any specifier the checker resolves (tsconfig `paths`, package.json
-`imports`, a workspace package linked through node_modules, a
-self-reference), and default exports and imports, with namespaces used only
-as `ns.member` as a stretch step. Its plan, decided 2026-11-10 at scope C
-with D as the stretch, is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
+P0–P5 and M1–M7 are done. cakebear is a **back-end server compiler** (zob,
+2026-11-10): the roadmap after M7 is ordered by what a TypeScript server
+needs, not by how much of wx-next compiles. Next is **S1**, talking to
+services. It isn't planned yet, per the per-phase rule below.
+
+The roadmap after M7, decided 2026-11-10 by zob from
+`~/Desktop/cakebear/roadmap-server-proposal.md`:
+- **S1, talking to services:** `fetch` (Response, Headers, `json()`,
+  `text()`), `JSON.parse` into an `unknown` narrowed as M6 narrows one,
+  `Promise.all`, `URL` and `URLSearchParams`, and `process.env`. A server
+  that can't call an upstream can't run a real service.
+- **S2, object types broadly:** M8's unions of objects, `Record` and index
+  signatures, tuples, methods in object types, and intersections of
+  objects. Whether `as` and `satisfies` cast or check is a decision for S1's
+  or S2's plan.
+- **S3, the standard library:** `Date`, `Math`, `Map` and `Set` (the old
+  M10), RegExp (M9), `Array.isArray` and `from`, and `Object`'s statics.
+- **S4, packages by binding,** M13's decision narrowed: a binding mechanism,
+  then Hono and @hono/node-server, its design settled by a spike before S2
+  ends. **S4b, server-side JSX,** M14 reframed: hono/jsx lowered to direct
+  writes into the response, decided on its measured share once Hono is bound.
+- **S5, generics and classes** (the old M11 and M12).
+- **A performance track** beside each: CPU per request at 1, 8 and 32
+  connections against Node on the reference servers, memory and cold start,
+  and one step for the concurrency gap: 1.93× Node's CPU per request at
+  eight connections, where Node's falls.
+- Dropped: JSX for React, which is client code.
+
+Each is measured by **reference servers** written for it in `examples/`, as
+`route-server` and `workspace` are, built and served as Node serves the same
+sources, from a race build too, with their CPU and latency against Node's.
+wx-next's server-side code is the breadth signal, re-measured at each
+milestone's end (`~/Desktop/cakebear/agents/m7-remeasure/`, server parts):
+1,506 of its 3,466 clean `.ts` files by a stated heuristic (720 without
+Payload's CMS modules), of which 19 lower at M7's end (1.3%). No one feature
+frees more than a few of them alone: 1,135 of the 1,487 refused have three
+or more blockers, and package types touch 73%. Its one Hono server isn't
+installed in wx-next's checkout, so it is measured through a stand-in config
+instead.
+
+M7, decided 2026-11-10 at scope C and done 2026-11-10, was modules:
+re-exports (`export … from`, `export * from`, re-exporting an import), the
+program's own TypeScript source by any specifier the checker resolves
+(tsconfig `paths`, package.json `imports`, a workspace package linked
+through node_modules, a self-reference), and default exports and imports.
+Its plan is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
 a measurement of wx-next with prototypes of each scope
 (`spikes/m7-measure/`), Node's module semantics measured case by case
 (`spikes/m7-node/`, R1–R26) and a spike of the lowering (`spikes/m7-go/`).
+- **cakebear is a back-end server compiler** (zob, 2026-11-10), not a
+  compiler for all of wx-next: what comes after M7 is ranked on wx-next's
+  server-side code (done-check 11), and M7's stretch, namespaces used as
+  `ns.member`, is dropped. It gained 0 files, and a server needs no
+  namespace of its own modules, so `import * as ns` and `export * as ns
+  from` of the program's own modules stay refused by name. ⚠ If namespaces
+  ever land, the race rule's identifier walk (`race.go`, which skips
+  `isMemberName`) and the capture walk (`closure.go`) must count
+  `ns.member` as a reference first: through a namespace a handler reached a
+  mutable object and a let-writing call, and built clean (m7-measure's
+  r12).
 - **On its own M7 lowers few more files, 9**, where the refusal counts said
   216: `collect` never followed a re-export or a non-relative import, so
   what stood behind one was never lowered, and the counts overstated it
@@ -337,8 +388,8 @@ It needed no IR, runtime or backend change:
   source order, each before the module's body (R8). A cycle through
   `export *` settles as an import cycle does.
 - Refused by name: a re-export from a package, a declaration file or a
-  JavaScript module, as an import from one is; `export * as ns from` (the
-  stretch step, D8); re-exporting a default, `export { default } from` and
+  JavaScript module, as an import from one is; `export * as ns from` (see
+  below); re-exporting a default, `export { default } from` and
   `export { x as default } from` (step 3); and exporting what a module
   imports from outside the program, such as node:http's `createServer`.
 - The race rule and frozen consts see through every re-export, since
@@ -437,6 +488,68 @@ proof:
 - A default export of an object literal is never frozen: the subset has no
   `as const`, so its type is mutable. The refusal says to declare a frozen
   const and `export default` its name, which is.
+
+Step 5, M7 end to end, is done:
+- Done-check 10: `examples/workspace` is a server in a workspace, an app in
+  `app/` and a package, `@example/forecast`, in `packages/`, linked into
+  `node_modules` by a symlink the repo holds, as a package manager links a
+  workspace. The app imports its own modules through an `@/` alias and the
+  package by name; the package's barrel re-exports a frozen const and a
+  default export, and the app renders a page of HTML from them.
+  `TestWorkspaceServerServes` holds six requests' status, `Content-Type`
+  and body to Node 24.18's, and `TestWorkspaceServerUnderRace` serves 200 of
+  them, 8 at a time, from a race-detector build, with no race found.
+- `cmd/cakec/testdata/paths-hook.mjs` reads a tsconfig as TypeScript does,
+  comments and trailing commas included, where it took plain JSON.
+- Done-check 12: the generated Go of every example M7 began with is byte for
+  byte `09a2fbb98d`'s (`~/Desktop/cakebear/tools/same-go.sh`, which builds
+  both sides from one path, since sites embed the source's path).
+- Done-check 11, wx-next re-measured with the real lowering
+  (`~/Desktop/cakebear/agents/m7-remeasure/`, at `dc4fb93649` on the same
+  wx-next commit as the plan's measurement):
+  - **261 of its 3,466 clean `.ts` files lower (7.5%), from 252 (7.3%)**:
+    +9, exactly the plan's projection at scope C, and the same 9 files. 0
+    panics, every lowered file builds, a second run identical on all 9,250
+    files. `.tsx`: still 0 of 1,985.
+  - Reach, what M7 is for: 1,333 refused files reach 300,779 more
+    module-entries than before. A program's median size went from 1 module
+    to 2, its p90 from 5 to 105, and 291 programs now hold over 1,000
+    modules, which lowering handles (the slowest file 1.45 s, builds
+    included). Only 40% of refused files are refused in their own code
+    alone, so a large program's refusals mostly come from modules it
+    reaches (the plan's risk 2).
+  - M7's own blockers are gone: `export … from` was the only blocker of
+    195 files and non-relative own source of 17; both are 0, and every
+    module form still refused blocks 0 files alone.
+  - The roadmap behind M7, over the whole codebase: M8 +44, M9 +29, M10
+    +15, M11 +5, M12 +5, M13 +299, to 658 (19.0%), M14 +0, an upper bound
+    since packages aren't followed. Taken next alone, intersections unlock
+    84 files and `Record` 57, against M8's 44, M10's 8, M11's 2 and M12's 5;
+    after M14, intersections would still be the only blocker of 230 files.
+    The order is decided on wx-next's server-side code instead (above), from
+    a roadmap proposal for zob.
+- Found by the re-measurement, and fixed:
+  - silently wrong: `import { default as d }` and `export { default as x }
+    from` of a snapshot default (a let's name, `o.p`) counted as naming
+    types alone, so the module request was erased and the module ran out
+    of Node's order, or the build was refused in words naming no fault.
+    `TestDefaultsMatchNode` holds both forms to Node now; step 3's tests
+    reached a snapshot only through `import d`.
+  - `declare global { … }`, `declare module "x" { … }` and a namespace of
+    types alone were refused as module declarations, though Node strips
+    them and TypeScript emits nothing: erased now, as interfaces are
+    (`strippedNamespace`). M7's reach had taken the files whose programs
+    hold one from 21 to 472. A value one declares, `declare global { var
+    BUILD: string }`, has no code, and is refused where it is used: an
+    ambient declaration is no part of the program (`inProgram`), where
+    before it would have lowered into a reference to nothing. A top-level
+    `declare const x: T` is the same: it printed Go's zero value where Node
+    throws a ReferenceError (m7-remeasure's Hono-app run), and is refused
+    where read now, as a `declare function` is where called; neither is
+    refused for being declared. A namespace with code stays refused.
+  - wording: a `.json` import said it was a JavaScript module, and an
+    import TypeScript resolves to no module, a script's or an untyped
+    package's, said it "resolves to no module".
 
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
@@ -845,7 +958,8 @@ default parameters. Its plan, decided at scope D, is
 (`spikes/m5-measure/`) and a hand port of two of its paths.
 
 After M6, the roadmap, in a provisional order ranked by how much of wx-next
-each unblocks. The shares are of its clean `.ts` files that check 9 found
+each unblocks (superseded at M7's end by the roadmap above, ordered for a
+back-end server compiler). The shares are of its clean `.ts` files that check 9 found
 refused for each (`spikes/m4-remeasure/`, 3,195 files), and for unions,
 M5's measurement of their reach (3,372 files):
 - **M7, modules:** `export … from` (11.7%), and non-relative imports of the
@@ -1344,7 +1458,10 @@ conditional spread, and optional and default parameters. **M6** errors:
 rejection through `async`, `await`, `reject` and `spawn`, the runtime's own
 errors catchable with Node's messages, an error nothing catches ending the
 program as Node ends it and only its own request in a handler, and console's
-other members.
+other members. **M7** modules: re-exports, the program's own source by any
+specifier TypeScript resolves (aliases, package.json `imports`, workspace
+links), default exports and imports, the type-only forms as Node runs them,
+and a server in a workspace served as Node serves it.
 
 The repository is on GitHub, with Actions enabled since 2026-10-27. The only
 workflows in the tree are cakebear's own: `cakebear-ci.yml` checks our code
@@ -1529,7 +1646,9 @@ Since M4 (`lower/loops.go`):
   `string` onto a `string`, as statements. They lower to `x = x op v`. On an
   extension type they are refused, so the narrowing stays visible:
   `n = i32(n + 1)`;
-- `interface` and `type` declarations, which are erased;
+- `interface` and `type` declarations, which are erased, and since M7 step 5
+  `declare global { … }`, `declare module "x" { … }` and namespaces of types
+  alone, erased too (a namespace with code is refused);
 - a condition (of an `if`, a `while` or a `for`) is a `boolean`, or, since
   M5 step 7, any value's truthiness.
 

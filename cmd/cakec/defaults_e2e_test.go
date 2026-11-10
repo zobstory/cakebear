@@ -71,6 +71,24 @@ var defaultPrograms = []struct {
 		},
 		"lib\nmain hi hi 3\n",
 	},
+	{
+		"a snapshot default through { default as d } is a module request at its place",
+		map[string]string{
+			"a.ts":    "let v: number = 1;\nexport default v;\nv = 2;\nconsole.log(\"a ran\");\n",
+			"c.ts":    "export {};\nconsole.log(\"c ran\");\n",
+			"main.ts": "import { default as d } from \"./a.ts\";\nimport \"./c.ts\";\nimport d2 from \"./a.ts\";\nconsole.log(\"main\", d, d2);\n",
+		},
+		"a ran\nc ran\nmain 1 1\n",
+	},
+	{
+		"a snapshot default re-exported by name from a barrel",
+		map[string]string{
+			"barrel.ts": "export { default as value } from \"./o.ts\";\n",
+			"main.ts":   "import { value } from \"./barrel.ts\";\nconsole.log(\"main\", value);\n",
+			"o.ts":      "const o: { p: number } = { p: 1 };\nexport default o.p;\no.p = 2;\nconsole.log(\"o ran\");\n",
+		},
+		"o ran\nmain 1\n",
+	},
 }
 
 // TestDefaultsMatchNode: each program prints what Node printed, 20 runs out
