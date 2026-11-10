@@ -22,6 +22,12 @@ func TestAmbientDeclarationsAreErased(t *testing.T) {
 		{"a namespace of types", "namespace N {\n  export interface T {\n    a: number;\n  }\n}\nconst t: N.T = { a: 3 };\nconsole.log(t.a);\n", ""},
 		{"a value declare global declares", "declare global {\n  var BUILD: string;\n}\nconsole.log(BUILD);\nexport {};\n",
 			"BUILD is declared with `declare` in t.ts, so the program has no code for it"},
+		{"a declared const read (m7-remeasure's r9: it printed Go's zero value where Node throws ReferenceError)",
+			"declare const BUILD_ID: string;\nconsole.log(\"id\", BUILD_ID);\nexport {};\n",
+			"BUILD_ID is declared with `declare` in t.ts, so the program has no code for it"},
+		{"a declared const and function, unused", "declare const BUILD_ID: string;\ndeclare function stamp(): string;\nconsole.log(4);\nexport {};\n", ""},
+		{"a declared function called", "declare function stamp(): string;\nconsole.log(stamp());\nexport {};\n",
+			"stamp is declared with `declare` in t.ts, so the program has no code for it"},
 		{"a namespace with code", "namespace C {\n  export const x: number = 1;\n}\nconsole.log(C.x);\n", "module declaration is not supported yet"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

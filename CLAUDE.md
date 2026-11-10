@@ -542,8 +542,11 @@ Step 5, M7 end to end, is done:
     hold one from 21 to 472. A value one declares, `declare global { var
     BUILD: string }`, has no code, and is refused where it is used: an
     ambient declaration is no part of the program (`inProgram`), where
-    before it would have lowered into a reference to nothing. A namespace
-    with code stays refused.
+    before it would have lowered into a reference to nothing. A top-level
+    `declare const x: T` is the same: it printed Go's zero value where Node
+    throws a ReferenceError (m7-remeasure's Hono-app run), and is refused
+    where read now, as a `declare function` is where called; neither is
+    refused for being declared. A namespace with code stays refused.
   - wording: a `.json` import said it was a JavaScript module, and an
     import TypeScript resolves to no module, a script's or an untyped
     package's, said it "resolves to no module".

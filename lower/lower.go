@@ -235,7 +235,9 @@ func (l *lowerer) function(n *ast.Node) *ir.Func {
 		name = decl.Name().Text()
 	}
 	if decl.Body == nil {
-		l.failf(n, "function %s has no body; overload signatures are not supported yet", name)
+		if n.Flags&ast.NodeFlagsAmbient == 0 { // `declare function f()` has no code, as a const's
+			l.failf(n, "function %s has no body; overload signatures are not supported yet", name)
+		}
 		return nil
 	}
 
@@ -364,8 +366,8 @@ func (l *lowerer) statementBody(n *ast.Node) []ir.Stmt {
 
 func (l *lowerer) varStatement(n *ast.Node) []ir.Stmt {
 	list := n.AsVariableStatement().DeclarationList
-	if list == nil {
-		return nil
+	if list == nil || n.Flags&ast.NodeFlagsAmbient != 0 {
+		return nil // `declare const x: T`: no code, and a read is refused (module.go)
 	}
 	return l.declarations(n, list)
 }
