@@ -280,14 +280,54 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M7**, modules
+## Current phase: **S1**, talking to services, to plan
 
-P0–P5 and M1–M6 are done. **M7** is modules: re-exports (`export … from`,
-`export * from`, re-exporting an import), the program's own TypeScript
-source by any specifier the checker resolves (tsconfig `paths`, package.json
-`imports`, a workspace package linked through node_modules, a
-self-reference), and default exports and imports. Its plan, decided
-2026-11-10 at scope C, is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
+P0–P5 and M1–M7 are done. cakebear is a **back-end server compiler** (zob,
+2026-11-10): the roadmap after M7 is ordered by what a TypeScript server
+needs, not by how much of wx-next compiles. Next is **S1**, talking to
+services. It isn't planned yet, per the per-phase rule below.
+
+The roadmap after M7, decided 2026-11-10 by zob from
+`~/Desktop/cakebear/roadmap-server-proposal.md`:
+- **S1, talking to services:** `fetch` (Response, Headers, `json()`,
+  `text()`), `JSON.parse` into an `unknown` narrowed as M6 narrows one,
+  `Promise.all`, `URL` and `URLSearchParams`, and `process.env`. A server
+  that can't call an upstream can't run a real service.
+- **S2, object types broadly:** M8's unions of objects, `Record` and index
+  signatures, tuples, methods in object types, and intersections of
+  objects. Whether `as` and `satisfies` cast or check is a decision for S1's
+  or S2's plan.
+- **S3, the standard library:** `Date`, `Math`, `Map` and `Set` (the old
+  M10), RegExp (M9), `Array.isArray` and `from`, and `Object`'s statics.
+- **S4, packages by binding,** M13's decision narrowed: a binding mechanism,
+  then Hono and @hono/node-server, its design settled by a spike before S2
+  ends. **S4b, server-side JSX,** M14 reframed: hono/jsx lowered to direct
+  writes into the response, decided on its measured share once Hono is bound.
+- **S5, generics and classes** (the old M11 and M12).
+- **A performance track** beside each: CPU per request at 1, 8 and 32
+  connections against Node on the reference servers, memory and cold start,
+  and one step for the concurrency gap: 1.93× Node's CPU per request at
+  eight connections, where Node's falls.
+- Dropped: JSX for React, which is client code.
+
+Each is measured by **reference servers** written for it in `examples/`, as
+`route-server` and `workspace` are, built and served as Node serves the same
+sources, from a race build too, with their CPU and latency against Node's.
+wx-next's server-side code is the breadth signal, re-measured at each
+milestone's end (`~/Desktop/cakebear/agents/m7-remeasure/`, server parts):
+1,506 of its 3,466 clean `.ts` files by a stated heuristic (720 without
+Payload's CMS modules), of which 19 lower at M7's end (1.3%). No one feature
+frees more than a few of them alone: 1,135 of the 1,487 refused have three
+or more blockers, and package types touch 73%. Its one Hono server isn't
+installed in wx-next's checkout, so it is measured through a stand-in config
+instead.
+
+M7, decided 2026-11-10 at scope C and done 2026-11-10, was modules:
+re-exports (`export … from`, `export * from`, re-exporting an import), the
+program's own TypeScript source by any specifier the checker resolves
+(tsconfig `paths`, package.json `imports`, a workspace package linked
+through node_modules, a self-reference), and default exports and imports.
+Its plan is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
 a measurement of wx-next with prototypes of each scope
 (`spikes/m7-measure/`), Node's module semantics measured case by case
 (`spikes/m7-node/`, R1–R26) and a spike of the lowering (`spikes/m7-go/`).
@@ -449,7 +489,7 @@ proof:
   `as const`, so its type is mutable. The refusal says to declare a frozen
   const and `export default` its name, which is.
 
-Step 5, M7 end to end, is under way:
+Step 5, M7 end to end, is done:
 - Done-check 10: `examples/workspace` is a server in a workspace, an app in
   `app/` and a package, `@example/forecast`, in `packages/`, linked into
   `node_modules` by a symlink the repo holds, as a package manager links a
@@ -915,7 +955,8 @@ default parameters. Its plan, decided at scope D, is
 (`spikes/m5-measure/`) and a hand port of two of its paths.
 
 After M6, the roadmap, in a provisional order ranked by how much of wx-next
-each unblocks. The shares are of its clean `.ts` files that check 9 found
+each unblocks (superseded at M7's end by the roadmap above, ordered for a
+back-end server compiler). The shares are of its clean `.ts` files that check 9 found
 refused for each (`spikes/m4-remeasure/`, 3,195 files), and for unions,
 M5's measurement of their reach (3,372 files):
 - **M7, modules:** `export … from` (11.7%), and non-relative imports of the
@@ -1414,7 +1455,10 @@ conditional spread, and optional and default parameters. **M6** errors:
 rejection through `async`, `await`, `reject` and `spawn`, the runtime's own
 errors catchable with Node's messages, an error nothing catches ending the
 program as Node ends it and only its own request in a handler, and console's
-other members.
+other members. **M7** modules: re-exports, the program's own source by any
+specifier TypeScript resolves (aliases, package.json `imports`, workspace
+links), default exports and imports, the type-only forms as Node runs them,
+and a server in a workspace served as Node serves it.
 
 The repository is on GitHub, with Actions enabled since 2026-10-27. The only
 workflows in the tree are cakebear's own: `cakebear-ci.yml` checks our code
