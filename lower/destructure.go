@@ -52,7 +52,7 @@ func (l *lowerer) shorthand(p *ast.Node) ir.Expr {
 		l.failf(p, "%s has a type the backend cannot represent yet%s", p.Name().Text(), l.reason())
 		return nil
 	}
-	name, module := sym.Name(), topLevelModule(sym)
+	name, module := declaredName(sym), topLevelModule(sym)
 	if module == "" {
 		name = p.Name().Text()
 	}

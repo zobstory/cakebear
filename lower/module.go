@@ -15,10 +15,10 @@ import (
 //
 // What a module may export is a function or a const declared at its top
 // level, or one it imports or re-exports from another of the program's own
-// modules (M7 step 1): either way a reference to the name refers into the
-// module declaring it. A let is refused: every module importing it would
-// share a binding that can change, which the race rule would have to follow
-// from module to module. So are default exports, for now.
+// modules (M7 step 1), and default exports (step 3, defaults.go): either way
+// a reference to the name refers into the module declaring it. A let is
+// refused: every module importing it would share a binding that can change,
+// which the race rule would have to follow from module to module.
 
 // ref returns how the IR names the binding n refers to: its declared name and
 // the file of the module whose top level declares it, or n's own text and ""
@@ -27,7 +27,7 @@ import (
 func (l *lowerer) ref(n *ast.Node) (name, module string) {
 	if sym := l.p.resolve(l.checker.GetSymbolAtLocation(n)); sym != nil {
 		if module := topLevelModule(sym); module != "" {
-			return sym.Name(), module
+			return declaredName(sym), module
 		}
 	}
 	return n.Text(), ""
@@ -48,7 +48,7 @@ func topLevelModule(sym *ast.Symbol) string {
 // the emitter treats it.
 func isTopLevel(decl *ast.Node) bool {
 	switch decl.Kind {
-	case ast.KindFunctionDeclaration:
+	case ast.KindFunctionDeclaration, ast.KindExportAssignment:
 		return decl.Parent != nil && decl.Parent.Kind == ast.KindSourceFile
 	case ast.KindBindingElement:
 		return isTopLevel(bindingRoot(decl))
@@ -96,9 +96,6 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 	clause := decl.ImportClause
 	if clause == nil {
 		return string(target.FileName()) // `import "./x"`, for its effects alone
-	}
-	if clause.Name() != nil {
-		l.failf(n, "a default import is not supported yet; import what %s exports by name", spec.Text())
 	}
 	if b := clause.AsImportClause().NamedBindings; b != nil && b.Kind == ast.KindNamespaceImport {
 		l.failf(n, "`import * as` is supported only for node:http; import what %s exports by name", spec.Text())
@@ -189,16 +186,6 @@ func (l *lowerer) reexport(n *ast.Node, decl *ast.ExportDeclaration) string {
 	switch clause := decl.ExportClause; {
 	case clause != nil && clause.Kind == ast.KindNamespaceExport:
 		l.failf(n, "`export * as %s from` is not supported yet; re-export the names, or import them from %s where they are used", clause.Name().Text(), spec.Text())
-	case clause != nil:
-		for _, el := range clause.AsNamedExports().Elements.Nodes {
-			from := el.AsExportSpecifier().PropertyName
-			if from == nil {
-				from = el.Name()
-			}
-			if !el.IsTypeOnly() && (from.Text() == "default" || el.Name().Text() == "default") {
-				l.failf(el, "re-exporting a default export is not supported yet; export it by name")
-			}
-		}
 	}
 	return string(target.FileName())
 }
