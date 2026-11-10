@@ -81,6 +81,10 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 	}
 	target := l.p.imported(decl)
 	if target == nil {
+		if saysTypeEverywhere(decl) {
+			l.failf(n, "`import { type … }` evaluates %q, as Node runs it, though it names only types, and cakebear compiles only node:http and the program's own TypeScript modules; write `import type { … }`, which evaluates nothing", spec.Text())
+			return ""
+		}
 		if js := l.p.importedScript(decl); js != nil {
 			l.failf(n, "%s is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module", filepath.Base(string(js.FileName())))
 			return ""
@@ -101,16 +105,46 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 	return string(target.FileName())
 }
 
-// exportDecl checks `export { … }`: each name must be a function or a const
-// of this module's own. `export {}` exports nothing and only makes a file an
-// ES module, which TypeScript requires for a top-level await.
+// saysTypeEverywhere reports whether every name an import lists says `type`,
+// `import { type A, type B } from "…"`: a module request to Node, naming
+// nothing it binds.
+func saysTypeEverywhere(decl *ast.ImportDeclaration) bool {
+	clause := decl.ImportClause
+	if clause == nil || clause.Name() != nil {
+		return false
+	}
+	b := clause.AsImportClause().NamedBindings
+	if b == nil || b.Kind != ast.KindNamedImports || len(b.AsNamedImports().Elements.Nodes) == 0 {
+		return false
+	}
+	for _, el := range b.AsNamedImports().Elements.Nodes {
+		if !el.IsTypeOnly() {
+			return false
+		}
+	}
+	return true
+}
+
+// exportDecl checks `export { … }` and `export … from`. What evaluates
+// nothing is erased first, wherever it is from (M7 plan D3, R7):
+// `export type { … }`, `export type * from`, and a list naming types without
+// saying so. Each other name must be a function or a const of this module's
+// own. `export {}` exports nothing and only makes a file an ES module, which
+// TypeScript requires for a top-level await.
 func (l *lowerer) exportDecl(n *ast.Node) {
 	decl := n.AsExportDeclaration()
+	if decl.IsTypeOnly {
+		return
+	}
+	named := decl.ExportClause != nil && decl.ExportClause.Kind == ast.KindNamedExports
 	if decl.ModuleSpecifier != nil {
+		if named && l.p.namesTypesOnly(decl.ExportClause.AsNamedExports().Elements.Nodes) {
+			return
+		}
 		l.failf(n, "re-exporting with `export … from` is not supported yet; import from the module that declares the names")
 		return
 	}
-	if decl.IsTypeOnly || decl.ExportClause == nil || decl.ExportClause.Kind != ast.KindNamedExports {
+	if !named {
 		return
 	}
 	for _, el := range decl.ExportClause.AsNamedExports().Elements.Nodes {
@@ -124,10 +158,11 @@ func (l *lowerer) exportDecl(n *ast.Node) {
 		}
 		switch {
 		case sym == nil:
+		case l.p.resolve(sym).Flags()&ast.SymbolFlagsValue == 0:
+			// A type, this module's own or imported: erased, with nothing to
+			// compile. Node refuses one exported without `type` (D3).
 		case sym.Flags()&ast.SymbolFlagsAlias != 0:
 			l.failf(el, "exporting %s, which this module imports, is not supported yet; import it from the module that declares it", name.Text())
-		case sym.Flags()&ast.SymbolFlagsValue == 0:
-			// A type: erased, with nothing to compile.
 		case isLet(sym):
 			l.failf(el, "exporting %s, a let, is not supported yet: every module importing it would share a binding that can change; export a function that reads it", name.Text())
 		}

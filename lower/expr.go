@@ -293,6 +293,11 @@ func resultType(op ir.BinaryOp, operand ir.Type) (ir.Type, bool) {
 func (l *lowerer) call(n *ast.Node) ir.Expr {
 	c := n.AsCallExpression()
 
+	if c.Expression.Kind == ast.KindImportKeyword {
+		l.failf(n, "a dynamic `import()` is not supported yet: its value is a promise of the module's namespace object, which cakebear doesn't build; use a static import")
+		return nil
+	}
+
 	// console.log and its siblings are intrinsics rather than method calls
 	// (ir.ConsoleLog).
 	if m, ok := l.consoleMember(c.Expression); ok {

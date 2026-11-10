@@ -131,12 +131,12 @@ func (p *program) collect(f *ast.SourceFile) {
 	}
 }
 
-// erased reports whether an import evaluates nothing: an `import type`, or
-// an import naming only types, `import { Count } from "./types"`.
-// TypeScript's emit drops both, so the module runs only if a value is
-// imported from it somewhere. Node refuses the second outright, since a type
-// has no runtime export to bind, which leaves TypeScript's as the behaviour
-// to match. An import naming a value evaluates its module, used or not.
+// erased reports whether an import evaluates nothing (M7 plan D3, R7): an
+// `import type`, or an import naming types without saying so,
+// `import { Count } from "./types"`. An import naming a value evaluates its
+// module, used or not, and so does one whose every name says `type`,
+// `import { type Count } from "./types"`: Node strips it to
+// `import {} from "./types"`, which runs the module.
 func (p *program) erased(decl *ast.ImportDeclaration) bool {
 	clause := decl.ImportClause
 	if clause == nil {
@@ -149,16 +149,27 @@ func (p *program) erased(decl *ast.ImportDeclaration) bool {
 	if clause.Name() != nil || bindings == nil || bindings.Kind != ast.KindNamedImports {
 		return false
 	}
-	elements := bindings.AsNamedImports().Elements.Nodes
-	for _, el := range elements {
+	return p.namesTypesOnly(bindings.AsNamedImports().Elements.Nodes)
+}
+
+// namesTypesOnly reports whether a list of import or export specifiers names
+// types without saying so: one at least has no `type`, and every one without
+// it names a type. TypeScript's emit drops such a declaration, and Node fails
+// at link, since a type has no runtime export to bind: an accepted
+// difference (M7 plan D3). A list whose every specifier says `type`, or an
+// empty one, is a module request to Node, which evaluates the module.
+func (p *program) namesTypesOnly(specifiers []*ast.Node) bool {
+	plain := false
+	for _, el := range specifiers {
 		if el.IsTypeOnly() {
 			continue
 		}
+		plain = true
 		if sym := p.resolve(p.checker.GetSymbolAtLocation(el.Name())); sym == nil || sym.Flags()&ast.SymbolFlagsValue != 0 {
 			return false
 		}
 	}
-	return len(elements) > 0
+	return plain
 }
 
 // imported returns the module an import declaration names, when it is one of

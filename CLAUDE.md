@@ -279,13 +279,48 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **M7**, modules, to plan
+## Current phase: **M7**, modules
 
-P0–P5 and M1–M6 are done. Next is **M7**, modules: `export … from`, and
-imports of the program's own source by a non-relative path, workspace
-packages and `@/` path aliases. It isn't planned yet, per the per-phase
-rule below. M6's re-measurement of wx-next (check 10, step 7 below) is the
-first input to its plan.
+P0–P5 and M1–M6 are done. **M7** is modules: re-exports (`export … from`,
+`export * from`, re-exporting an import), the program's own TypeScript
+source by any specifier the checker resolves (tsconfig `paths`, package.json
+`imports`, a workspace package linked through node_modules, a
+self-reference), and default exports and imports, with namespaces used only
+as `ns.member` as a stretch step. Its plan, decided 2026-11-10 at scope C
+with D as the stretch, is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
+a measurement of wx-next with prototypes of each scope
+(`spikes/m7-measure/`), Node's module semantics measured case by case
+(`spikes/m7-node/`, R1–R26) and a spike of the lowering (`spikes/m7-go/`).
+- **On its own M7 lowers few more files, 9**, where the refusal counts said
+  216: `collect` never followed a re-export or a non-relative import, so
+  what stood behind one was never lowered, and the counts overstated it
+  about 24×. What M7 is for is reach: at scope B the refused files reach
+  294,636 module-entries more, against 5,834 at A, which makes every later
+  milestone's projection honest. Re-measured on the prototypes' run, M8
+  adds 44 files, M9 29, M10 15, M11 5, M12 5 and M13 318, where the counts
+  said 978 in all; the order after M7 is decided at its end.
+- It is compile-time only: no IR, runtime or backend change, and the
+  generated Go of every example stays byte for byte what it was
+  (done-check 12, `~/Desktop/cakebear/tools/same-go.sh`).
+
+Step 0, what the research found in passing, is done (M7 plan D3, D11):
+- `import { type T } from "./x"`, every name saying `type`, evaluates x, as
+  under Node, which strips it to `import {} from "./x"` (R7). Since M3 it was
+  erased, as TypeScript's plain emit drops it, so x's top-level code never
+  ran: silently wrong. Of a package, or of anything else cakebear doesn't
+  compile, it is refused with the fix, `import type { … }`, which evaluates
+  nothing (two of wx-next's programs that lowered hold one).
+- `export type { … } from`, `export type * from`, an `export { T } from`
+  naming types without `type`, and a module's `export { T }` of a type it
+  imports are erased, wherever they are from. They were refused, since the
+  type-only test came after the checks for a module specifier and an
+  import: `export type { … } from` alone was refused in the programs of 130
+  of wx-next's clean files.
+- A dynamic `import()` is refused in words naming it: its value is a
+  promise of a namespace object, which cakebear doesn't build.
+- The test against Node, `TestMultiFileMatchesNode`'s type-only program,
+  holds which modules run for each form, and `TestTypeOnlyFormsFromAPackage`
+  the package's.
 
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
@@ -1328,8 +1363,11 @@ Since M3 (`lower/module.go`), across the program's own modules:
 - named imports, renamed or not (`import { a, b as c } from "./x"`), of the
   functions and `const`s a module declares at its top level;
 - `import "./x"` for its effects alone, and type-only imports and exports,
-  from a package too (`import type { NextRequest } from "next/server"`), since
-  they evaluate nothing;
+  from a package too (`import type { NextRequest } from "next/server"`,
+  `export type { T } from "pkg"`, `export type * from`), since they evaluate
+  nothing; so does an import or export naming types without `type`, which
+  TypeScript's emit drops (see the accepted differences);
+- `import { type T } from "./x"`, which evaluates x, as under Node (M7 step 0);
 - `export function`, `export const` and `export { x }`;
 - import cycles.
 
@@ -1339,8 +1377,10 @@ is no part of it.
 
 Refused by name: a JavaScript module (`./helper.mjs`), default imports and exports, `import * as` (except
 `node:http`), `export … from` and re-exporting an import, exporting a `let`
-(every importer would share a binding that can change), and a top-level
-`await` outside the entry module (M3 plan D8).
+(every importer would share a binding that can change), a top-level
+`await` outside the entry module (M3 plan D8), `import { type T }` of a
+package or anything else cakebear doesn't compile (write `import type`), and
+a dynamic `import()`.
 
 Since M4 (`lower/loops.go`):
 - `for (init; cond; post)`, with any clause empty. A `let` in the first clause
@@ -1674,9 +1714,12 @@ package per module fails: Go forbids the import cycles ES allows.
   order, with a module already on the way not entered again, which settles a
   cycle. That is an ES module graph's order, checked against Node 24.18.
 - An import evaluates its module whether or not what it names is used, as
-  under Node. `import type` is erased and brings in nothing, and so is an
-  import naming only types, as in TypeScript's emit (Node refuses one: a type
-  has no export to bind). A module that only types reach never runs.
+  under Node, and so does `import { type T }`, whose every name says `type`:
+  Node strips it to `import {} from`, a module request (M7 R7). `import type`
+  and `export type { … } from` are erased and bring in nothing, and so is an
+  import or export naming types without `type`, as in TypeScript's emit
+  (Node refuses one: a type has no export to bind). A module that only types
+  reach never runs.
 - Reading another module's binding across a cycle, before that module has
   run, gives Go's zero value where JavaScript throws a `ReferenceError`. It's
   the same difference as for a top-level variable read early.
@@ -1898,6 +1941,7 @@ not listed here that behaves differently is a bug.
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
 | Reading a `let` declared with no value before it is assigned, from a closure called first (M5 step 8; TypeScript refuses it anywhere else) | `undefined` | Go's zero value, as above |
 | Reading an imported binding across an import cycle, before its module has run | `ReferenceError` | Go's zero value |
+| An import, export or re-export naming a type without `type`: `import { T } from`, `export { T }`, `export { T } from` (M7 plan D3; tsc says nothing without `isolatedModules` or `verbatimModuleSyntax`) | fails before running: `SyntaxError: The requested module './t.ts' does not provide an export named 'T'`, or `Export 'T' is not defined in module` | erased, as TypeScript's emit drops it, and the program runs |
 | A top-level `await` in a module other than the entry | the modules importing it wait for it | refused at compile time (M3 plan D8) |
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
 | Ctrl-C / SIGTERM | exit 130 / 143 | exit 130 / 143, after flushing output |

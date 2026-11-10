@@ -82,6 +82,33 @@ func packageProject(main string) map[string]string {
 		"src/main.ts":                   "import type { Shape } from \"pkg\";\nfunction describe(s: Shape): string {\n  return `${s.id}:${s.name}`;\n}\nconsole.log(describe({ id: 1, name: \"a\" }));\n",
 		"src/js.ts":                     "import { twice } from \"./helper.mjs\";\nconsole.log(twice(2));\n",
 		"src/helper.mjs":                "export function twice(n) {\n  return n * 2;\n}\n",
+		"src/reexport.ts":               "export type { Shape as Item } from \"pkg\";\nexport { Shape as Other } from \"pkg\";\nimport type { Shape } from \"pkg\";\nconst s: Shape = { id: 2, name: \"b\" };\nconsole.log(s.id);\n",
+		"src/inline.ts":                 "import { type Shape } from \"pkg\";\nconst s: Shape = { id: 1, name: \"a\" };\nconsole.log(s.name);\n",
+	}
+}
+
+// TestTypeOnlyFormsFromAPackage (M7 plan D3, D11): a re-export of a
+// package's types evaluates nothing, so it builds, where `export … from` was
+// refused before the type-only test; `import { type Shape }` evaluates the
+// package under Node, so it is refused, with the fix.
+func TestTypeOnlyFormsFromAPackage(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeProject(t, dir, packageProject("src/reexport.ts"))
+	if code, stderr := projectBuild(t, dir, buildOptions{}); code != exitOK {
+		t.Fatalf("build: exit %d\n%s", code, stderr)
+	}
+	if out, err := exec.Command(filepath.Join(dir, "app")).Output(); err != nil || string(out) != "2\n" {
+		t.Errorf("printed %q (%v), want %q", out, err, "2\n")
+	}
+
+	dir = t.TempDir()
+	writeProject(t, dir, packageProject("src/inline.ts"))
+	code, stderr := projectBuild(t, dir, buildOptions{})
+	want := "inline.ts:1:1: cannot compile yet: `import { type … }` evaluates \"pkg\", as Node runs it, though it names only types, and cakebear compiles only node:http and the program's own TypeScript modules; write `import type { … }`, which evaluates nothing"
+	if code != exitErrors || !strings.Contains(stderr, want) {
+		t.Errorf("exit %d, want %d with\n%s\ngot:\n%s", code, exitErrors, want, stderr)
 	}
 }
 
