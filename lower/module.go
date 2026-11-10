@@ -87,11 +87,10 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 			l.failf(n, "`import { type … }` evaluates %q, as Node runs it, though it names only types, and cakebear compiles only node:http and the program's own TypeScript modules; write `import type { … }`, which evaluates nothing", spec.Text())
 			return ""
 		}
-		if js := l.p.scriptModule(spec); js != nil {
-			l.failJS(n, js)
-			return ""
-		}
-		l.failf(n, "imports from %q are not supported; cakebear compiles node:http and the program's own TypeScript modules, imported by a relative path", spec.Text())
+		l.failf(n, "%s", l.p.outside("imports from", spec))
+		return ""
+	}
+	if l.refusedSameFile(n, spec, target) {
 		return ""
 	}
 	clause := decl.ImportClause
@@ -181,11 +180,10 @@ func (l *lowerer) reexport(n *ast.Node, decl *ast.ExportDeclaration) string {
 	spec := decl.ModuleSpecifier
 	target := l.p.reexported(decl)
 	if target == nil {
-		if js := l.p.scriptModule(spec); js != nil {
-			l.failJS(n, js)
-			return ""
-		}
-		l.failf(n, "re-exports from %q are not supported; cakebear compiles the program's own TypeScript modules, named by a relative path, and node:http where it is imported", spec.Text())
+		l.failf(n, "%s", l.p.outside("re-exports from", spec))
+		return ""
+	}
+	if l.refusedSameFile(n, spec, target) {
 		return ""
 	}
 	switch clause := decl.ExportClause; {
@@ -205,9 +203,26 @@ func (l *lowerer) reexport(n *ast.Node, decl *ast.ExportDeclaration) string {
 	return string(target.FileName())
 }
 
-// failJS refuses an import or re-export of a JavaScript module.
-func (l *lowerer) failJS(n *ast.Node, js *ast.SourceFile) {
-	l.failf(n, "%s is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module", filepath.Base(string(js.FileName())))
+// refusedSameFile refuses an import or re-export reaching a module that is
+// one file with another by its real path (M7 plan D5), and reports whether
+// it did.
+func (l *lowerer) refusedSameFile(n, spec *ast.Node, target *ast.SourceFile) bool {
+	other := l.p.sameFile[target]
+	if other == nil {
+		return false
+	}
+	l.failf(n, "%q reaches %s, and another import reaches the same file as %s: TypeScript checks one file reached by two paths as two, where Node runs one module; import it by one path", spec.Text(), l.relName(target), l.relName(other))
+	return true
+}
+
+// relName is a module's file relative to the directory of the one being
+// lowered.
+func (l *lowerer) relName(f *ast.SourceFile) string {
+	name := string(f.FileName())
+	if rel, err := filepath.Rel(filepath.Dir(string(l.file.FileName())), name); err == nil {
+		return filepath.ToSlash(rel)
+	}
+	return name
 }
 
 // exportedVariables checks `export const …` and `export let …`, as

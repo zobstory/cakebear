@@ -97,7 +97,7 @@ func TestReexportsFromOutsideTheProgramRefused(t *testing.T) {
 
 	for main, want := range map[string]string{
 		"src/rejs.ts":  "rejs.ts:1:1: cannot compile yet: helper.mjs is a JavaScript module; cakebear compiles TypeScript",
-		"src/repkg.ts": "repkg.ts:1:1: cannot compile yet: re-exports from \"pkg\" are not supported; cakebear compiles the program's own TypeScript modules, named by a relative path",
+		"src/repkg.ts": "repkg.ts:1:1: cannot compile yet: re-exports from \"pkg\" are not supported yet: it is a package, and cakebear compiles node:http and the program's own TypeScript source",
 	} {
 		dir := t.TempDir()
 		writeProject(t, dir, packageProject(main))

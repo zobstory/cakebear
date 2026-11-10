@@ -7,7 +7,6 @@ import (
 
 	"github.com/zobstory/cakebear/internal/ast"
 	"github.com/zobstory/cakebear/internal/checker"
-	"github.com/zobstory/cakebear/internal/tspath"
 	"github.com/zobstory/cakebear/ir"
 )
 
@@ -40,6 +39,9 @@ type program struct {
 	// frozen keeps, per const declaration, why it isn't frozen, or "" when
 	// it is (frozen.go).
 	frozen map[*ast.Node]string
+	// sameFile maps a module that is one file with another by its real
+	// path to that other (boundary.go).
+	sameFile map[*ast.SourceFile]*ast.SourceFile
 }
 
 // Program lowers the program whose entry module is entry: entry and every
@@ -62,6 +64,7 @@ func Program(entry *ast.SourceFile, c *checker.Checker) (*ir.Program, []*Error) 
 	}
 	slices.SortFunc(files, func(a, b *ast.SourceFile) int { return strings.Compare(string(a.FileName()), string(b.FileName())) })
 	p.files = files
+	p.findSameFiles()
 	p.findAssigned()
 	p.findAppended()
 
@@ -195,46 +198,6 @@ func (p *program) namesTypesOnly(specifiers []*ast.Node) bool {
 		}
 	}
 	return plain
-}
-
-// ownModule returns the module an import's or a re-export's specifier names,
-// when it is one of the program's own: a TypeScript module, not a
-// declaration file or a JavaScript one, named by a relative path. Anything
-// else is nil, and importDecl or exportDecl says why.
-func (p *program) ownModule(spec *ast.Node) *ast.SourceFile {
-	if f := p.specifierFile(spec); f != nil && !ast.IsInJSFile(f.AsNode()) {
-		return f
-	}
-	return nil
-}
-
-// scriptModule returns the JavaScript module a specifier names by a relative
-// path, which the program can't compile, or nil.
-func (p *program) scriptModule(spec *ast.Node) *ast.SourceFile {
-	if f := p.specifierFile(spec); f != nil && ast.IsInJSFile(f.AsNode()) {
-		return f
-	}
-	return nil
-}
-
-// specifierFile is the source file, TypeScript or JavaScript, that a module
-// specifier names by a relative path, or nil.
-func (p *program) specifierFile(spec *ast.Node) *ast.SourceFile {
-	if spec == nil || spec.Kind != ast.KindStringLiteral || !tspath.IsExternalModuleNameRelative(spec.Text()) {
-		return nil
-	}
-	sym := p.checker.GetSymbolAtLocation(spec)
-	if sym == nil {
-		return nil
-	}
-	decl0 := sym.ValueDeclaration()
-	if decl0 == nil || decl0.Kind != ast.KindSourceFile {
-		return nil
-	}
-	if f := decl0.AsSourceFile(); !f.IsDeclarationFile {
-		return f
-	}
-	return nil
 }
 
 // inProgram reports whether a declaration is in one of the program's modules.

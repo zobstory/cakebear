@@ -352,6 +352,42 @@ It needed no IR, runtime or backend change:
   level and through `export *` in a timer to Node's: the declaring file and
   the throw's line, whatever path the call took (R26).
 
+Step 2, the program's boundary, is done (M7 plan D4–D6, D10;
+`lower/boundary.go`). It too is lowering alone:
+- A module is the program's own when the checker resolves its specifier,
+  however it is written, to a TypeScript source file, not a declaration
+  file, whose real path isn't under node_modules: a relative path, with an
+  extension or without, a tsconfig `paths` alias, a package.json `imports`
+  entry, a workspace package linked through node_modules (which TypeScript
+  takes at its real path, R22), or a package's own name. One file is one
+  module, evaluated once, whatever specifiers reach it (R11), and a reached
+  module is checked under the importing project's options, as by `tsc -p`
+  (D9).
+- Specifiers only TypeScript resolves, an extensionless one, `.js` naming
+  a `.ts`, a directory or an alias, are taken as a bundler takes them (D6):
+  Node fails to load those, an accepted difference.
+- Refused by name, each saying what to do:
+  - a package, as before, until M13;
+  - a workspace package typed by its built `.d.ts`: point its `types` at
+    its source, or list a source condition before `types` (R23);
+  - TypeScript source really under node_modules, which Node refuses to
+    strip (R22);
+  - one file reached by two paths, through a symlinked directory and
+    directly, which TypeScript checks as two source files with symbols of
+    their own where Node runs one module (D5): every import reaching
+    either is refused;
+  - a JavaScript module, as before.
+- The tests run the same sources under Node (D10): one importing through
+  `paths` with `cmd/cakec/testdata/paths-hook.mjs`, a `registerHooks`
+  resolve hook passed to `--import` that leaves Node's output byte for byte
+  as it is (R24), and a workspace through a node_modules symlink the test
+  makes. `TestOwnSourceByAnySpecifierMatchesNode` holds four programs to
+  Node, 20 runs each: an `@/` alias and a relative path reaching one
+  module, package.json `imports`, a workspace link, and a self-reference.
+  `TestBoundaryRefusals` holds the refusals, and
+  `TestUncaughtReportsThroughAnAliasAndALink` a throw's report through an
+  alias and a link to Node's.
+
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
 - **Framing and connections as Node's** (`runtime/http.go`, `frame`):
@@ -1416,16 +1452,19 @@ Since M3 (`lower/module.go`), across the program's own modules:
 - import cycles, through re-exports too.
 
 The program is the entry module and everything it imports or re-exports
-from, directly or not, by a relative path to a TypeScript file. A file nothing imports is checked but
-is no part of it.
+from, directly or not, by any specifier the checker resolves to the
+program's own TypeScript source (since M7 step 2: an alias, package.json
+`imports`, a workspace link or a self-reference too). A file nothing
+imports is checked but is no part of it.
 
 Refused by name: a JavaScript module (`./helper.mjs`), default imports and exports, `import * as` (except
 `node:http`), `export * as ns from`, re-exporting a default, exporting what
 a module imports from outside the program, exporting a `let`
 (every importer would share a binding that can change), a top-level
 `await` outside the entry module (M3 plan D8), `import { type T }` of a
-package or anything else cakebear doesn't compile (write `import type`), and
-a dynamic `import()`.
+package or anything else cakebear doesn't compile (write `import type`), a
+dynamic `import()`, a workspace package typed by its built `.d.ts`,
+TypeScript source under node_modules, and one file reached by two paths.
 
 Since M4 (`lower/loops.go`):
 - `for (init; cond; post)`, with any clause empty. A `let` in the first clause
@@ -1987,6 +2026,7 @@ not listed here that behaves differently is a bug.
 | Reading a top-level variable before its declaration runs | `ReferenceError` | Go's zero value; for an object, a nil-pointer panic on its first field read |
 | Reading a `let` declared with no value before it is assigned, from a closure called first (M5 step 8; TypeScript refuses it anywhere else) | `undefined` | Go's zero value, as above |
 | Reading an imported binding across an import cycle, before its module has run | `ReferenceError` | Go's zero value |
+| A specifier only TypeScript resolves: extensionless (`./lib`), `.js` naming a `.ts`, a directory, or a tsconfig `paths` alias (M7 plan D6) | fails to load the program: `ERR_MODULE_NOT_FOUND`, or `ERR_UNSUPPORTED_DIR_IMPORT` | runs the module TypeScript resolved, as a bundler does. cakebear's tests write `.ts` specifiers, and run aliases under Node with `cmd/cakec/testdata/paths-hook.mjs` |
 | An import, export or re-export naming a type without `type`: `import { T } from`, `export { T }`, `export { T } from` (M7 plan D3; tsc says nothing without `isolatedModules` or `verbatimModuleSyntax`) | fails before running: `SyntaxError: The requested module './t.ts' does not provide an export named 'T'`, or `Export 'T' is not defined in module` | erased, as TypeScript's emit drops it, and the program runs |
 | A top-level `await` in a module other than the entry | the modules importing it wait for it | refused at compile time (M3 plan D8) |
 | Port already in use | `EADDRINUSE` crash, exit 1 | the same message, exit 1 |
