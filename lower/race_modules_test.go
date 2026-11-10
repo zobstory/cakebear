@@ -76,6 +76,36 @@ func TestRaceRuleAcrossModules(t *testing.T) {
 			"this spawned function runs in parallel with its caller, so it can't call `bump()`, which changes `count` in lib.ts",
 		},
 		{
+			"through a barrel's export { } from (M7 step 1)",
+			map[string]string{"lib.ts": counter, "barrel.ts": "export { bump } from \"./lib\";\n",
+				"main.ts": "import { bump } from \"./barrel\";\n" + handler("bump();")},
+			"so it can't call `bump()`, which changes `count` in lib.ts",
+		},
+		{
+			"through export *",
+			map[string]string{"lib.ts": counter, "barrel.ts": "export * from \"./lib\";\n",
+				"main.ts": "import { peek } from \"./barrel\";\n" + handler("const n: number = peek();")},
+			"so it can't call `peek()`, which reads `count` in lib.ts",
+		},
+		{
+			"a re-exported import, renamed",
+			map[string]string{"lib.ts": counter, "mid.ts": "import { bump } from \"./lib\";\nexport { bump as tick };\n",
+				"main.ts": "import { tick } from \"./mid\";\n" + handler("tick();")},
+			"so it can't call `tick()`, which changes `count` in lib.ts",
+		},
+		{
+			"an object through a barrel",
+			map[string]string{"lib.ts": "export const home: { path: string } = { path: \"/\" };\n", "barrel.ts": "export { home } from \"./lib\";\n",
+				"main.ts": "import { home } from \"./barrel\";\n" + handler("const p: string = home.path;")},
+			"so it can't use `home` in lib.ts, an object created outside it",
+		},
+		{
+			"a frozen const through a barrel",
+			map[string]string{"lib.ts": "export const routes: readonly string[] = [\"/a\", \"/b\"];\n", "barrel.ts": "export * from \"./lib\";\n",
+				"main.ts": "import { routes } from \"./barrel\";\n" + handler("const n: number = routes.length;")},
+			"",
+		},
+		{
 			"an imported function that shares nothing",
 			map[string]string{"lib.ts": counter, "main.ts": "import { double } from \"./lib\";\n" + handler("const n: number = double(2);")},
 			"",

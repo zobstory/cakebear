@@ -14,9 +14,11 @@ import (
 // into the module that exports it, by the name it is declared with there.
 //
 // What a module may export is a function or a const declared at its top
-// level. A let is refused: every module importing it would share a binding
-// that can change, which the race rule would have to follow from module to
-// module. So are default exports, `export … from` and re-exporting an import.
+// level, or one it imports or re-exports from another of the program's own
+// modules (M7 step 1): either way a reference to the name refers into the
+// module declaring it. A let is refused: every module importing it would
+// share a binding that can change, which the race rule would have to follow
+// from module to module. So are default exports, for now.
 
 // ref returns how the IR names the binding n refers to: its declared name and
 // the file of the module whose top level declares it, or n's own text and ""
@@ -79,14 +81,14 @@ func (l *lowerer) importDecl(n *ast.Node) string {
 	if decl.ImportClause != nil && l.p.erased(decl) {
 		return ""
 	}
-	target := l.p.imported(decl)
+	target := l.p.ownModule(spec)
 	if target == nil {
 		if saysTypeEverywhere(decl) {
 			l.failf(n, "`import { type … }` evaluates %q, as Node runs it, though it names only types, and cakebear compiles only node:http and the program's own TypeScript modules; write `import type { … }`, which evaluates nothing", spec.Text())
 			return ""
 		}
-		if js := l.p.importedScript(decl); js != nil {
-			l.failf(n, "%s is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module", filepath.Base(string(js.FileName())))
+		if js := l.p.scriptModule(spec); js != nil {
+			l.failJS(n, js)
 			return ""
 		}
 		l.failf(n, "imports from %q are not supported; cakebear compiles node:http and the program's own TypeScript modules, imported by a relative path", spec.Text())
@@ -125,27 +127,23 @@ func saysTypeEverywhere(decl *ast.ImportDeclaration) bool {
 	return true
 }
 
-// exportDecl checks `export { … }` and `export … from`. What evaluates
-// nothing is erased first, wherever it is from (M7 plan D3, R7):
-// `export type { … }`, `export type * from`, and a list naming types without
-// saying so. Each other name must be a function or a const of this module's
-// own. `export {}` exports nothing and only makes a file an ES module, which
+// exportDecl checks `export { … }` and `export … from`, and returns the file
+// of the program's module an `export … from` evaluates, or "". What evaluates
+// nothing is erased first, wherever it is from (M7 plan D3, R7). Each other
+// name `export { … }` lists must be a function or a const of this module's
+// own, or one it imports from another of the program's own modules.
+// `export {}` exports nothing and only makes a file an ES module, which
 // TypeScript requires for a top-level await.
-func (l *lowerer) exportDecl(n *ast.Node) {
+func (l *lowerer) exportDecl(n *ast.Node) string {
 	decl := n.AsExportDeclaration()
-	if decl.IsTypeOnly {
-		return
+	if l.p.exportErased(decl) {
+		return ""
 	}
-	named := decl.ExportClause != nil && decl.ExportClause.Kind == ast.KindNamedExports
 	if decl.ModuleSpecifier != nil {
-		if named && l.p.namesTypesOnly(decl.ExportClause.AsNamedExports().Elements.Nodes) {
-			return
-		}
-		l.failf(n, "re-exporting with `export … from` is not supported yet; import from the module that declares the names")
-		return
+		return l.reexport(n, decl)
 	}
-	if !named {
-		return
+	if decl.ExportClause == nil || decl.ExportClause.Kind != ast.KindNamedExports {
+		return ""
 	}
 	for _, el := range decl.ExportClause.AsNamedExports().Elements.Nodes {
 		if el.IsTypeOnly() {
@@ -156,17 +154,60 @@ func (l *lowerer) exportDecl(n *ast.Node) {
 		if name == nil {
 			name = el.Name()
 		}
-		switch {
-		case sym == nil:
-		case l.p.resolve(sym).Flags()&ast.SymbolFlagsValue == 0:
+		if sym == nil {
+			continue
+		}
+		switch target := l.p.resolve(sym); {
+		case target.Flags()&ast.SymbolFlagsValue == 0:
 			// A type, this module's own or imported: erased, with nothing to
 			// compile. Node refuses one exported without `type` (D3).
-		case sym.Flags()&ast.SymbolFlagsAlias != 0:
-			l.failf(el, "exporting %s, which this module imports, is not supported yet; import it from the module that declares it", name.Text())
-		case isLet(sym):
+		case sym.Flags()&ast.SymbolFlagsAlias != 0 && !l.p.inProgram(target.ValueDeclaration()):
+			l.failf(el, "exporting %s, which this module imports from outside the program, is not supported; import it in the module that uses it", name.Text())
+		case isLet(target):
 			l.failf(el, "exporting %s, a let, is not supported yet: every module importing it would share a binding that can change; export a function that reads it", name.Text())
 		}
 	}
+	return ""
+}
+
+// reexport checks `export … from` and returns the file of the module it
+// evaluates (M7 plan D2). It is a module request, evaluated in source order
+// with the module's imports (R8), and makes no binding of its own: a
+// reference to a name it re-exports refers into the declaring module, through
+// the checker's aliases, however long the chain (R1, R9). `export *` is the
+// checker's too, so a local export shadowing a star's (R3), and a star never
+// forwarding default (R4), are TypeScript's.
+func (l *lowerer) reexport(n *ast.Node, decl *ast.ExportDeclaration) string {
+	spec := decl.ModuleSpecifier
+	target := l.p.reexported(decl)
+	if target == nil {
+		if js := l.p.scriptModule(spec); js != nil {
+			l.failJS(n, js)
+			return ""
+		}
+		l.failf(n, "re-exports from %q are not supported; cakebear compiles the program's own TypeScript modules, named by a relative path, and node:http where it is imported", spec.Text())
+		return ""
+	}
+	switch clause := decl.ExportClause; {
+	case clause != nil && clause.Kind == ast.KindNamespaceExport:
+		l.failf(n, "`export * as %s from` is not supported yet; re-export the names, or import them from %s where they are used", clause.Name().Text(), spec.Text())
+	case clause != nil:
+		for _, el := range clause.AsNamedExports().Elements.Nodes {
+			from := el.AsExportSpecifier().PropertyName
+			if from == nil {
+				from = el.Name()
+			}
+			if !el.IsTypeOnly() && (from.Text() == "default" || el.Name().Text() == "default") {
+				l.failf(el, "re-exporting a default export is not supported yet; export it by name")
+			}
+		}
+	}
+	return string(target.FileName())
+}
+
+// failJS refuses an import or re-export of a JavaScript module.
+func (l *lowerer) failJS(n *ast.Node, js *ast.SourceFile) {
+	l.failf(n, "%s is a JavaScript module; cakebear compiles TypeScript, so give it types or rewrite it as a .ts module", filepath.Base(string(js.FileName())))
 }
 
 // exportedVariables checks `export const …` and `export let …`, as
