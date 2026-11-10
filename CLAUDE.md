@@ -286,12 +286,22 @@ P0–P5 and M1–M6 are done. **M7** is modules: re-exports (`export … from`,
 `export * from`, re-exporting an import), the program's own TypeScript
 source by any specifier the checker resolves (tsconfig `paths`, package.json
 `imports`, a workspace package linked through node_modules, a
-self-reference), and default exports and imports, with namespaces used only
-as `ns.member` as a stretch step. Its plan, decided 2026-11-10 at scope C
-with D as the stretch, is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
+self-reference), and default exports and imports. Its plan, decided
+2026-11-10 at scope C, is `~/Desktop/cakebear/m7-modules-plan.md`, sized by
 a measurement of wx-next with prototypes of each scope
 (`spikes/m7-measure/`), Node's module semantics measured case by case
 (`spikes/m7-node/`, R1–R26) and a spike of the lowering (`spikes/m7-go/`).
+- **cakebear is a back-end server compiler** (zob, 2026-11-10), not a
+  compiler for all of wx-next: what comes after M7 is ranked on wx-next's
+  server-side code (done-check 11), and M7's stretch, namespaces used as
+  `ns.member`, is dropped. It gained 0 files, and a server needs no
+  namespace of its own modules, so `import * as ns` and `export * as ns
+  from` of the program's own modules stay refused by name. ⚠ If namespaces
+  ever land, the race rule's identifier walk (`race.go`, which skips
+  `isMemberName`) and the capture walk (`closure.go`) must count
+  `ns.member` as a reference first: through a namespace a handler reached a
+  mutable object and a let-writing call, and built clean (m7-measure's
+  r12).
 - **On its own M7 lowers few more files, 9**, where the refusal counts said
   216: `collect` never followed a re-export or a non-relative import, so
   what stood behind one was never lowered, and the counts overstated it
@@ -338,8 +348,8 @@ It needed no IR, runtime or backend change:
   source order, each before the module's body (R8). A cycle through
   `export *` settles as an import cycle does.
 - Refused by name: a re-export from a package, a declaration file or a
-  JavaScript module, as an import from one is; `export * as ns from` (the
-  stretch step, D8); re-exporting a default, `export { default } from` and
+  JavaScript module, as an import from one is; `export * as ns from` (see
+  below); re-exporting a default, `export { default } from` and
   `export { x as default } from` (step 3); and exporting what a module
   imports from outside the program, such as node:http's `createServer`.
 - The race rule and frozen consts see through every re-export, since
@@ -454,6 +464,49 @@ Step 5, M7 end to end, is under way:
 - Done-check 12: the generated Go of every example M7 began with is byte for
   byte `09a2fbb98d`'s (`~/Desktop/cakebear/tools/same-go.sh`, which builds
   both sides from one path, since sites embed the source's path).
+- Done-check 11, wx-next re-measured with the real lowering
+  (`~/Desktop/cakebear/agents/m7-remeasure/`, at `dc4fb93649` on the same
+  wx-next commit as the plan's measurement):
+  - **261 of its 3,466 clean `.ts` files lower (7.5%), from 252 (7.3%)**:
+    +9, exactly the plan's projection at scope C, and the same 9 files. 0
+    panics, every lowered file builds, a second run identical on all 9,250
+    files. `.tsx`: still 0 of 1,985.
+  - Reach, what M7 is for: 1,333 refused files reach 300,779 more
+    module-entries than before. A program's median size went from 1 module
+    to 2, its p90 from 5 to 105, and 291 programs now hold over 1,000
+    modules, which lowering handles (the slowest file 1.45 s, builds
+    included). Only 40% of refused files are refused in their own code
+    alone, so a large program's refusals mostly come from modules it
+    reaches (the plan's risk 2).
+  - M7's own blockers are gone: `export … from` was the only blocker of
+    195 files and non-relative own source of 17; both are 0, and every
+    module form still refused blocks 0 files alone.
+  - The roadmap behind M7, over the whole codebase: M8 +44, M9 +29, M10
+    +15, M11 +5, M12 +5, M13 +299, to 658 (19.0%), M14 +0, an upper bound
+    since packages aren't followed. Taken next alone, intersections unlock
+    84 files and `Record` 57, against M8's 44, M10's 8, M11's 2 and M12's 5;
+    after M14, intersections would still be the only blocker of 230 files.
+    The order is decided on wx-next's server-side code instead (above), from
+    a roadmap proposal for zob.
+- Found by the re-measurement, and fixed:
+  - silently wrong: `import { default as d }` and `export { default as x }
+    from` of a snapshot default (a let's name, `o.p`) counted as naming
+    types alone, so the module request was erased and the module ran out
+    of Node's order, or the build was refused in words naming no fault.
+    `TestDefaultsMatchNode` holds both forms to Node now; step 3's tests
+    reached a snapshot only through `import d`.
+  - `declare global { … }`, `declare module "x" { … }` and a namespace of
+    types alone were refused as module declarations, though Node strips
+    them and TypeScript emits nothing: erased now, as interfaces are
+    (`strippedNamespace`). M7's reach had taken the files whose programs
+    hold one from 21 to 472. A value one declares, `declare global { var
+    BUILD: string }`, has no code, and is refused where it is used: an
+    ambient declaration is no part of the program (`inProgram`), where
+    before it would have lowered into a reference to nothing. A namespace
+    with code stays refused.
+  - wording: a `.json` import said it was a JavaScript module, and an
+    import TypeScript resolves to no module, a script's or an untyped
+    package's, said it "resolves to no module".
 
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
@@ -1546,7 +1599,9 @@ Since M4 (`lower/loops.go`):
   `string` onto a `string`, as statements. They lower to `x = x op v`. On an
   extension type they are refused, so the narrowing stays visible:
   `n = i32(n + 1)`;
-- `interface` and `type` declarations, which are erased;
+- `interface` and `type` declarations, which are erased, and since M7 step 5
+  `declare global { … }`, `declare module "x" { … }` and namespaces of types
+  alone, erased too (a namespace with code is refused);
 - a condition (of an `if`, a `while` or a `for`) is a `boolean`, or, since
   M5 step 7, any value's truthiness.
 

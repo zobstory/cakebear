@@ -343,6 +343,9 @@ func (l *lowerer) stmt(n *ast.Node) []ir.Stmt {
 		return nil
 
 	default:
+		if n.Kind == ast.KindModuleDeclaration && strippedNamespace(n) {
+			return nil // `declare global`, `declare module "x"`: types alone (module.go)
+		}
 		l.failf(n, "%s is not supported yet", describeKind(n.Kind))
 		return nil
 	}

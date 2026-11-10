@@ -193,16 +193,20 @@ func (p *program) namesTypesOnly(specifiers []*ast.Node) bool {
 			continue
 		}
 		plain = true
-		if sym := p.resolve(p.checker.GetSymbolAtLocation(el.Name())); sym == nil || sym.Flags()&ast.SymbolFlagsValue != 0 {
+		// A default's hidden const is a value, though its symbol is the
+		// `export default <name>` alias the snapshot stops at.
+		if sym := p.resolve(p.checker.GetSymbolAtLocation(el.Name())); sym == nil || sym.Flags()&ast.SymbolFlagsValue != 0 || exportAssignment(sym) != nil {
 			return false
 		}
 	}
 	return plain
 }
 
-// inProgram reports whether a declaration is in one of the program's modules.
+// inProgram reports whether a declaration is in one of the program's
+// modules, and not in an ambient context there: `declare global { var x }`
+// declares a value the program has no code for, as a library's does.
 func (p *program) inProgram(decl *ast.Node) bool {
-	return decl != nil && p.modules[ast.GetSourceFileOfNode(decl)]
+	return decl != nil && decl.Flags&ast.NodeFlagsAmbient == 0 && p.modules[ast.GetSourceFileOfNode(decl)]
 }
 
 // resolve follows an import to what it names: the declaration in the module
