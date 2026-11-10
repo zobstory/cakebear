@@ -110,7 +110,9 @@ func (l *lowerer) module() *ir.Module {
 				m.Imports = append(m.Imports, file)
 			}
 		case ast.KindExportDeclaration:
-			l.exportDecl(stmt)
+			if file := l.exportDecl(stmt); file != "" {
+				m.Imports = append(m.Imports, file)
+			}
 		case ast.KindExportAssignment:
 			l.failf(stmt, "a default export is not supported yet; export the value by name")
 		default:

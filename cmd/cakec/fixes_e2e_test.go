@@ -84,6 +84,27 @@ func packageProject(main string) map[string]string {
 		"src/helper.mjs":                "export function twice(n) {\n  return n * 2;\n}\n",
 		"src/reexport.ts":               "export type { Shape as Item } from \"pkg\";\nexport { Shape as Other } from \"pkg\";\nimport type { Shape } from \"pkg\";\nconst s: Shape = { id: 2, name: \"b\" };\nconsole.log(s.id);\n",
 		"src/inline.ts":                 "import { type Shape } from \"pkg\";\nconst s: Shape = { id: 1, name: \"a\" };\nconsole.log(s.name);\n",
+		"src/rejs.ts":                   "export { twice } from \"./helper.mjs\";\nconsole.log(1);\n",
+		"src/repkg.ts":                  "export { make } from \"pkg\";\nconsole.log(1);\n",
+	}
+}
+
+// TestReexportsFromOutsideTheProgramRefused (M7 step 1): a re-export is a
+// module request, so one from a JavaScript module or a package is refused
+// as an import from one is, by name.
+func TestReexportsFromOutsideTheProgramRefused(t *testing.T) {
+	t.Parallel()
+
+	for main, want := range map[string]string{
+		"src/rejs.ts":  "rejs.ts:1:1: cannot compile yet: helper.mjs is a JavaScript module; cakebear compiles TypeScript",
+		"src/repkg.ts": "repkg.ts:1:1: cannot compile yet: re-exports from \"pkg\" are not supported; cakebear compiles the program's own TypeScript modules, named by a relative path",
+	} {
+		dir := t.TempDir()
+		writeProject(t, dir, packageProject(main))
+		code, stderr := projectBuild(t, dir, buildOptions{})
+		if code != exitErrors || !strings.Contains(stderr, want) {
+			t.Errorf("%s: exit %d, want %d with\n%s\ngot:\n%s", main, code, exitErrors, want, stderr)
+		}
 	}
 }
 

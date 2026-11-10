@@ -109,26 +109,51 @@ func (l *lowerer) stable(n *ast.Node) bool {
 	return sym != nil && !l.p.assigned[sym]
 }
 
-// collect adds f and, in turn, every module of the program's own it imports.
-// A visited module is not followed again, which is what lets two modules
-// import each other. An erased import brings in nothing: the program is what
-// runs.
+// collect adds f and, in turn, every module of the program's own it imports
+// or re-exports from: both are module requests (M7 R8). A visited module is
+// not followed again, which is what lets two modules import each other. An
+// erased import or re-export brings in nothing: the program is what runs.
 func (p *program) collect(f *ast.SourceFile) {
 	if p.modules[f] {
 		return
 	}
 	p.modules[f] = true
 	for _, stmt := range f.AsNode().Statements() {
-		if stmt.Kind == ast.KindImportDeclaration {
-			decl := stmt.AsImportDeclaration()
-			if p.erased(decl) {
-				continue
+		var target *ast.SourceFile
+		switch stmt.Kind {
+		case ast.KindImportDeclaration:
+			if decl := stmt.AsImportDeclaration(); !p.erased(decl) {
+				target = p.ownModule(decl.ModuleSpecifier)
 			}
-			if target := p.imported(decl); target != nil {
-				p.collect(target)
-			}
+		case ast.KindExportDeclaration:
+			target = p.reexported(stmt.AsExportDeclaration())
+		}
+		if target != nil {
+			p.collect(target)
 		}
 	}
+}
+
+// reexported returns the module of the program's own an `export … from`
+// evaluates, or nil: for an `export` with no specifier, one erased
+// (exportErased), or one from anything else, which exportDecl refuses.
+func (p *program) reexported(decl *ast.ExportDeclaration) *ast.SourceFile {
+	if decl.ModuleSpecifier == nil || p.exportErased(decl) {
+		return nil
+	}
+	return p.ownModule(decl.ModuleSpecifier)
+}
+
+// exportErased reports whether an export evaluates nothing and binds
+// nothing at run time (M7 plan D3, R7): `export type { … }`, `export type *
+// from`, or a list naming types without saying so. `export { type T } from`
+// is a module request to Node, which evaluates the module.
+func (p *program) exportErased(decl *ast.ExportDeclaration) bool {
+	if decl.IsTypeOnly {
+		return true
+	}
+	return decl.ModuleSpecifier != nil && decl.ExportClause != nil && decl.ExportClause.Kind == ast.KindNamedExports &&
+		p.namesTypesOnly(decl.ExportClause.AsNamedExports().Elements.Nodes)
 }
 
 // erased reports whether an import evaluates nothing (M7 plan D3, R7): an
@@ -172,30 +197,29 @@ func (p *program) namesTypesOnly(specifiers []*ast.Node) bool {
 	return plain
 }
 
-// imported returns the module an import declaration names, when it is one of
-// the program's own: a TypeScript module, not a declaration file or a
-// JavaScript one, named by a relative path. Anything else is nil, and
-// importDecl says why.
-func (p *program) imported(decl *ast.ImportDeclaration) *ast.SourceFile {
-	if f := p.importedFile(decl); f != nil && !ast.IsInJSFile(f.AsNode()) {
+// ownModule returns the module an import's or a re-export's specifier names,
+// when it is one of the program's own: a TypeScript module, not a
+// declaration file or a JavaScript one, named by a relative path. Anything
+// else is nil, and importDecl or exportDecl says why.
+func (p *program) ownModule(spec *ast.Node) *ast.SourceFile {
+	if f := p.specifierFile(spec); f != nil && !ast.IsInJSFile(f.AsNode()) {
 		return f
 	}
 	return nil
 }
 
-// importedScript returns the JavaScript module an import declaration names
-// by a relative path, which the program can't compile, or nil.
-func (p *program) importedScript(decl *ast.ImportDeclaration) *ast.SourceFile {
-	if f := p.importedFile(decl); f != nil && ast.IsInJSFile(f.AsNode()) {
+// scriptModule returns the JavaScript module a specifier names by a relative
+// path, which the program can't compile, or nil.
+func (p *program) scriptModule(spec *ast.Node) *ast.SourceFile {
+	if f := p.specifierFile(spec); f != nil && ast.IsInJSFile(f.AsNode()) {
 		return f
 	}
 	return nil
 }
 
-// importedFile is the source file, TypeScript or JavaScript, that an import
-// names by a relative path, or nil.
-func (p *program) importedFile(decl *ast.ImportDeclaration) *ast.SourceFile {
-	spec := decl.ModuleSpecifier
+// specifierFile is the source file, TypeScript or JavaScript, that a module
+// specifier names by a relative path, or nil.
+func (p *program) specifierFile(spec *ast.Node) *ast.SourceFile {
 	if spec == nil || spec.Kind != ast.KindStringLiteral || !tspath.IsExternalModuleNameRelative(spec.Text()) {
 		return nil
 	}

@@ -322,6 +322,36 @@ Step 0, what the research found in passing, is done (M7 plan D3, D11):
   holds which modules run for each form, and `TestTypeOnlyFormsFromAPackage`
   the package's.
 
+Step 1, re-exports, is done (M7 plan D2; `lower/module.go`, `program.go`).
+It needed no IR, runtime or backend change:
+- `export { a } from`, renamed (`export { b as bee } from`), `export * from`,
+  re-exporting an import (`import { f } from "./lib"; export { f }`), and a
+  module of re-exports alone. A re-export makes no binding of its own: a
+  reference to a name it re-exports refers into the module declaring it,
+  through the checker's aliases, however long the chain (R1, R9). A local
+  export shadowing a star's (R3) and a star never forwarding default (R4)
+  are the checker's too.
+- An `export … from` is a module request, as an import is: `collect`
+  follows it into the program, and it joins `ir.Module.Imports` at its
+  place, so a module's imports and re-exports are evaluated together in
+  source order, each before the module's body (R8). A cycle through
+  `export *` settles as an import cycle does.
+- Refused by name: a re-export from a package, a declaration file or a
+  JavaScript module, as an import from one is; `export * as ns from` (the
+  stretch step, D8); re-exporting a default, `export { default } from` and
+  `export { x as default } from` (step 3); and exporting what a module
+  imports from outside the program, such as node:http's `createServer`.
+- The race rule and frozen consts see through every re-export, since
+  each reference already resolves to its declaration: a handler calling a
+  let-writing function through a barrel, `export *` or a re-exported
+  import is refused, and one reading a frozen const through a barrel isn't.
+- `TestReexportsMatchNode` holds seven programs to Node, 20 runs each: R8's
+  three mains, R9's chain, a cycle through `export *`, a re-exported
+  import and R3's shadowing star. `TestUncaughtReportsNameTheDeclaringFile`
+  holds the report of a throw reached through `export { } from` at the top
+  level and through `export *` in a timer to Node's: the declaring file and
+  the throw's line, whatever path the call took (R26).
+
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
 - **Framing and connections as Node's** (`runtime/http.go`, `frame`):
@@ -1380,14 +1410,18 @@ Since M3 (`lower/module.go`), across the program's own modules:
   TypeScript's emit drops (see the accepted differences);
 - `import { type T } from "./x"`, which evaluates x, as under Node (M7 step 0);
 - `export function`, `export const` and `export { x }`;
-- import cycles.
+- since M7 step 1, re-exports: `export { a } from`, renamed, `export * from`,
+  and re-exporting an import, `export { f }` of an imported `f`, each name
+  referring into the module that declares it;
+- import cycles, through re-exports too.
 
-The program is the entry module and everything it imports, directly or not,
-by a relative path to a TypeScript file. A file nothing imports is checked but
+The program is the entry module and everything it imports or re-exports
+from, directly or not, by a relative path to a TypeScript file. A file nothing imports is checked but
 is no part of it.
 
 Refused by name: a JavaScript module (`./helper.mjs`), default imports and exports, `import * as` (except
-`node:http`), `export … from` and re-exporting an import, exporting a `let`
+`node:http`), `export * as ns from`, re-exporting a default, exporting what
+a module imports from outside the program, exporting a `let`
 (every importer would share a binding that can change), a top-level
 `await` outside the entry module (M3 plan D8), `import { type T }` of a
 package or anything else cakebear doesn't compile (write `import type`), and
@@ -1721,9 +1755,10 @@ package per module fails: Go forbids the import cycles ES allows.
   prefixes, and its Go is what it always was.
 - Each module but the entry has its top-level code in `ts_m<i>_init`. `main`
   calls them in `ir.Program.EvaluationOrder`, then runs the entry's own:
-  depth first from the entry, each module after what it imports, in import
-  order, with a module already on the way not entered again, which settles a
-  cycle. That is an ES module graph's order, checked against Node 24.18.
+  depth first from the entry, each module after what it imports or
+  re-exports from, in source order (its module requests, M7 R8), with a
+  module already on the way not entered again, which settles a cycle. That
+  is an ES module graph's order, checked against Node 24.18.
 - An import evaluates its module whether or not what it names is used, as
   under Node, and so does `import { type T }`, whose every name says `type`:
   Node strips it to `import {} from`, a module request (M7 R7). `import type`
