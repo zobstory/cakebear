@@ -98,10 +98,6 @@ func (l *lowerer) module() *ir.Module {
 	for _, stmt := range l.file.AsNode().Statements() {
 		switch stmt.Kind {
 		case ast.KindFunctionDeclaration:
-			if ast.HasSyntacticModifier(stmt, ast.ModifierFlagsDefault) {
-				l.failf(stmt, "a default export is not supported yet; export the function by name")
-				continue
-			}
 			if fn := l.function(stmt); fn != nil {
 				m.Funcs = append(m.Funcs, fn)
 			}
@@ -114,7 +110,7 @@ func (l *lowerer) module() *ir.Module {
 				m.Imports = append(m.Imports, file)
 			}
 		case ast.KindExportAssignment:
-			l.failf(stmt, "a default export is not supported yet; export the value by name")
+			l.inBody(m.Async, func() { m.Main = append(m.Main, l.defaultExport(stmt)...) })
 		default:
 			if stmt.Kind == ast.KindVariableStatement && ast.HasSyntacticModifier(stmt, ast.ModifierFlagsExport) {
 				l.exportedVariables(stmt)
@@ -234,16 +230,16 @@ func (l *lowerer) typeFromType(t *checker.Type) ir.Type {
 func (l *lowerer) function(n *ast.Node) *ir.Func {
 	decl := n.AsFunctionDeclaration()
 
-	if decl.Name() == nil {
-		l.failf(n, "a function declaration needs a name")
-		return nil
+	name := ast.InternalSymbolNameDefault // an anonymous default (defaults.go)
+	if decl.Name() != nil {
+		name = decl.Name().Text()
 	}
 	if decl.Body == nil {
-		l.failf(n, "function %s has no body; overload signatures are not supported yet", decl.Name().Text())
+		l.failf(n, "function %s has no body; overload signatures are not supported yet", name)
 		return nil
 	}
 
-	fn := &ir.Func{Name: decl.Name().Text(), Span: l.span(n)}
+	fn := &ir.Func{Name: name, Span: l.span(n)}
 	var prologues []func() []ir.Stmt // what opens the body: defaults, patterns (params.go)
 
 	if decl.Parameters != nil {

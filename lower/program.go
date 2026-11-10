@@ -206,10 +206,14 @@ func (p *program) inProgram(decl *ast.Node) bool {
 }
 
 // resolve follows an import to what it names: the declaration in the module
-// that exports it.
+// that exports it, or the hidden const of an `export default` the chain
+// passes through, when that holds a snapshot (defaults.go).
 func (p *program) resolve(sym *ast.Symbol) *ast.Symbol {
 	if sym != nil && sym.Flags()&ast.SymbolFlagsAlias != 0 {
 		if target := p.checker.GetAliasedSymbol(sym); target != nil {
+			if d := p.snapshotDefault(sym, target); d != nil {
+				return d
+			}
 			return target
 		}
 	}

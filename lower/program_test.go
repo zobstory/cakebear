@@ -139,21 +139,12 @@ func TestModuleRefusals(t *testing.T) {
 		files map[string]string
 		want  string
 	}{
-		{"a default import", map[string]string{"lib.ts": "function f(): number {\n  return 1;\n}\nexport default f;\n",
-			"main.ts": "import f from \"./lib\";\nconsole.log(f());\n"}, "a default import is not supported yet"},
-		{"a default export of a function", map[string]string{"lib.ts": "export default function f(): number {\n  return 1;\n}\n",
-			"main.ts": "import { } from \"./lib\";\nexport {};\n"}, "a default export is not supported yet; export the function by name"},
-		{"a default export of a value", map[string]string{"lib.ts": "export default 5;\n",
-			"main.ts": "import { } from \"./lib\";\nexport {};\n"}, "a default export is not supported yet; export the value by name"},
+		{"a default class", map[string]string{"lib.ts": "export default class {\n  n: number = 1;\n}\n",
+			"main.ts": "import C from \"./lib\";\nconsole.log(new C().n);\n"}, "class declaration is not supported yet"},
 		{"import * as", map[string]string{"lib.ts": f,
 			"main.ts": "import * as lib from \"./lib\";\nconsole.log(lib.f());\n"}, "`import * as` is supported only for node:http"},
 		{"export * as", map[string]string{"lib.ts": f, "mid.ts": "export * as lib from \"./lib\";\n",
 			"main.ts": "import { lib } from \"./mid\";\nconsole.log(lib.f());\n"}, "`export * as lib from` is not supported yet"},
-		{"export { default } from", map[string]string{"lib.ts": "function f(): number {\n  return 1;\n}\nexport { f as default };\n",
-			"mid.ts":  "export { default } from \"./lib\";\nexport const one: number = 1;\n",
-			"main.ts": "import { one } from \"./mid\";\nconsole.log(one);\n"}, "re-exporting a default export is not supported yet"},
-		{"export { f as default } from", map[string]string{"lib.ts": f, "mid.ts": "export { f as default } from \"./lib\";\nexport const one: number = 1;\n",
-			"main.ts": "import { one } from \"./mid\";\nconsole.log(one);\n"}, "re-exporting a default export is not supported yet"},
 		{"a re-export from a declaration file", map[string]string{"lib.d.ts": "export declare function f(): number;\n",
 			"mid.ts": "export { f } from \"./lib\";\n", "main.ts": "import { f } from \"./mid\";\nconsole.log(f());\n"},
 			"re-exports from \"./lib\" are not supported: it is a declaration file, with no code to compile"},

@@ -149,7 +149,11 @@ func (rc *raceChecker) collect(n *ast.Node) {
 	case ast.KindFunctionDeclaration:
 		if name := n.Name(); name != nil {
 			rc.add(name, n)
+		} else if sym := n.Symbol(); sym != nil {
+			rc.addSymbol(sym, ast.InternalSymbolNameDefault, n) // `export default function () {}`
 		}
+	case ast.KindExportAssignment:
+		rc.collectDefault(n)
 	case ast.KindVariableDeclaration:
 		d := n.AsVariableDeclaration()
 		if init := d.Initializer; init != nil && n.Parent != nil && n.Parent.Flags&ast.NodeFlagsConst != 0 &&
@@ -163,9 +167,7 @@ func (rc *raceChecker) collect(n *ast.Node) {
 
 func (rc *raceChecker) add(name, fn *ast.Node) {
 	if sym := rc.l.checker.GetSymbolAtLocation(name); sym != nil {
-		c := &callable{name: name.Text(), node: fn}
-		rc.callables[sym] = c
-		rc.order = append(rc.order, c)
+		rc.addSymbol(sym, name.Text(), fn)
 	}
 }
 
@@ -245,6 +247,9 @@ func (rc *raceChecker) mergeUse(c *callable, u sharedUse) bool {
 }
 
 func (rc *raceChecker) mutableBinding(sym *ast.Symbol) (*ast.Node, bool) {
+	if d := exportAssignment(sym); d != nil {
+		return rc.sharedDefault(d)
+	}
 	decl := sym.ValueDeclaration()
 	if sym.Flags()&ast.SymbolFlagsVariable == 0 || !rc.l.p.inProgram(decl) {
 		return nil, false
@@ -291,6 +296,9 @@ func shareableConst(k ir.Kind) bool {
 // holds a function value the rule can't see into: of function type, but not a
 // callable. A mutable one is a mutableBinding already.
 func (rc *raceChecker) opaqueFunction(sym *ast.Symbol) (*ast.Node, bool) {
+	if d := exportAssignment(sym); d != nil {
+		return rc.opaqueDefault(sym, d)
+	}
 	decl := sym.ValueDeclaration()
 	if sym.Flags()&ast.SymbolFlagsVariable == 0 || !rc.l.p.inProgram(decl) || decl.Name() == nil {
 		return nil, false

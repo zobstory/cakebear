@@ -39,6 +39,8 @@ func (l *lowerer) frozenWhy(decl *ast.Node) string {
 func (l *lowerer) decideFrozen(decl *ast.Node) string {
 	if !isConstDecl(decl) {
 		switch root := bindingRoot(decl); {
+		case decl.Kind == ast.KindExportAssignment:
+			return "it is the default export of an expression; declare it as a const and `export default` the const's name"
 		case root != nil && root.Kind == ast.KindParameter:
 			return "it is a parameter"
 		case root != nil && root.Kind == ast.KindVariableDeclaration:

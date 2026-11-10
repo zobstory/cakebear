@@ -388,6 +388,34 @@ Step 2, the program's boundary, is done (M7 plan D4–D6, D10;
   `TestUncaughtReportsThroughAnAliasAndALink` a throw's report through an
   alias and a link to Node's.
 
+Step 3, default exports and imports, is done (M7 plan D7; `lower/defaults.go`).
+Lowering alone again:
+- A default export is a top-level binding of its module, named by what it
+  declares (R12): `export default function f` is f, a function declaration,
+  hoisted and live (R13, R14); an anonymous default function is a function
+  declaration named `default`, which the emitter's mangling makes a Go name;
+  `export default <name>` of a const or a function is that binding.
+- Any other `export default`, of a let's name, a call or any other
+  expression, is a hidden const named `default`, evaluated at its place in
+  the module's body (R13). That is Node's snapshot (R14): after
+  `let v = 1; export default v; v = 2`, an importer reads 1. Resolution stops
+  at the hidden const when an alias chain passes through an
+  `export default <name>` whose name isn't a top-level const or function.
+- `export { x as default }` is x, live, and of a let is refused as exporting
+  a let is. `import d`, `import { default as d }`, `import d, { a }`,
+  `export { default } from` and `export { default as x } from` all work
+  (R15). A default class waits for classes (M12).
+- The race rule sees through a default as through a name: an anonymous
+  default function and a default arrow are callables it summarises, a
+  hidden const holding a function it can't see into (a call's result) is
+  refused as opaque, and one holding an object counts as shared, worded as
+  the default of an expression; one holding a primitive is shareable.
+- `TestDefaultsMatchNode` holds five programs to Node, 20 runs each: every
+  default the subset holds through every import form, an expression's place
+  in the body, a let's snapshot, a default function read across a cycle
+  before its module runs, and re-exported defaults.
+  `TestDefaultsUnderTheRaceRule` holds the race rule through each kind.
+
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
 - **Framing and connections as Node's** (`runtime/http.go`, `frame`):
@@ -1449,6 +1477,10 @@ Since M3 (`lower/module.go`), across the program's own modules:
 - since M7 step 1, re-exports: `export { a } from`, renamed, `export * from`,
   and re-exporting an import, `export { f }` of an imported `f`, each name
   referring into the module that declares it;
+- since M7 step 3, default exports and imports: `export default` of a
+  function, named or not, of a const's name (the binding itself), and of
+  any other expression (a hidden const, Node's snapshot); `export { x as
+  default }`; and `import d`, `import { default as d }`, `import d, { a }`;
 - import cycles, through re-exports too.
 
 The program is the entry module and everything it imports or re-exports
@@ -1457,7 +1489,7 @@ program's own TypeScript source (since M7 step 2: an alias, package.json
 `imports`, a workspace link or a self-reference too). A file nothing
 imports is checked but is no part of it.
 
-Refused by name: a JavaScript module (`./helper.mjs`), default imports and exports, `import * as` (except
+Refused by name: a JavaScript module (`./helper.mjs`), a default class (M12), `export =`, `import * as` (except
 `node:http`), `export * as ns from`, re-exporting a default, exporting what
 a module imports from outside the program, exporting a `let`
 (every importer would share a binding that can change), a top-level
