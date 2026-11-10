@@ -416,6 +416,28 @@ Lowering alone again:
   before its module runs, and re-exported defaults.
   `TestDefaultsUnderTheRaceRule` holds the race rule through each kind.
 
+Step 4, the race rule and frozen consts across modules, is done (M7
+done-check 6). It needed no change: every reference the rule and the frozen
+check look at already resolves to its declaration, through re-exports,
+aliases, workspace links and defaults (steps 1–3). What it adds is the
+proof:
+- `TestModulesServeUnderRace` serves 200 requests, 8 at a time, from a
+  race-detector build, which it checks is one, of a server whose handler
+  reads frozen consts and calls functions through a barrel's `export *` and
+  `export { } from`, a `paths` alias, a workspace package's node_modules
+  link and default imports, one a frozen const exported by name: every
+  reply Node 24.18's for the same sources, no race found.
+- `TestModulesRaceRefusals` refuses, naming the declaring module, a handler
+  calling a let-writing function through an alias to a barrel, reading a
+  mutable array through a workspace link, calling a let-writing default
+  function through one, and reading a default object through an alias.
+- Mutations: the rule not following aliases lets all four through; frozen
+  consts refused, or a const's default taken for a hidden const, fails the
+  race build's server.
+- A default export of an object literal is never frozen: the subset has no
+  `as const`, so its type is mutable. The refusal says to declare a frozen
+  const and `export default` its name, which is.
+
 The serving perf step, before M7, is done (`~/Desktop/cakebear/perf-serve-plan.md`,
 zob's call on 2026-10-27, from M6's profile of the string builders):
 - **Framing and connections as Node's** (`runtime/http.go`, `frame`):
