@@ -379,8 +379,19 @@ zob's call on 2026-10-27, from M6's profile of the string builders):
   - **GOGC=400, measured and not adopted** (the plan's item 5, zob's call):
     against the default it cuts the builders' and the page's CPU by
     22–37% (`/concat` 0.67× Node's at c=1, the page 0.89×) and the route
-    server's by 0–6%. Its memory cost isn't measured on Linux; on macOS M6's
-    profile measured 17–22% less CPU.
+    server's by 0–6%. On macOS M6's profile measured 17–22% less CPU.
+  - **GOGC=200 is every compiled program's default since 2026-11-10**
+    (zob's call, `runtime/gc.go`), unless its environment sets GOGC, `off`
+    included. Its memory was measured on Linux first
+    (`~/Desktop/cakebear/spikes/gogc/`, 144 runs at 1, 8 and 32
+    connections, every body Node's): 400 peaked at 1.5× Node's memory with
+    32 connections building strings (`/concat` 403 MB, `/join` 434), so
+    it wasn't taken; 200 peaks at 0.78× Node's at worst there (234 MB to
+    300), and at 0.2–0.3× with one connection. CPU per request against
+    Go's default: 0.72–0.98× at 200, 0.62–0.98× at 400. Idle memory is
+    8.7 MB at any setting, Node's 80. The tables above, and their memory
+    figures, are at Go's default. `TestCompiledProgramsCollectAtGOGC200`
+    reads the first collection's heap goal from `GODEBUG=gctrace=1`.
 
 M6, decided 2026-10-20 and done 2026-10-27, was errors: `throw`,
 `try`/`catch`/`finally`, `Error` and its built-in kinds as values, rejection
