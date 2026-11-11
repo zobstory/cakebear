@@ -482,6 +482,51 @@ Step 3, the checked cast, is done (S1 plan D4 (a), (c); `lower/cast.go`,
   returned); `TestCastMismatches` holds 7 mismatches' messages and an
   uncaught one's report, pointing at the cast. 7 mutations RED.
 
+Step 4, promises, is done (S1 plan D5; `lower/promise.go`,
+`backend/emit_promise.go`, `runtime/promise_all.go`):
+- `Promise.all` over an array of promises or of values, `Promise.race`,
+  `Promise.resolve` (of a promise, the promise itself, R21; with no value,
+  a promise of nothing) and `Promise.reject`, its reason boxed as
+  `reject`'s is. They settle on Node's microtask hops, measured on Node
+  24.18: all of none at once, a combinator a hop after the input that
+  decides it, and the first rejection in time, a later one handled.
+- **`const [a, b] = await Promise.all([fa(), fb()])`**: TypeScript types
+  the literal a tuple, which the IR doesn't hold, so this form is lowered
+  as one. Each element is held, a value as Promise.resolve makes it, the
+  promise of them all awaited, and each name bound to its own's value,
+  decoded where it is res.json()'s `any` (`const [i, p]: [Item, Page]`).
+  `let` too, and holes; a default, a rest or a nested pattern is refused.
+  `await Promise.all([…])` of different types as a statement is the same
+  wait with nothing bound, and a literal of one type is an array.
+- **An async function's `return p` adopts p** (`ir.Await.Adopt`,
+  `AwaitAdopt`): V8 calls p's then from a job it queues on the return, so
+  the function's promise settles two hops after a settled p, where
+  `return await p` takes one, and as soon after a pending one as an await
+  would. `return r.json()` decodes into the function's result.
+- **So does an executor's `resolve(p)`** (`runtime/promise_adopt.go`): an
+  executor calling resolve with a promise, anywhere in it, is given an
+  adopt beside resolve and reject (`ir.ExecutorAdoptType`,
+  `NewPromise.Adopting`), and each such call is a call of it, with the
+  same job and hops. The promise is resolved from then on, though pending,
+  so a later resolve, reject or throw does nothing, and resolved with
+  itself it rejects with V8's `Chaining cycle detected` TypeError.
+  ⚠ Inside a try, or a catch with a finally, it is refused: Node adopts p
+  once the function has returned, so the finally runs first and the catch
+  never sees p reject (measured), where an await in place would do both.
+- Refused by name: `then`, `catch`, `finally`, `allSettled` and `any`
+  (D1), a tuple bound to one name
+  (`const t = await Promise.all([a(), s()])`, S2), a race of different
+  types (a union), and a promise of nothing's value bound or printed.
+- Tests: five programs held to Node, 20 runs each: every combinator's hop
+  against a ticker logging one line a microtask, results and rejections
+  of each form, the reference server's fan-out over fetch with casts,
+  resolve(p)'s hops and its lock, and adoption after a try, in a catch and
+  in a finally.
+  `TestUnhandledThroughPromisesEndAsNode` ends five unhandled rejections
+  as Node's, and `TestPromiseFanOutUnderRace` serves 200 requests, 8 at a
+  time, each fanning out to three upstream GETs, from a race build.
+  15 mutations RED.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
@@ -2111,9 +2156,9 @@ a promise; the standard library's other globals (`NaN`, `Math`,
 libs declare them. A program's own function of the same name is unaffected.
 
 Not yet, from M2, each refused by name:
-- adopting one promise into another, through `resolve(p)` or an async `return p`
-  (await it instead);
-- `.then`, `.catch`, `.finally` and `Promise.all`/`resolve`/…;
+- an async `return p` of a promise inside a try (S1 step 4);
+- `.then`, `.catch`, `.finally`, `Promise.allSettled` and `Promise.any`
+  (`all`, `race`, `resolve` and `reject` since S1 step 4);
 - an async executor;
 - a string timer handler, extra timer arguments, or a missing delay;
 - a request handler that reaches a promise declared outside it (the race

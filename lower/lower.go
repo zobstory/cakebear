@@ -57,15 +57,15 @@ type lowerer struct {
 	errs    []*Error
 	// funcDepth counts function types being mapped, to stop a recursive one.
 	funcDepth int
-	// discard is set while lowering a function literal that stands in for a
-	// void callback, so its return values are evaluated and dropped.
+	// discard drops what a function literal filling a void slot returns.
 	discard bool
-	// async is set while lowering the body of an async function, the only
-	// place an await may appear until top-level await lands.
+	// async is set while lowering an async body, where an await may be.
 	async bool
 	// resolvers holds the type of each Promise executor's resolve parameter,
 	// which the checker types as a union the IR cannot hold (async.go).
 	resolvers map[*ast.Symbol]ir.Type
+	// adopters names the adopt beside an adopting executor's resolve.
+	adopters map[*ast.Symbol]string
 	// why says what the type mapped last can't represent, for the message
 	// refusing it (object.go); typeDepth tells the outermost mapping, which
 	// starts it afresh, from those it makes of the type's parts.
@@ -399,10 +399,14 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 				l.invalidf(d, "a destructuring declaration with no initialiser")
 				continue
 			}
+			topLevel := at.Parent != nil && at.Parent.Kind == ast.KindSourceFile
+			if stmts, ok := l.allDestructured(decl.Name(), decl.Initializer, mutable, topLevel); ok { // promise.go
+				out = append(out, stmts...)
+				continue
+			}
 			// exprOf: the checker types the value's slot by the pattern,
 			// `{ a?: number }` for `{ a = 2 }`, which is no slot of its own.
 			if init := l.exprOf(decl.Initializer); init != nil {
-				topLevel := at.Parent != nil && at.Parent.Kind == ast.KindSourceFile
 				out = append(out, l.destructure(d, decl.Name(), init, mutable, topLevel)...)
 			}
 			continue

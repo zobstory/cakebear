@@ -194,9 +194,9 @@ func ObjectOf(s *Shape) Type {
 // promise of elem: `(elem) => void`, or `() => void` for Promise<void>.
 //
 // TypeScript types it `(value: T | PromiseLike<T>) => void`. The union is
-// there for adopting another promise, which M2 refuses, so what is left is a
-// plain function, the shape that lets `setTimeout(resolve, ms)` type-check
-// against a `() => void` callback.
+// there for adopting another promise, which a call of the executor's adopt
+// does (AdoptType), so what is left is a plain function, the shape that lets
+// `setTimeout(resolve, ms)` type-check against a `() => void` callback.
 func ResolveType(elem Type) Type {
 	if elem == Void {
 		return FuncType(nil, Void)
@@ -217,6 +217,18 @@ func RejectType() Type {
 // is padded to it, as any function literal is to its slot.
 func ExecutorType(elem Type) Type {
 	return FuncType([]Type{ResolveType(elem), RejectType()}, Void)
+}
+
+// AdoptType is the type of the adopt an executor that calls resolve with a
+// promise is given beside resolve and reject (NewPromise.Adopting):
+// `(p: Promise<elem>) => void`, which each such call is a call of.
+func AdoptType(elem Type) Type {
+	return FuncType([]Type{PromiseOf(elem)}, Void)
+}
+
+// ExecutorAdoptType is ExecutorType with adopt after reject.
+func ExecutorAdoptType(elem Type) Type {
+	return FuncType([]Type{ResolveType(elem), RejectType(), AdoptType(elem)}, Void)
 }
 
 // Equal reports whether t and u are the same type, comparing structurally.

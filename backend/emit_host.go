@@ -97,6 +97,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	if out, ok := e.fetchCall(x); ok { // emit_fetch.go
 		return out
 	}
+	if out, ok := e.promiseCall(x); ok { // emit_promise.go
+		return out
+	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)

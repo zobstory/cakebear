@@ -54,6 +54,31 @@
     "stderr": "",
     "exit": 0
   },
+  "promises-fetch": {
+    "stdout": "fan-out { id: 1, name: 'n1', price: 1.5, extra: true } { id: 2, name: 'n2', price: 3, extra: true } hello, world 404\ntyped { id: 3, name: 'x', price: 1 } { status: 'ok', count: 2 }\nrace hello, world\nitems 2 n5\ncaught [TypeError: fetch failed] {\n  [cause]: [Error: connect ECONNREFUSED DEADADDR] {\n    errno: ERRNO,\n    code: 'ECONNREFUSED',\n    syscall: 'connect',\n    address: '127.0.0.1',\n    port: DEADPORT\n  }\n}\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "promises-order": {
+    "stdout": "tick 0\nsync end\ntick 1\ngot resolve 5\ngot all-empty []\ntick 2\ngot return-await 4\ngot all-values [ 1, 2 ]\ngot race 1\nallof 1 s\ntick 3\ngot adopt-settled 3\ngot adopt-pending 2\ngot adopt-plain 1\ngot all-two [ 1, 2 ]\ngot all-array [ 2, 1 ]\ntick 4\ntick 5\ntick 6\ntick 7\ntick 8\ntick 9\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "promises-resolve": {
+    "stdout": "tick 0\ntick 1\ngot value first 3\ntick 2\ntick 3\ngot settled 1\ngot pending 2\nrejected rejected [RangeError: adopted rejection]\ngot locked 2\ngot thrown after 1\ntick 4\ntick 5\ntick 6\ntick 7\ngot later 2\nvoid adopted\ncycle [TypeError: Chaining cycle detected for promise #\u003cPromise\u003e]\nq\nsync end\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "promises-results": {
+    "stdout": "settled 2\nsettled 3\nsettled 1\nin order [ 1, 2, 3 ]\nall rejected [RangeError: first]\nsettled 6\nrace 6\nsettled 15\nrace first 15\nsettled 17\narray rejected [RangeError: an array's]\nrace rejected [RangeError: race]\nresolved value\ncaught [Error: rejected]\ncaught reason a string\nsettled 8\ndestructured { id: 1, name: 'item1' } 8 plain\nlet { id: 9, name: 'changed' } true\ninside item3item4\nadopted rejection [TypeError: adopted]\nadopted failure [RangeError: late]\ndestructured rejected [RangeError: destructured]\nstatement\nempty []\nsettled 10\nsettled 11\nsame types [ 10, 11 ] 2\nsettled 12\nsettled 13\nlogged [ 12, 13 ]\nadopted nothing\nmaybes 14 undefined\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "promises-try": {
+    "stdout": "in try\nafter's finally\nfailing after\noutside [Error: after]\ncaught [TypeError: first]\nfailing from catch\noutside [Error: from catch]\nbody\nfailing from finally\noutside [Error: from finally]\n",
+    "stderr": "",
+    "exit": 0
+  },
   "redirects": {
     "stdout": "200 true BASE/echo?after=301 {\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo?after=301\"}\n\n200 true {\"agent\":\"node\",\"body\":\"x\",\"cache\":\"|\",\"custom\":\"\",\"length\":1,\"method\":\"POST\",\"names\":\"accept,accept-encoding,accept-language,connection,content-length,content-type,sec-fetch-mode,user-agent\",\"type\":\"text/plain;charset=UTF-8\",\"url\":\"/echo?after=307\"}\n\n302 false /echo?after=302\nTypeError: fetch failed\n200 true BASE/echo\nTypeError: fetch failed\n",
     "stderr": "",

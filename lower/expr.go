@@ -351,6 +351,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	if out, handled := l.spawnCall(n, c); handled {
 		return out
 	}
+	if out, handled := l.promiseCall(n, c); handled { // promise.go
+		return out
+	}
 	if l.promiseMemberCall(n, c) {
 		return nil
 	}
@@ -382,6 +385,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	if _, maybe := l.storedMaybe(c.Expression); maybe {
 		l.failf(n, "calling a function that may be null or undefined is not supported yet")
 		return nil
+	}
+	if out, ok := l.adoptCall(n, c); ok { // promise.go
+		return out
 	}
 	callee, module := l.ref(c.Expression)
 	call := &ir.Call{Callee: callee, Module: module, Typ: l.typeOf(n), Span: l.span(n)}
