@@ -30,9 +30,9 @@ func (l *lowerer) jsonCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) {
 	case name == "stringify":
 		return l.jsonStringify(n, c), true
 	case name == "parse":
-		l.failf(n, "JSON.parse is not supported yet: it returns any, which cakebear doesn't lower")
+		return l.jsonParse(n, c), true // unknown_json.go
 	default:
-		l.failf(n, "JSON.%s is not supported yet; only JSON.stringify is", name)
+		l.failf(n, "JSON.%s is not supported yet; only JSON.stringify and JSON.parse are", name)
 	}
 	return nil, true
 }

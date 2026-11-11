@@ -90,7 +90,9 @@ func settle(d *Domain) (r any) {
 func uncaughtReport(t *Thrown, p phase) string {
 	if e, ok := t.V.(*Error); ok {
 		site := known(t.Site)
-		if made := known(e.site); made != nil && (site == nil || p.pointsAtCreation()) {
+		if made := known(e.site); made != nil && (site == nil || p.pointsAtCreation() || made.Data) {
+			// A parse's SyntaxError points into its data wherever it was
+			// thrown, rethrown too (R30).
 			site = made
 		}
 		return errorReport(e, site)
@@ -132,6 +134,15 @@ func known(site *Site) *Site {
 // site with no Text, which the emitter passes until lowering gives it the
 // line, has its location alone.
 func writeExcerpt(b *strings.Builder, site *Site) {
+	if site.Data {
+		// Data's line is printed whole, an empty one too, and the caret
+		// only where the parse failed before the end (R30).
+		b.WriteString(anonymousScript + ":" + strconv.Itoa(site.Line) + "\n" + site.Text + "\n")
+		if site.Col > 0 {
+			b.WriteString(caretLine(site.Text, site.Col) + "\n")
+		}
+		return
+	}
 	b.WriteString(fileURL(site.File))
 	b.WriteByte(':')
 	b.WriteString(strconv.Itoa(site.Line))

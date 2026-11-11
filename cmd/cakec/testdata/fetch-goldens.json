@@ -19,6 +19,26 @@
     "stderr": "",
     "exit": 0
   },
+  "json-errors": {
+    "stdout": "caught SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2) true\ncaught SyntaxError: Expected double-quoted property name in JSON at position 7 (line 1 column 8) true\ncaught SyntaxError: Unexpected end of JSON input true\ncaught SyntaxError: Expected ',' or ']' after array element in JSON at position 3 (line 1 column 4) true\ncaught SyntaxError: Unexpected token '\u003c', \"\u003chtml\u003eoops\u003c/html\u003e\" is not valid JSON true\ncaught SyntaxError: \"undefined\" is not valid JSON true\ncaught SyntaxError: Bad escaped character in JSON at position 2 (line 1 column 3) true\ncaught SyntaxError: Unexpected number in JSON at position 1 (line 1 column 2) true\ncaught SyntaxError: Unexpected non-whitespace character after JSON at position 2 (line 1 column 3) true\ncaught SyntaxError: Unexpected end of JSON input true\ncaught SyntaxError: Unterminated string in JSON at position 3 (line 1 column 4) true\ncaught SyntaxError: Unexpected token '�', \"😀\" is not valid JSON true\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "json-fetch": {
+    "stdout": "json { n: 1, list: [ 'a' ] } true\nSyntaxError: Unexpected token '\u003c', \"\u003chtml\u003eoops\u003c/html\u003e\" is not valid JSON\nSyntaxError: Expected double-quoted property name in JSON at position 7 (line 1 column 8)\nSyntaxError: Unexpected end of JSON input\nbom { bom: true }\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "json-narrow": {
+    "stdout": "object name=string cakebear n=number 42 list=array of 4: number 1 string two null boolean true ok=boolean false (inherits toString)\narray of 4: array of 0: object (inherits toString) string x array of 1: array of 1: number 1\nno name\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "json-values": {
+    "stdout": "parsed 42 42\nparsed str str\nparsed true true\nparsed null null\nparsed [ 1, 'a', null, { k: [ true ] } ] 1,a,,[object Object]\nparsed { a: { b: { c: 1 } } } [object Object]\nparsed 7 7\nparsed Infinity Infinity\nparsed -0 0\nparsed 9007199254740992 9007199254740992\nparsed { '1': 4, '2': 2, b: 1, a: 3, '-1': 5, '01': 6 } [object Object]\nparsed { a: 3, b: 2 } [object Object]\nparsed { ['__proto__']: { polluted: true }, x: 1 } [object Object]\nparsed � �\nparsed Aé Aé\nparsed {\n  long: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',\n  n: [\n     1,  2,  3,  4,  5,  6,  7,  8,\n     9, 10, 11, 12, 13, 14, 15, 16,\n    17, 18, 19, 20, 21, 22, 23, 24,\n    25, 26, 27\n  ]\n} [object Object]\n",
+    "stderr": "",
+    "exit": 0
+  },
   "order": {
     "stdout": "sync\ntimeout 0\nfetch resolved 200\ntext slow 30\ntimeout set when it resolved\ntimeout 100\n",
     "stderr": "",
@@ -42,6 +62,36 @@
   "uncaught": {
     "stdout": "before\n",
     "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[TypeError: fetch failed] {\n  [cause]: [Error: connect ECONNREFUSED DEADADDR] {\n    errno: ERRNO,\n    code: 'ECONNREFUSED',\n    syscall: 'connect',\n    address: '127.0.0.1',\n    port: DEADPORT\n  }\n}\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json": {
+    "stdout": "before\n",
+    "stderr": "\u003canonymous_script\u003e:1\n{bad\n ^\n\n[SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)]\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json-await": {
+    "stdout": "before\n",
+    "stderr": "\u003canonymous_script\u003e:2\n2 3]\n  ^\n\n[SyntaxError: Expected ',' or ']' after array element in JSON at position 6 (line 2 column 3)]\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json-eof": {
+    "stdout": "before\n",
+    "stderr": "\u003canonymous_script\u003e:1\n{\"a\":\n\n[SyntaxError: Unexpected end of JSON input]\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json-fetch": {
+    "stdout": "before\n",
+    "stderr": "\u003canonymous_script\u003e:1\n\u003chtml\u003eoops\u003c/html\u003e\n^\n\n[SyntaxError: Unexpected token '\u003c', \"\u003chtml\u003eoops\u003c/html\u003e\" is not valid JSON]\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json-multiline": {
+    "stdout": "before\n",
+    "stderr": "\u003canonymous_script\u003e:3\n  \"b\": ,\n       ^\n\n[SyntaxError: Unexpected token ',', ...\"1,\n  \"b\": ,\n  \"c\": 3\"... is not valid JSON]\n\nNode.js v24.18.0\n",
+    "exit": 1
+  },
+  "uncaught-json-rethrow": {
+    "stdout": "before\ncaught, rethrowing\n",
+    "stderr": "\u003canonymous_script\u003e:1\n{bad\n ^\n\n[SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)]\n\nNode.js v24.18.0\n",
     "exit": 1
   }
 }

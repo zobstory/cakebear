@@ -22,6 +22,7 @@ const (
 	// properties in source order, each named by Keys (FetchKey*).
 	HostFetch             // fetch(input, init?)
 	HostResponseText      // res.text()
+	HostResponseJSON      // res.json(): a promise of an unknown
 	HostNewHeaders        // new Headers(init?): Args are values, Keys their names
 	HostHeadersGet        // headers.get(name)
 	HostHeadersHas        // headers.has(name)
@@ -66,6 +67,8 @@ func (o HostOp) String() string {
 		return "fetch"
 	case HostResponseText:
 		return "Response.text"
+	case HostResponseJSON:
+		return "Response.json"
 	case HostNewHeaders:
 		return "new Headers"
 	case HostHeadersGet:

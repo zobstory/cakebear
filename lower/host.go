@@ -216,6 +216,9 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 	if v, ok := l.fetchProperty(n); ok { // fetch.go
 		return v
 	}
+	if v, ok := l.unknownProperty(n); ok { // unknown_json.go
+		return v
+	}
 	access := n.AsPropertyAccessExpression()
 	m, found, augmented := l.hostMemberOf(l.checker.GetSymbolAtLocation(access.Name()))
 	if prop, ok := hostProps[m]; found && ok {

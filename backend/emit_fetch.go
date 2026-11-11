@@ -13,6 +13,7 @@ import (
 // value: a Response's text, and a Headers' own.
 var fetchMethods = map[ir.HostOp]string{
 	ir.HostResponseText:      "Text",
+	ir.HostResponseJSON:      "JSON",
 	ir.HostHeadersGet:        "Get",
 	ir.HostHeadersHas:        "Has",
 	ir.HostHeadersSet:        "Set",
@@ -50,7 +51,7 @@ func (e *emitter) fetchCall(x *ir.HostCall) (string, bool) {
 	}
 	e.usesRuntime = true
 	args := make([]string, 0, len(x.Args)+2)
-	if x.Op == ir.HostResponseText {
+	if x.Op == ir.HostResponseText || x.Op == ir.HostResponseJSON {
 		e.needsRun = true
 		args = append(args, e.dom())
 	}

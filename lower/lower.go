@@ -441,6 +441,10 @@ func (l *lowerer) declarations(at, list *ast.Node) []ir.Stmt {
 // node:http's members used as a value, and a library global such as parseInt.
 // It reports whether it said anything.
 func (l *lowerer) explainInitializer(init *ast.Node) bool {
+	if call, ok := l.jsonResult(init); ok { // unknown_json.go
+		l.expr(call) // which says to give the result the type unknown
+		return true
+	}
 	var name *ast.Node
 	switch init.Kind {
 	case ast.KindArrowFunction, ast.KindFunctionExpression:

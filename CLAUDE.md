@@ -407,6 +407,43 @@ Step 1, fetch, is done (S1 plan D2, D7, D11; `runtime/fetch*.go`,
   `TestFetchFromHandlersUnderRace` serves 200 requests that each fetch
   upstream from a race build. 16 mutations RED.
 
+Step 2, JSON.parse and a JSON value in an unknown, is done (S1 plan D3,
+D4 (b); `runtime/json_parse*.go`, `json_object.go`, `unknown_object.go`,
+`lower/unknown_json.go`):
+- The runtime's JSON.parse is the spike's, written to V8's json-parser.cc:
+  `TestJSONParseGoldens` holds it to what Node 24.18 made of 9,674 inputs
+  (`testdata/gen-json-parse-goldens.mjs`): each value printed and
+  serialised, and each SyntaxError's message, byte for byte.
+- An object it makes is a `JSONObject`, an Object whose key table is
+  shared by every object of the same keys in the same order, as V8's
+  hidden classes are; its keys in V8's order, array indices first, and
+  `__proto__` an own key, printed `['__proto__']`. The goldens found the
+  table's cache taking `{}` and `{"": …}` for one.
+- **A parse's SyntaxError is reported pointing into the data**, as Node
+  reports it (R30): `<anonymous_script>:L`, that line of the data whole, and
+  a caret at its column, or none for the end of the input; wherever it was
+  thrown, after a catch's `throw e` too. Node's own reports for s1-node's
+  cases hold it (`TestJSONParseReportsPointIntoTheData`).
+- `JSON.parse(text)` and `res.json()` lower where the result fills an
+  unknown's slot, which is how a program reads it: `const v: unknown =
+  JSON.parse(s)`, an argument, a return. undici-types already types
+  `json()` `Promise<unknown>`. Into anything else it is refused, saying to
+  give it the type unknown (the checked cast into a data type is step 3).
+  `json()` reads the body as text() does, a BOM dropped, and rejects with
+  JSON.parse's own SyntaxError.
+- An unknown narrowed to an object or an array is read as it is stored,
+  an unknown, where TypeScript narrows it to a type the IR doesn't hold
+  (`object & Record<"k", unknown>`, `any[]`): `"k" in u`, which sees what an
+  object inherits too, `u.k` and `u["k"]`, `Array.isArray(u)`, `u.length` and
+  `u[i]`, each unboxed where the checker narrowed the read further.
+- Refused by name: a reviver, a result bound as `any` (in JSON's words, not
+  any's), an element of a narrowed array bound as `any` (write `const x:
+  unknown = u[i]`), and Array.isArray of a value whose type is known.
+- `TestFetchMatchesNode` holds 10 programs more to Node, 20 runs each: every
+  kind of value printed, narrowing, V8's messages, `res.json()` of good,
+  bad, empty and BOM bodies, and 6 uncaught parse errors whose whole report
+  is Node's but for its last line. 9 mutations RED.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
@@ -1855,8 +1892,9 @@ specification says compact. `JSON` is recognised as the global TypeScript's libs
 so a program's own `JSON` is an ordinary binding.
 
 Refused by name: a replacer (`null` or `undefined` in its place is how a call
-reaches the space), `JSON.parse` (it returns `any`, which cakebear doesn't
-lower), JSON's other members, and
+reaches the space), `JSON.parse` but into an unknown (it returns `any`,
+which cakebear doesn't lower; S1 step 2 lowers it there), JSON's other
+members, and
 serialising a function, a promise or a host value, or an object or array
 holding one: Node leaves the first out, or gives `undefined` for one alone,
 and serialises the others as objects of its own.

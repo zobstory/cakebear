@@ -83,6 +83,7 @@ var fetchMembers = map[string]map[string]fetchMember{
 		"status": {prop: ir.HostStatus}, "ok": {prop: ir.HostOK}, "statusText": {prop: ir.HostStatusText},
 		"url": {prop: ir.HostResponseURL}, "redirected": {prop: ir.HostRedirected}, "headers": {prop: ir.HostResponseHeaders},
 		"type": {prop: ir.HostResponseType}, "bodyUsed": {prop: ir.HostBodyUsed}, "text": {op: ir.HostResponseText},
+		"json": {op: ir.HostResponseJSON},
 	},
 	"Headers": {
 		"get": {op: ir.HostHeadersGet, args: 1}, "has": {op: ir.HostHeadersHas, args: 1},
@@ -124,7 +125,6 @@ func (l *lowerer) typeFromTypeQuiet(t *checker.Type) ir.Type {
 // fetchRefused names what lowering refuses of a Response or a Headers, with
 // what to do instead where there is something.
 var fetchRefused = map[string]string{
-	"json":        "Response.json() lands with JSON.parse in S1's next step; read it with text() for now",
 	"arrayBuffer": "a body as bytes is not supported yet; read it with text()",
 	"blob":        "a body as a Blob is not supported yet; read it with text()",
 	"bytes":       "a body as bytes is not supported yet; read it with text()",
@@ -183,6 +183,15 @@ func (l *lowerer) fetchMethodCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, 
 		return nil, true
 	}
 	call := &ir.HostCall{Op: m.op, Typ: l.typeOf(n), Span: l.calleeCaret(l.span(n), n)}
+	if m.op == ir.HostResponseJSON {
+		// The libs type it Promise<any>, undici-types Promise<unknown>: an
+		// unknown, as JSON.parse's result is (unknown_json.go).
+		if call.Typ != ir.PromiseOf(ir.Unknown) && !l.intoUnknown(n) {
+			l.failf(n, "Response.json() returns any, which cakebear doesn't lower: give what it resolves to the type unknown, and narrow it to read it")
+			return nil, true
+		}
+		call.Typ = ir.PromiseOf(ir.Unknown)
+	}
 	if call.Recv = l.expr(c.Expression.AsPropertyAccessExpression().Expression); call.Recv == nil {
 		return nil, true
 	}

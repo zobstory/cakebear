@@ -287,20 +287,23 @@ func TestReuseHostParsesEachFileOnce(t *testing.T) {
 // what Node printed with the DOM's (fetch-goldens.json).
 func TestTypesNodeFetchMatchesNode(t *testing.T) {
 	t.Parallel()
-	want, ok := readFetchGoldens(t)["basic"]
-	if !ok {
-		t.Fatal("fetch-goldens.json has no basic")
-	}
+	goldens := readFetchGoldens(t)
 	base := upstream(t)
-	files := map[string]string{"main.ts": withBase(fetchPrograms["basic"], base), "package.json": `{ "type": "module" }` + "\n"}
-	dir := typesNodeProjectWith(t, files, `, "lib": ["es2022"]`)
-	if code, stderr := projectBuild(t, dir, buildOptions{}); code != exitOK {
-		t.Fatalf("build: exit %d\n%s", code, stderr)
-	}
-	for run := range 5 {
-		stdout, stderr, code := runOutput(exec.Command(filepath.Join(dir, "bin", "main")))
-		if got := strings.ReplaceAll(stdout, base, "BASE"); got != want.Stdout || code != 0 {
-			t.Fatalf("run %d: exit %d, printed\n%s\nwant, as Node prints\n%s\nstderr:\n%s", run, code, got, want.Stdout, stderr)
+	for _, name := range []string{"basic", "json-fetch"} {
+		want, ok := goldens[name]
+		if !ok {
+			t.Fatalf("fetch-goldens.json has no %s", name)
+		}
+		files := map[string]string{"main.ts": withBase(fetchPrograms[name], base), "package.json": `{ "type": "module" }` + "\n"}
+		dir := typesNodeProjectWith(t, files, `, "lib": ["es2022"]`)
+		if code, stderr := projectBuild(t, dir, buildOptions{}); code != exitOK {
+			t.Fatalf("%s: build: exit %d\n%s", name, code, stderr)
+		}
+		for run := range 5 {
+			stdout, stderr, code := runOutput(exec.Command(filepath.Join(dir, "bin", "main")))
+			if got := strings.ReplaceAll(stdout, base, "BASE"); got != want.Stdout || code != 0 {
+				t.Fatalf("%s run %d: exit %d, printed\n%s\nwant, as Node prints\n%s\nstderr:\n%s", name, run, code, got, want.Stdout, stderr)
+			}
 		}
 	}
 }

@@ -23,6 +23,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	if v, ok := l.condExpr(n); ok { // cond.go
 		return v
 	}
+	if v, ok := l.unknownIn(n); ok { // unknown_json.go
+		return v
+	}
 	if v, ok := l.presence(n); ok { // optional.go
 		return v
 	}
@@ -113,6 +116,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 		return l.arrayLit(n)
 
 	case ast.KindElementAccessExpression:
+		if v, ok := l.unknownElement(n); ok { // unknown_json.go
+			return v
+		}
 		return l.elementGet(n)
 
 	default:
@@ -309,6 +315,9 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 		return out
 	}
 	if out, handled := l.fetchMethodCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.arrayIsArray(n, c); handled { // unknown_json.go
 		return out
 	}
 
