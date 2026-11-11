@@ -1,0 +1,37 @@
+{
+  "basic": {
+    "stdout": "200 true OK false basic true\nget Mixed Case Value one, two a=1; Path=/, b=2 null true\ngetSetCookie a=1; Path=/ | b=2\nfalse\ntext hello, world true\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "failures": {
+    "stdout": "refused TypeError: fetch failed true\nTypeError: Failed to parse URL from not a url\nTypeError: Request with GET/HEAD method cannot have body.\nTypeError: 'BAD METHOD' is not a valid HTTP method.\nTypeError: Headers.append: \"bad name\" is an invalid header name.\nTypeError: Body is unusable: Body has already been read\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "headers": {
+    "stdout": "get 1, again padded true null\nfalse\nset-cookie a=1|b=2 a=1, b=2\n{\"agent\":\"node\",\"body\":\"x\",\"cache\":\"|\",\"custom\":\"\",\"length\":1,\"method\":\"POST\",\"names\":\"accept,accept-encoding,accept-language,connection,content-length,content-type,sec-fetch-mode,user-agent,x-a,x-c\",\"type\":\"text/plain;charset=UTF-8\",\"url\":\"/echo\"}\n\nTypeError: Headers.get: \"bad name\" is an invalid header name.\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "order": {
+    "stdout": "sync\ntimeout 0\nfetch resolved 200\ntext slow 30\ntimeout set when it resolved\ntimeout 100\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "redirects": {
+    "stdout": "200 true BASE/echo?after=301 {\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo?after=301\"}\n\n200 true {\"agent\":\"node\",\"body\":\"x\",\"cache\":\"|\",\"custom\":\"\",\"length\":1,\"method\":\"POST\",\"names\":\"accept,accept-encoding,accept-language,connection,content-length,content-type,sec-fetch-mode,user-agent\",\"type\":\"text/plain;charset=UTF-8\",\"url\":\"/echo?after=307\"}\n\n302 false /echo?after=302\nTypeError: fetch failed\n200 true BASE/echo\nTypeError: fetch failed\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "send": {
+    "stdout": "{\"agent\":\"mine\",\"body\":\"{\\\"a\\\":1,\\\"b\\\":\\\"two\\\"}\",\"cache\":\"no-cache|no-cache\",\"custom\":\"yes\",\"length\":17,\"method\":\"POST\",\"names\":\"accept,accept-encoding,accept-language,cache-control,connection,content-length,content-type,pragma,sec-fetch-mode,user-agent,x-custom\",\"type\":\"application/json\",\"url\":\"/echo\"}\n\n{\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\n{\"agent\":\"node\",\"body\":\"hé 😀\",\"cache\":\"|\",\"custom\":\"\",\"length\":8,\"method\":\"PUT\",\"names\":\"accept,accept-encoding,accept-language,connection,content-length,content-type,sec-fetch-mode,user-agent\",\"type\":\"text/plain;charset=UTF-8\",\"url\":\"/echo\"}\n\n{\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"POST\",\"names\":\"accept,accept-encoding,accept-language,connection,content-length,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\ncache default {\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\ncache no-store {\"agent\":\"node\",\"body\":\"\",\"cache\":\"no-cache|no-cache\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,cache-control,connection,pragma,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\ncache reload {\"agent\":\"node\",\"body\":\"\",\"cache\":\"no-cache|no-cache\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,cache-control,connection,pragma,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\ncache no-cache {\"agent\":\"node\",\"body\":\"\",\"cache\":\"max-age=0|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,cache-control,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\ncache force-cache {\"agent\":\"node\",\"body\":\"\",\"cache\":\"|\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,connection,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\nTypeError: 'only-if-cached' can be set only with 'same-origin' mode\n{\"agent\":\"node\",\"body\":\"\",\"cache\":\"max-age=5|no-cache\",\"custom\":\"\",\"length\":0,\"method\":\"GET\",\"names\":\"accept,accept-encoding,accept-language,cache-control,connection,pragma,sec-fetch-mode,user-agent\",\"type\":\"\",\"url\":\"/echo\"}\n\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "statuses": {
+    "stdout": "200 true OK \"status 200\"\n201 true Created \"status 201\"\n204 true No Content \"\"\n404 false Not Found \"status 404\"\n500 false Internal Server Error \"status 500\"\n",
+    "stderr": "",
+    "exit": 0
+  }
+}

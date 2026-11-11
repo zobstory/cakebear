@@ -72,6 +72,7 @@ type FetchInit struct {
 	Headers  *Headers
 	Body     Maybe[string]
 	Redirect string
+	Cache    string // "" for default
 }
 
 // The methods Node upper-cases (the Fetch Standard's normalisation); any
@@ -108,12 +109,12 @@ func Fetch(d *Domain, input string, init *FetchInit, site *Site) *Promise[*Respo
 	}
 	var req *http.Request
 	var fail *Error
-	if init.Pairs != nil {
+	if init.Pairs != nil && init.Headers == nil {
 		// A bad name or value in the init's headers rejects, with the
 		// message Headers.append throws (R7).
 		pairs := init.Pairs
 		if t := Try(func() {
-			init = &FetchInit{Method: init.Method, Headers: NewHeaders(pairs, site), Body: init.Body, Redirect: init.Redirect}
+			init = &FetchInit{Method: init.Method, Headers: NewHeaders(pairs, site), Body: init.Body, Redirect: init.Redirect, Cache: init.Cache}
 		}); t != nil {
 			fail, _ = t.V.(*Error)
 		}
@@ -167,6 +168,13 @@ func newFetchRequest(input string, init *FetchInit, site *Site) (*http.Request, 
 	case (method == "GET" || method == "HEAD") && !init.Body.IsEmpty():
 		return nil, NewError(ErrorType, "Request with GET/HEAD method cannot have body.", site)
 	}
+	switch init.Cache {
+	case "", "default", "no-store", "reload", "no-cache", "force-cache":
+	case "only-if-cached":
+		return nil, NewError(ErrorType, "'only-if-cached' can be set only with 'same-origin' mode", site)
+	default:
+		return nil, NewError(ErrorType, "undefined: "+init.Cache+" is not an accepted type. Expected one of default, no-store, reload, no-cache, force-cache, only-if-cached.", site)
+	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fetchFailed(NewError(ErrorBase, "unknown scheme", nil), site)
 	}
@@ -212,6 +220,21 @@ func setRequestHeaders(req *http.Request, init *FetchInit) {
 	if !set["connection"] {
 		req.Header.Set("Connection", "keep-alive")
 	}
+	// The cache modes that bypass a cache say so to the server, as the
+	// Fetch Standard has it (measured on Node 24.18).
+	switch init.Cache {
+	case "no-store", "reload":
+		if !set["pragma"] {
+			req.Header.Set("Pragma", "no-cache")
+		}
+		if !set["cache-control"] {
+			req.Header.Set("Cache-Control", "no-cache")
+		}
+	case "no-cache":
+		if !set["cache-control"] {
+			req.Header.Set("Cache-Control", "max-age=0")
+		}
+	}
 	for _, kv := range nodeDefaults {
 		if !set[kv[0]] {
 			req.Header.Set(kv[0], kv[1])
@@ -226,3 +249,39 @@ func statusText(resp *http.Response) string {
 	text, _ := strings.CutPrefix(resp.Status, code)
 	return strings.TrimPrefix(text, " ")
 }
+
+// FetchOption is one property of fetch's init, as the emitter writes them in
+// the order the program's literal does, so they are evaluated in its order.
+type FetchOption func(*FetchInit)
+
+// FetchInitOf is init built from its properties.
+func FetchInitOf(opts ...FetchOption) *FetchInit {
+	init := &FetchInit{Pairs: [][2]string{}}
+	for _, o := range opts {
+		o(init)
+	}
+	if len(init.Pairs) == 0 {
+		init.Pairs = nil
+	}
+	return init
+}
+
+func FetchMethod(m string) FetchOption { return func(i *FetchInit) { i.Method = m } }
+
+// FetchHeader is one property of an object literal of headers.
+func FetchHeader(name, value string) FetchOption {
+	return func(i *FetchInit) { i.Pairs = append(i.Pairs, [2]string{name, value}) }
+}
+
+// FetchHeaders is a Headers value as init's headers.
+func FetchHeaders(h *Headers) FetchOption { return func(i *FetchInit) { i.Headers = h } }
+
+func FetchBody(b string) FetchOption { return func(i *FetchInit) { i.Body = Some(b) } }
+
+func FetchRedirect(mode string) FetchOption { return func(i *FetchInit) { i.Redirect = mode } }
+
+func FetchCache(mode string) FetchOption { return func(i *FetchInit) { i.Cache = mode } }
+
+// FetchDropped is a property Node's fetch ignores, Next.js's `next` say: its
+// value was evaluated for its effects, and nothing more.
+func FetchDropped(any) FetchOption { return func(*FetchInit) {} }
