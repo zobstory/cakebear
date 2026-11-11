@@ -142,6 +142,8 @@ scripts/bench-checkers.sh <dir> <limit> 1 2 4 8      # scaling baseline
 
 scripts/owned-go-packages.sh          # the packages that are ours
 go test $(scripts/owned-go-packages.sh)
+scripts/fetch-types-node.sh ~/.cache/cakebear-types-node   # once: the pinned @types/node
+CAKEBEAR_TYPES_NODE=~/.cache/cakebear-types-node go test ./cmd/cakec/   # its tests too
 
 python3 scripts/check-line-limit.py           # ≤500 lines per owned .go file
 scripts/check-upstream-untouched.sh origin/main  # the golden rule; commit first
@@ -280,12 +282,74 @@ bodyless overloads) is not legal in a `.ts` file, which is why workload B is
 491 files rather than 3000. The table also predates the rebase onto
 `microsoft/TypeScript`, so re-measure before comparing against it.
 
-## Current phase: **S1**, talking to services, to plan
+## Current phase: **S1**, talking to services
 
 P0–P5 and M1–M7 are done. cakebear is a **back-end server compiler** (zob,
 2026-11-10): the roadmap after M7 is ordered by what a TypeScript server
-needs, not by how much of wx-next compiles. Next is **S1**, talking to
-services. It isn't planned yet, per the per-phase rule below.
+needs, not by how much of wx-next compiles. The current phase is **S1**,
+talking to services. Its plan, decided 2026-11-11 by zob at scope B+, is
+`~/Desktop/cakebear/s1-services-plan.md`, sized by a measurement of
+wx-next's server-side code (`spikes/s1-measure/`), Node's semantics
+measured case by case (`spikes/s1-node/`, R1–R45) and a spike of the
+runtime (`spikes/s1-go/`: Go's client against Node's fetch, a JSON.parse
+held to 9,674 of Node's outputs, and net/url against Node's URL):
+- **Scope B+:** fetch with a string or a `URL`, its headers, a string or
+  JSON body and `AbortSignal.timeout`, Next.js's `next` and `cache` options
+  as the no-ops Node makes them; Response's data fields, `text()` and
+  `json()`; Headers; JSON.parse; `Promise.all`, its destructured form
+  `const [a, b] = await Promise.all([…])`, `race`, `resolve`, `reject`, and
+  an async function returning a promise; `URL` and `URLSearchParams`;
+  `process.env` reads; and @types/node's declarations beside the libs'.
+- **JSON reaches typed code by a checked cast** (D4): `as T`, or a typed
+  slot, decodes into T's shape with a decoder generated per shape, keeping
+  keys the shape doesn't name, and throws a TypeError naming the path where
+  Node would carry on; a JSON value in an `unknown` prints and narrows as
+  Node's; `u as T` of an unknown converts under the same check.
+- Out: `.then`, `.catch` and `.finally`; `allSettled` (S2's unions); a
+  trusted cast (generics, S5); `any` as a value; bodies as bytes or
+  streams; `AbortController`; a program's own `new Error(m, { cause })`.
+- S1 alone lowers few more of wx-next's server files, 2 to 3 of 1,506 at any
+  scope: like M6 and M7, its value is reach, since its forms are in the
+  programs of more than half the refused files. So the scope was chosen by
+  the reference server: a handler fanning out to 2–5 upstream GETs with
+  `Promise.all`, each a `URL` with headers under a deadline, checking `ok`
+  and `status`, and casting `json()`.
+
+Step 0, what the research found in passing, is done (S1 plan D12, D13):
+- A type with a member named by a symbol, `[Symbol.iterator]` say, was
+  refused naming the checker's internal symbol, ``\xFE@iterator@<id>``,
+  unreadable and different on every run. It is named as the source writes
+  it.
+- **A program with @types/node** (a server project's usual setup) failed to
+  build: cakebear's node:http interfaces shadowed the classes @types/node's
+  node:http re-exports, so @types/node's own `http2.d.ts` and `https.d.ts`
+  got 63 errors (24.19.2) without `skipLibCheck`, and with it the program
+  saw cakebear's few members where its author wrote against @types/node's.
+  The two can't merge (two classes don't, and an interface merging into
+  @types/node's generic `Server` would need its type parameters). So a
+  native build whose program has @types/node is made again without
+  cakebear's node:http (`cmd/cakec/typesnode.go`), reparsing nothing, and
+  lowering recognises @types/node's declarations of the same members
+  (`lower/typesnode.go`): createServer, net.Server's listen, setHeader from
+  OutgoingMessage, writeHead, end from stream.Writable, `req.url` and
+  `req.method`, which are `string | undefined` there. Its looser signatures
+  are held to what cakebear's would let through (a port and a callback, a
+  string value, a string chunk).
+- @types/node's `setTimeout` and `clearTimeout`, which a server's timeout
+  needs (374 refused server files in wx-next reach one), with the Timeout
+  they take and return as a host value only clearTimeout takes.
+- Whether a program has @types/node can't be told before it is built: a
+  package's declarations can bring it in with a reference directive.
+- ⚠ tsc mode and the language server append cakebear's declarations to a
+  lib file, which can't step aside per project, so there a project with
+  @types/node still needs `skipLibCheck`: a known limitation until packages
+  are bound (S4).
+- The tests of it need @types/node's real files, which aren't vendored (2.7
+  MB of someone else's declarations): `scripts/fetch-types-node.sh <dir>`
+  fetches the pinned versions, CI runs it, and `CAKEBEAR_TYPES_NODE=<dir>`
+  points the tests at them. Unset, those tests skip, saying so.
+  `TestTypesNodeServerServes`, `TestTypesNodeTimersMatchNode` and
+  `TestTypesNodeRefusals` hold it; 8 mutations RED.
 
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:

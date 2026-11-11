@@ -3,8 +3,11 @@
 // Served from a virtual path and added as a root of every program, the same
 // way cakebear.d.ts is, so `import { createServer } from "node:http"` resolves
 // with no npm install and no @types/node. TypeScript 7 no longer includes
-// @types/* automatically, and cakec reads no tsconfig, so @types/node would
-// only work behind a `/// <reference types="node" />` line anyway.
+// @types/* automatically, so a program has @types/node only when its
+// tsconfig lists it or a reference directive brings it in. A native build of
+// a program that has it leaves this file out, since the two can't merge, and
+// lowers @types/node's own declarations of the same members
+// (cmd/cakec/typesnode.go, lower/typesnode.go).
 //
 // It declares exactly what cakebear's runtime implements (M1), and nothing
 // else. Calling an unimplemented API is then a type error at the call site,

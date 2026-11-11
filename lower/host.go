@@ -61,20 +61,16 @@ func inBundledHTTP(decl *ast.Node) bool {
 // stricter test (hostMemberOf), because an augmented member has nothing behind
 // it at runtime.
 func (l *lowerer) hostType(t *checker.Type) ir.HostType {
-	sym := t.Symbol()
-	if sym == nil || sym.Flags()&ast.SymbolFlagsInterface == 0 {
-		return ir.HostNone
-	}
-	h, ok := hostTypes[sym.Name()]
-	if !ok {
-		return ir.HostNone
-	}
-	for _, d := range sym.Declarations() {
-		if inBundledHTTP(d) {
-			return h
+	if sym := t.Symbol(); sym != nil && sym.Flags()&ast.SymbolFlagsInterface != 0 {
+		if h, ok := hostTypes[sym.Name()]; ok {
+			for _, d := range sym.Declarations() {
+				if inBundledHTTP(d) {
+					return h
+				}
+			}
 		}
 	}
-	return ir.HostNone
+	return l.typesNodeHostType(t) // typesnode.go
 }
 
 // hostMemberOf resolves a symbol to the bundled member it names.
@@ -100,7 +96,7 @@ func (l *lowerer) hostMemberOf(sym *ast.Symbol) (m hostMember, found, augmented 
 		}
 	}
 	if bundled == 0 {
-		return m, false, false
+		return typesNodeMember(sym) // typesnode.go
 	}
 	if bundled != len(sym.Declarations()) {
 		return m, false, true
@@ -142,7 +138,11 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 		return nil, true
 	case !found:
 		if recv != nil {
-			if rt := l.typeOf(recv); rt.Kind == ir.KindHost {
+			switch rt := l.typeOf(recv); {
+			case rt == ir.HostOf(ir.HostTimeout):
+				l.failf(n, "%s.%s is not supported yet: a Timeout is only for clearTimeout", rt, name.Text())
+				return nil, true
+			case rt.Kind == ir.KindHost:
 				l.failf(n, "%s.%s is not part of cakebear's node:http", rt, name.Text())
 				return nil, true
 			}
@@ -179,6 +179,15 @@ func (l *lowerer) hostCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, han
 		}
 		call.Args = append(call.Args, v)
 	}
+	if l.viaTypesNode(name) { // typesnode.go
+		if m.iface != "" && call.Recv.ExprType() != ir.HostOf(hostTypes[m.iface]) {
+			l.failf(n, "%s.%s is not part of cakebear's node:http", call.Recv.ExprType(), name.Text())
+			return nil, true
+		}
+		if !l.typesNodeArgs(m, args, call.Args) {
+			return nil, true
+		}
+	}
 	// The listener runs on many goroutines at once; see race.go.
 	if spec.op == ir.HostCreateServer {
 		l.checkHandler(args[0], call.Args[0])
@@ -208,7 +217,15 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 		if recv == nil {
 			return nil
 		}
-		return &ir.HostProp{Prop: prop, Recv: recv, Typ: l.typeOf(n), Span: l.span(n)}
+		t := l.typeOf(n)
+		if t.Kind == ir.KindMaybe && t.Elem != nil {
+			// @types/node types url and method `string | undefined`, since
+			// its IncomingMessage is a client's response too; a server's
+			// request always has both, so the value is the runtime's string.
+			get := &ir.HostProp{Prop: prop, Recv: recv, Typ: *t.Elem, Span: l.span(n)}
+			return &ir.Wrap{Value: get, Typ: t, Span: get.Span}
+		}
+		return &ir.HostProp{Prop: prop, Recv: recv, Typ: t, Span: l.span(n)}
 	}
 	if v, ok := l.fieldGet(n); ok {
 		return v

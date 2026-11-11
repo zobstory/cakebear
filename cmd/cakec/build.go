@@ -68,15 +68,21 @@ func runBuild(opts buildOptions, stderr io.Writer) int {
 		}
 	}
 
-	host := compiler.NewCompilerHost(fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/, nil /*contentMapperProject*/)
-
-	program := compiler.NewProgram(compiler.ProgramOptions{
-		Config: config,
-		Host:   host,
-		// SingleThreaded reaches further than --checkers: it also serialises
-		// parsing and binding, not just the checker pool.
-		SingleThreaded: singleThreadedTristate(opts),
-	})
+	host := newReuseHost(compiler.NewCompilerHost(fs, bundled.LibPath(), nil /*extendedConfigCache*/, nil /*trace*/, nil /*contentMapperProject*/))
+	newProgram := func(config *tsoptions.ParsedCommandLine) *compiler.Program {
+		return compiler.NewProgram(compiler.ProgramOptions{
+			Config: config,
+			Host:   host,
+			// SingleThreaded reaches further than --checkers: it also
+			// serialises parsing and binding, not just the checker pool.
+			SingleThreaded: singleThreadedTristate(opts),
+		})
+	}
+	program := newProgram(config)
+	if usesTypesNode(program) { // its node:http is the program's, not cakebear's (typesnode.go)
+		config = withoutNodeHTTP(config)
+		program = newProgram(config)
+	}
 
 	ctx := context.Background()
 	diags := collectDiagnostics(ctx, program, config)

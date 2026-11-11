@@ -270,13 +270,15 @@ func (l *lowerer) resolvesWithPromise(n *ast.Node, call *ir.Call) bool {
 // voidCallback is the only callback type setTimeout accepts here.
 var voidCallback = ir.FuncType(nil, ir.Void)
 
-// timerCall lowers setTimeout and clearTimeout. They are the DOM's, recognised
-// by being declared only in lib.dom.d.ts, so a program's own function of the
-// same name is an ordinary call (D3).
+// timerCall lowers setTimeout and clearTimeout: the DOM's, or @types/node's,
+// recognised by being declared only in lib.dom.d.ts and @types/node's
+// timers.d.ts, so a program's own function of the same name is an ordinary
+// call (D3). The DOM's setTimeout returns a number, and @types/node's a
+// Timeout (S1 plan D12).
 func (l *lowerer) timerCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) {
 	callee := c.Expression
 	if callee.Kind != ast.KindIdentifier || (callee.Text() != "setTimeout" && callee.Text() != "clearTimeout") ||
-		!onlyInBundledLib(l.checker.GetSymbolAtLocation(callee), "lib.dom.d.ts") {
+		!timerDeclared(l.checker.GetSymbolAtLocation(callee)) {
 		return nil, false
 	}
 	var args []*ast.Node
@@ -293,8 +295,8 @@ func (l *lowerer) timerCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 		if id == nil {
 			return nil, true
 		}
-		if id.ExprType() != ir.Number {
-			l.failf(args[0], "clearTimeout takes the number setTimeout returned, not a %s", id.ExprType())
+		if id.ExprType() != ir.Number && id.ExprType() != ir.HostOf(ir.HostTimeout) {
+			l.failf(args[0], "clearTimeout takes what setTimeout returned, not a %s", id.ExprType())
 			return nil, true
 		}
 		return &ir.HostCall{Op: ir.HostClearTimeout, Args: []ir.Expr{id}, Typ: ir.Void, Span: l.span(n)}, true
@@ -317,7 +319,11 @@ func (l *lowerer) timerCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 		l.failf(args[1], "setTimeout's delay must be a number, not a %s", delay.ExprType())
 		return nil, true
 	}
-	return &ir.HostCall{Op: ir.HostSetTimeout, Args: []ir.Expr{cb, delay}, Typ: ir.Number, Span: l.span(n)}, true
+	id := ir.Number // the DOM's
+	if l.nodeTimer(n) {
+		id = ir.HostOf(ir.HostTimeout) // @types/node's (typesnode.go)
+	}
+	return &ir.HostCall{Op: ir.HostSetTimeout, Args: []ir.Expr{cb, delay}, Typ: id, Span: l.span(n)}, true
 }
 
 // timerCallback lowers setTimeout's callback, which must be a function taking
