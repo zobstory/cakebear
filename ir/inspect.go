@@ -171,6 +171,8 @@ func inspectExpr(e Expr, visit func(node any)) {
 	case *UnknownIndex:
 		inspectExpr(e.Value, visit)
 		inspectExpr(e.Index, visit)
+	case *Decode:
+		inspectExpr(e.Value, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for expression %T", e))
 	}

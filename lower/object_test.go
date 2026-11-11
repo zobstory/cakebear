@@ -134,7 +134,6 @@ func TestObjectRefusals(t *testing.T) {
 		{"a union", "const u: { a: number } | { b: string } = { a: 1 };\n", "unions of object types are not supported yet"},
 		{"a tuple property", "interface Pair { p: [number, string] }\nfunction size(b: Pair): number {\n  return 1;\n}\n", "property `p`: tuples are not supported yet"},
 		{"logging an object holding a function", "const o: { f: () => number } = { f: (): number => 1 };\nconsole.log(o);\n", "console.log cannot print a { f: () => number } yet: it holds a function"},
-		{"=== between two shapes", "const a: { x: number } = { x: 1 };\nconst b: { y: number } = { y: 1 };\nconst t: boolean = (a as unknown) === (b as unknown);\n", "not supported yet"},
 		{"a recursive type failing partway", "interface A { d: D; bad: string | number }\ninterface D { a: A }\nfunction f(d: D): number {\n  return 1;\n}\n", "property `bad`: a union of a"},
 		// X fails after Y was classified against X's reserved shape: Y must
 		// fail too when used later, not pass holding a shape never defined.

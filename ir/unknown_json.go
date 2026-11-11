@@ -86,6 +86,56 @@ func checkUnknownJSON(n Expr) error {
 			return err
 		}
 		return want(n.Value, Unknown, "an element")
+	case *Decode:
+		if why := Decodable(n.Typ); why != "" {
+			return fmt.Errorf("a cast to %s, which holds %s", n.Typ, why)
+		}
+		return want(n.Value, Unknown, "a cast")
 	}
 	return nil
+}
+
+// Decode is the checked cast (S1 plan D4 (a), (c)): Value, an unknown, made
+// a Typ, or a TypeError naming where it doesn't fit. Cast is the type as
+// the program writes it, for the message.
+type Decode struct {
+	Value Expr
+	Typ   Type
+	Cast  string
+	Span  Span
+}
+
+func (*Decode) isExpr()          {}
+func (e *Decode) ExprType() Type { return e.Typ }
+func (e *Decode) ExprSpan() Span { return e.Span }
+
+// Decodable reports why a value of type t can't come out of a checked
+// cast, or "" when it can: data only, and no extension type, which a cast
+// would have to range-check (not done yet).
+func Decodable(t Type) string {
+	switch t.Kind {
+	case KindNumber, KindString, KindBoolean, KindUnknown:
+		return ""
+	case KindError:
+		return ""
+	case KindMaybe, KindArray:
+		if t.Elem == nil {
+			return "an incomplete type"
+		}
+		return Decodable(*t.Elem)
+	case KindObject:
+		if t.Shape == nil {
+			return "an incomplete type"
+		}
+		for _, f := range t.Shape.Fields {
+			if why := Decodable(f.Type); why != "" {
+				return why
+			}
+		}
+		return ""
+	}
+	if t.IsExtension() {
+		return "an extension type such as " + t.String() + ", which a cast doesn't range-check yet"
+	}
+	return article(t.String())
 }

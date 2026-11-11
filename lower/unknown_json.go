@@ -2,31 +2,14 @@ package lower
 
 import (
 	"github.com/zobstory/cakebear/internal/ast"
-	"github.com/zobstory/cakebear/internal/checker"
 	"github.com/zobstory/cakebear/ir"
 )
 
 // JSON.parse, res.json() and the reads of what they make (S1 plan D3,
-// D4 (b)). TypeScript types JSON.parse's result `any`, which cakebear
-// doesn't lower, so a result is lowered where it fills an unknown's slot:
-// an unknown is what a program narrows to read it.
-
-// intoUnknown reports whether n, whose own type is any, fills a slot of
-// type unknown: an annotated binding, an argument, a return. That slot is
-// what the result is, since nothing else can be done with an unknown
-// without the narrowing that checks it.
-func (l *lowerer) intoUnknown(n *ast.Node) bool {
-	for p := n; ; p = p.Parent {
-		ct := l.contextualType(p)
-		if ct != nil {
-			return ct.Flags()&checker.TypeFlagsUnknown != 0
-		}
-		// An await's operand takes its slot from the await.
-		if p.Parent == nil || p.Parent.Kind != ast.KindAwaitExpression && p.Parent.Kind != ast.KindParenthesizedExpression {
-			return false
-		}
-	}
-}
+// D4). TypeScript types JSON.parse's result `any`, which cakebear doesn't
+// lower, so a result is lowered where it fills a slot that says what it
+// is: an unknown's, which a program narrows to read it, or a data type's,
+// which a checked cast decodes it into (cast.go).
 
 // jsonParse lowers `JSON.parse(text)`.
 func (l *lowerer) jsonParse(n *ast.Node, c *ast.CallExpression) ir.Expr {
@@ -41,8 +24,8 @@ func (l *lowerer) jsonParse(n *ast.Node, c *ast.CallExpression) ir.Expr {
 	case len(args) != 1:
 		l.invalidf(n, "JSON.parse takes one or two arguments")
 		return nil
-	case !l.intoUnknown(n):
-		l.failf(n, "JSON.parse returns any, which cakebear doesn't lower: give its result the type unknown, and narrow it to read it")
+	case !l.jsonSlot(n):
+		l.failf(n, "JSON.parse returns any, which cakebear doesn't lower: give its result a type, unknown to narrow it or a data type to cast it to")
 		return nil
 	}
 	text := l.exprOf(args[0])

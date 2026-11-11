@@ -105,6 +105,7 @@ func (e *emitter) program(p *ir.Program) string {
 	if len(e.layoutDecls) > 0 {
 		out.WriteString(strings.Join(e.layoutDecls, "") + "\n")
 	}
+	out.WriteString(strings.Join(e.decoderDecls, "")) // emit_decode.go
 	if globals.Len() > 0 {
 		out.WriteString(globals.String() + "\n")
 	}

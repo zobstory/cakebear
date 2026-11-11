@@ -115,6 +115,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 	case ast.KindArrayLiteralExpression:
 		return l.arrayLit(n)
 
+	case ast.KindAsExpression, ast.KindSatisfiesExpression, ast.KindTypeAssertionExpression:
+		return l.cast(n) // cast.go
+
 	case ast.KindElementAccessExpression:
 		if v, ok := l.unknownElement(n); ok { // unknown_json.go
 			return v

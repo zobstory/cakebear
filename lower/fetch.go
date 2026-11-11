@@ -186,8 +186,8 @@ func (l *lowerer) fetchMethodCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, 
 	if m.op == ir.HostResponseJSON {
 		// The libs type it Promise<any>, undici-types Promise<unknown>: an
 		// unknown, as JSON.parse's result is (unknown_json.go).
-		if call.Typ != ir.PromiseOf(ir.Unknown) && !l.intoUnknown(n) {
-			l.failf(n, "Response.json() returns any, which cakebear doesn't lower: give what it resolves to the type unknown, and narrow it to read it")
+		if call.Typ != ir.PromiseOf(ir.Unknown) && !l.jsonSlot(n) {
+			l.failf(n, "Response.json() returns any, which cakebear doesn't lower: give what it resolves to a type, unknown to narrow it or a data type to cast it to")
 			return nil, true
 		}
 		call.Typ = ir.PromiseOf(ir.Unknown)

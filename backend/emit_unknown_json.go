@@ -19,6 +19,8 @@ func (e *emitter) unknownJSON(x ir.Expr) string {
 		return rtPkg + ".UnknownIn(" + e.expr(x.Key) + ", " + e.expr(x.Value) + ", " + e.siteArg(x.Span) + ")"
 	case *ir.UnknownIsArray:
 		return rtPkg + ".UnknownIsArray(" + e.expr(x.Value) + ")"
+	case *ir.Decode:
+		return e.decode(x) // emit_decode.go
 	case *ir.UnknownIndex:
 		return rtPkg + ".UnknownIndex(" + e.expr(x.Value) + ", " + e.expr(x.Index) + ", " + e.siteArg(x.Span) + ")"
 	}

@@ -173,6 +173,8 @@ func operands(x ir.Expr) []ir.Expr {
 		return []ir.Expr{x.Value}
 	case *ir.UnknownIndex:
 		return []ir.Expr{x.Value, x.Index}
+	case *ir.Decode:
+		return []ir.Expr{x.Value}
 	default:
 		panic(fmt.Sprintf("backend: evaluation order has no case for %T", x))
 	}

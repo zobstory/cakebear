@@ -67,6 +67,8 @@ type emitter struct {
 	held map[string]heldName
 	// errorState is throw's and try's, and the site table's (emit_try.go).
 	errorState
+	// decoding is the checked cast's decoders (emit_decode.go).
+	decoding
 }
 
 // Emit renders a program as the contents of a Go main package. IR the backend
@@ -339,7 +341,7 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.NewError, *ir.ErrorGet, *ir.Box, *ir.Unbox, *ir.InstanceOf, *ir.TypeOf:
 		return e.errorExpr(x) // emit_errors.go
 
-	case *ir.JSONParse, *ir.UnknownGet, *ir.UnknownIn, *ir.UnknownIsArray, *ir.UnknownIndex:
+	case *ir.JSONParse, *ir.UnknownGet, *ir.UnknownIn, *ir.UnknownIsArray, *ir.UnknownIndex, *ir.Decode:
 		return e.unknownJSON(x) // emit_unknown_json.go
 
 	default:
