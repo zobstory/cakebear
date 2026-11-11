@@ -75,6 +75,9 @@ const (
 	// HostTimeout is what @types/node's setTimeout returns, where the DOM's
 	// returns a number: only clearTimeout takes one.
 	HostTimeout
+	// HostResponse and HostHeaders are fetch's (S1 plan D2).
+	HostResponse
+	HostHeaders
 )
 
 func (h HostType) String() string {
@@ -87,6 +90,10 @@ func (h HostType) String() string {
 		return "ServerResponse"
 	case HostTimeout:
 		return "Timeout"
+	case HostResponse:
+		return "Response"
+	case HostHeaders:
+		return "Headers"
 	default:
 		return "host"
 	}

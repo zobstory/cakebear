@@ -15,7 +15,8 @@ import (
 // Maybe's null is null, and its undefined is left out of an object, and
 // null in an array, as SerializeJSONProperty gives them (M5 plan D8), and
 // so is an unknown's. An Error is its own enumerable properties (M6 plan
-// D4): `{}`, or its code for one of Node's own (errorJSON).
+// D4): `{}`, its code for one of Node's own, or a system error's errno,
+// code and the rest (S1 plan D7), but never its cause (errorJSON).
 
 // JSONStringify is JSON.stringify(v, null, space), given the gap
 // JSONGapNumber or JSONGapString made of space, or JSONGap{} for none.

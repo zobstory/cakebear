@@ -73,6 +73,18 @@
       "last": 10928,
       "count": 118,
       "throws": 3
+    },
+    "CAUSE": {
+      "first": 10929,
+      "last": 11018,
+      "count": 90,
+      "throws": 0
+    },
+    "PROPS": {
+      "first": 11019,
+      "last": 11239,
+      "count": 221,
+      "throws": 0
     }
   }
 }

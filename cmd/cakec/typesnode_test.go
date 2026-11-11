@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -59,14 +60,22 @@ func typesNodeRoot(t *testing.T) string {
 
 // typesNodeProject writes a project of files whose tsconfig.json lists
 // @types/node, linked from the pinned copy, and has no skipLibCheck: its
-// main is main.ts and its output bin/main.
+// main is main.ts and its output bin/main. Its libs are its target's, the
+// DOM's included.
 func typesNodeProject(t *testing.T, files map[string]string) string {
+	t.Helper()
+	return typesNodeProjectWith(t, files, "")
+}
+
+// typesNodeProjectWith is typesNodeProject with compilerOptions' extra
+// entries, such as a lib without the DOM.
+func typesNodeProjectWith(t *testing.T, files map[string]string, extra string) string {
 	t.Helper()
 	root := typesNodeRoot(t)
 	dir := filepath.Join(t.TempDir(), "project")
 	project := map[string]string{
 		"tsconfig.json": `{
-  "compilerOptions": { "strict": true, "target": "es2022", "module": "nodenext", "types": ["node"], "noEmit": true },
+  "compilerOptions": { "strict": true, "target": "es2022", "module": "nodenext", "types": ["node"], "noEmit": true` + extra + ` },
   "files": ["main.ts"],
   "cakebear": { "main": "main.ts", "output": "bin/main" }
 }
@@ -270,5 +279,28 @@ func TestReuseHostParsesEachFileOnce(t *testing.T) {
 	}
 	if diags := collectDiagnostics(context.Background(), second, withoutNodeHTTP(config)); len(diags) > 0 {
 		t.Errorf("the second program has %d diagnostics, want none: %v", len(diags), diags[0])
+	}
+}
+
+// TestTypesNodeFetchMatchesNode: without the DOM's lib, fetch, Response and
+// Headers are @types/node's, typed by undici-types, and the program prints
+// what Node printed with the DOM's (fetch-goldens.json).
+func TestTypesNodeFetchMatchesNode(t *testing.T) {
+	t.Parallel()
+	want, ok := readFetchGoldens(t)["basic"]
+	if !ok {
+		t.Fatal("fetch-goldens.json has no basic")
+	}
+	base := upstream(t)
+	files := map[string]string{"main.ts": withBase(fetchPrograms["basic"], base), "package.json": `{ "type": "module" }` + "\n"}
+	dir := typesNodeProjectWith(t, files, `, "lib": ["es2022"]`)
+	if code, stderr := projectBuild(t, dir, buildOptions{}); code != exitOK {
+		t.Fatalf("build: exit %d\n%s", code, stderr)
+	}
+	for run := range 5 {
+		stdout, stderr, code := runOutput(exec.Command(filepath.Join(dir, "bin", "main")))
+		if got := strings.ReplaceAll(stdout, base, "BASE"); got != want.Stdout || code != 0 {
+			t.Fatalf("run %d: exit %d, printed\n%s\nwant, as Node prints\n%s\nstderr:\n%s", run, code, got, want.Stdout, stderr)
+		}
 	}
 }

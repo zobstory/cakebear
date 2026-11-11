@@ -18,6 +18,30 @@ const (
 	HostSetTimeout                 // setTimeout(callback, delay): the callback is () => void
 	HostClearTimeout               // clearTimeout(id)
 	HostSpawn                      // spawn(fn), cakebear's: fn is () => T or () => Promise<T>
+	// fetch (S1 plan D2). Fetch's Args are the input, then init's
+	// properties in source order, each named by Keys (FetchKey*).
+	HostFetch             // fetch(input, init?)
+	HostResponseText      // res.text()
+	HostNewHeaders        // new Headers(init?): Args are values, Keys their names
+	HostHeadersGet        // headers.get(name)
+	HostHeadersHas        // headers.has(name)
+	HostHeadersSet        // headers.set(name, value)
+	HostHeadersAppend     // headers.append(name, value)
+	HostHeadersDelete     // headers.delete(name)
+	HostHeadersSetCookies // headers.getSetCookie()
+)
+
+// The keys a HostFetch's init properties have: a header's is its name
+// after FetchKeyHeader. A dropped property is one Node's fetch ignores,
+// such as Next.js's `next`, evaluated for its effects alone.
+const (
+	FetchKeyMethod   = "method"
+	FetchKeyHeader   = "header:"
+	FetchKeyHeaders  = "headers" // a Headers value
+	FetchKeyBody     = "body"
+	FetchKeyRedirect = "redirect"
+	FetchKeyCache    = "cache"
+	FetchKeyDropped  = "dropped"
 )
 
 func (o HostOp) String() string {
@@ -38,6 +62,24 @@ func (o HostOp) String() string {
 		return "clearTimeout"
 	case HostSpawn:
 		return "spawn"
+	case HostFetch:
+		return "fetch"
+	case HostResponseText:
+		return "Response.text"
+	case HostNewHeaders:
+		return "new Headers"
+	case HostHeadersGet:
+		return "Headers.get"
+	case HostHeadersHas:
+		return "Headers.has"
+	case HostHeadersSet:
+		return "Headers.set"
+	case HostHeadersAppend:
+		return "Headers.append"
+	case HostHeadersDelete:
+		return "Headers.delete"
+	case HostHeadersSetCookies:
+		return "Headers.getSetCookie"
 	default:
 		return "invalid host operation"
 	}
@@ -51,9 +93,17 @@ func (o HostOp) IsTimer() bool { return o == HostSetTimeout || o == HostClearTim
 type HostProperty int
 
 const (
-	HostPropInvalid HostProperty = iota // the zero value, never produced by lower/
-	HostURL                             // req.url
-	HostMethod                          // req.method
+	HostPropInvalid     HostProperty = iota // the zero value, never produced by lower/
+	HostURL                                 // req.url
+	HostMethod                              // req.method
+	HostStatus                              // res.status, of a fetch's Response
+	HostOK                                  // res.ok
+	HostStatusText                          // res.statusText
+	HostResponseURL                         // res.url
+	HostRedirected                          // res.redirected
+	HostResponseHeaders                     // res.headers
+	HostBodyUsed                            // res.bodyUsed
+	HostResponseType                        // res.type
 )
 
 func (p HostProperty) String() string {
@@ -62,6 +112,22 @@ func (p HostProperty) String() string {
 		return "IncomingMessage.url"
 	case HostMethod:
 		return "IncomingMessage.method"
+	case HostStatus:
+		return "Response.status"
+	case HostOK:
+		return "Response.ok"
+	case HostStatusText:
+		return "Response.statusText"
+	case HostResponseURL:
+		return "Response.url"
+	case HostRedirected:
+		return "Response.redirected"
+	case HostResponseHeaders:
+		return "Response.headers"
+	case HostBodyUsed:
+		return "Response.bodyUsed"
+	case HostResponseType:
+		return "Response.type"
 	default:
 		return "invalid host property"
 	}
@@ -76,6 +142,9 @@ type HostCall struct {
 	Op   HostOp
 	Recv Expr
 	Args []Expr
+	// Keys names each of Args, for the operations taking properties of an
+	// object literal: HostFetch's init and HostNewHeaders' pairs.
+	Keys []string
 	Typ  Type
 	Span Span
 }

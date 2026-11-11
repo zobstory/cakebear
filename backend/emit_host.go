@@ -17,6 +17,8 @@ var hostGoTypes = map[ir.HostType]string{
 	ir.HostIncomingMessage: "IncomingMessage",
 	ir.HostServerResponse:  "ServerResponse",
 	ir.HostTimeout:         "Timeout",
+	ir.HostResponse:        "Response",
+	ir.HostHeaders:         "Headers",
 }
 
 // hostMethods names the runtime method behind each host operation on a value.
@@ -38,8 +40,16 @@ var hostSites = map[ir.HostOp]int{
 }
 
 var hostProps = map[ir.HostProperty]string{
-	ir.HostURL:    "URL",
-	ir.HostMethod: "Method",
+	ir.HostURL:             "URL",
+	ir.HostMethod:          "Method",
+	ir.HostStatus:          "Status",
+	ir.HostOK:              "OK",
+	ir.HostStatusText:      "StatusText",
+	ir.HostResponseURL:     "URL",
+	ir.HostRedirected:      "Redirected",
+	ir.HostResponseHeaders: "Headers",
+	ir.HostBodyUsed:        "BodyUsed",
+	ir.HostResponseType:    "Type",
 }
 
 func goHostType(h ir.HostType) (string, bool) {
@@ -83,6 +93,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	}
 	if x.Op == ir.HostSpawn {
 		return e.spawnCall(x)
+	}
+	if out, ok := e.fetchCall(x); ok { // emit_fetch.go
+		return out
 	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {

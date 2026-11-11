@@ -46,22 +46,25 @@ func newTestObject(keys []string, values []any) *testObject {
 // goldenValue is the corpus's encoding of a value
 // (testdata/gen-inspect-goldens.mjs). U is a string holding a lone
 // surrogate, as its UTF-16 code units, which only the JSON corpus has
-// (testdata/gen-json-goldens.mjs). Err, M and Code are an Error (M6), and
-// Any marks an array or object of unknowns (testdata/golden-codec.mjs).
+// (testdata/gen-json-goldens.mjs). Err, M and Code are an Error (M6), with
+// P its own properties and Cause its cause (S1), and Any marks an array or
+// object of unknowns (testdata/golden-codec.mjs).
 type goldenValue struct {
-	N    *string              `json:"n"`
-	S    *string              `json:"s"`
-	U    []uint16             `json:"u"`
-	B    *bool                `json:"b"`
-	E    *string              `json:"e"` // "undefined" or "null"
-	A    []json.RawMessage    `json:"a"`
-	O    [][2]json.RawMessage `json:"o"`
-	ID   *int                 `json:"id"`
-	Ref  *int                 `json:"ref"`
-	Err  *string              `json:"err"`
-	M    *string              `json:"m"`
-	Code *string              `json:"code"`
-	Any  bool                 `json:"any"`
+	N     *string              `json:"n"`
+	S     *string              `json:"s"`
+	U     []uint16             `json:"u"`
+	B     *bool                `json:"b"`
+	E     *string              `json:"e"` // "undefined" or "null"
+	A     []json.RawMessage    `json:"a"`
+	O     [][2]json.RawMessage `json:"o"`
+	ID    *int                 `json:"id"`
+	Ref   *int                 `json:"ref"`
+	Err   *string              `json:"err"`
+	M     *string              `json:"m"`
+	Code  *string              `json:"code"`
+	P     [][2]json.RawMessage `json:"p"`
+	Cause json.RawMessage      `json:"cause"`
+	Any   bool                 `json:"any"`
 }
 
 // decoder rebuilds the values of one corpus entry, its ids shared across
@@ -194,11 +197,13 @@ func (d *decoder) array(g goldenValue) any {
 		}
 		return d.register(g.ID, NewArray(items...))
 	case "err":
-		items := make([]*Error, len(g.A))
-		for i, raw := range g.A {
-			items[i] = d.value(raw).(*Error)
+		// Registered before its elements, whose causes may refer back to it.
+		arr := NewArray[*Error]()
+		d.register(g.ID, arr)
+		for _, raw := range g.A {
+			arr.Push(d.value(raw).(*Error))
 		}
-		return d.register(g.ID, NewArray(items...))
+		return arr
 	}
 	arr := NewArray[any]()
 	d.register(g.ID, arr)
@@ -254,12 +259,14 @@ func parseNumber(t *testing.T, s string) float64 {
 }
 
 // goldenEntry is a line of the corpus. Any says its arguments are unknowns,
-// and Str is String() of its one argument (M6's sections).
+// Str is String() of its one argument (M6's sections), and Stack the stack
+// of one that is an Error (S1's).
 type goldenEntry struct {
-	Args []json.RawMessage `json:"args"`
-	Any  bool              `json:"any"`
-	Out  string            `json:"out"`
-	Str  *string           `json:"str"`
+	Args  []json.RawMessage `json:"args"`
+	Any   bool              `json:"any"`
+	Out   string            `json:"out"`
+	Str   *string           `json:"str"`
+	Stack *string           `json:"stack"`
 }
 
 func checkEntry(t *testing.T, line int, e goldenEntry) bool {
@@ -280,6 +287,16 @@ func checkEntry(t *testing.T, line int, e goldenEntry) bool {
 	if e.Str != nil {
 		if got := UnknownToString(args[0]); got != *e.Str {
 			t.Errorf("entry %d: String() gave\n%s\nwant, as Node gives\n%s\n(args %s)", line, got, *e.Str, truncate(fmt.Sprint(e.Args), 300))
+			return false
+		}
+	}
+	if e.Stack != nil {
+		err, ok := args[0].(*Error)
+		if !ok {
+			t.Fatalf("entry %d: a stack for a %T", line, args[0])
+		}
+		if got := err.Stack().Must("stack"); got != *e.Stack {
+			t.Errorf("entry %d: the stack is\n%s\nwant, as Node's\n%s\n(args %s)", line, got, *e.Stack, truncate(fmt.Sprint(e.Args), 300))
 			return false
 		}
 	}

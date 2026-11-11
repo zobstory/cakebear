@@ -181,6 +181,9 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 		if k, ok := errorKindOf(l.checker.GetSymbolAtLocation(callee)); ok {
 			return l.newError(n, k, n.Arguments())
 		}
+		if callee.Text() == "Headers" && declaredForFetch(l.checker.GetSymbolAtLocation(callee)) {
+			return l.newHeaders(n, n.Arguments()) // fetch_call.go
+		}
 	}
 	if callee.Kind != ast.KindIdentifier || callee.Text() != "Promise" ||
 		!onlyInBundledLib(l.checker.GetSymbolAtLocation(callee), "") {

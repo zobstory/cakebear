@@ -31,7 +31,7 @@
 // surrogates, and a first argument that is a string has no '%'.
 //
 // The index file maps each section (R1..R13, CIRC, RANDOM, MAYBE, ERROR,
-// UNKNOWN) to its 1-based line range in the corpus. MAYBE, null and
+// UNKNOWN, CAUSE, PROPS) to its 1-based line range in the corpus. MAYBE, null and
 // undefined (M5), comes after RANDOM, so that the lines before it, and
 // RANDOM's seeded draws, stay as they were, and ERROR and UNKNOWN (M6)
 // after MAYBE for the same reason.
@@ -41,6 +41,12 @@
 // D5). An entry of theirs may say "any":true itself, when its arguments are
 // unknowns, and one of one argument has "str":"<String(value)>", which a
 // template writes too (R26).
+//
+// CAUSE and PROPS (S1 plan D7) come after UNKNOWN, so the lines before them
+// stay as they were: Errors with a cause, and with own properties, as
+// Node's system errors have them, and both. Their entries have the same
+// forms, and one whose one argument is an Error has "stack":"<its stack>"
+// too, which neither a cause nor a property is part of.
 
 import util from 'node:util';
 import fs from 'node:fs';
@@ -108,6 +114,7 @@ function renumberIds(args) {
     if ('id' in d) { latest.set(d.id, next); d.id = next++; }
     if ('a' in d) d.a.forEach(walk);
     if ('o' in d) d.o.forEach((p) => walk(p[1]));
+    if ('cause' in d) walk(d.cause);
   };
   copy.forEach(walk);
   return copy;
@@ -1317,6 +1324,183 @@ function sectionUNKNOWN() {
 }
 
 // ---------------------------------------------------------------------------
+// CAUSE: Errors with a cause (S1 plan D7), which console.log prints as
+// `[cause]` after the error's own properties, a level deeper: a cause of
+// every kind an unknown holds on every kind of Error, chains of causes to
+// past the depth limit, where an error with a cause is its constructor's
+// name alone, causes in objects and arrays at every indentation, lengths
+// either side of the break length, and cycles back through a cause.
+
+const ERRX = (kind, m, { p, cause } = {}) => ({
+  err: kind, ...(m === undefined ? {} : { m }), ...(p === undefined ? {} : { p }), ...(cause === undefined ? {} : { cause }),
+});
+const caused = (kind, m, cause) => ERRX(kind, m, { cause });
+
+const CAUSES = [
+  ERR('Error', 'inner'), ERR('TypeError'), ERR('RangeError', ''), ERR('URIError', 'l1\nl2'), CODED[0], CODED[8], BUILTIN[10],
+  S('a string'), S(''), S("it's"), S('x\ny'), S('z'.repeat(90)), N(42), N(0), N(-0), N(NaN), N(-Infinity), N(1e21), N(-1.5),
+  B(true), B(false), E(undefined), E(null), O([]), O([['a', N(1)], ['b', S('x')]]),
+  O([['nested', O([['deeper', O([['deepest', N(1)]])]])]]), A([]), A([N(1), N(2), N(3)]), A([S('a'), E(undefined)]),
+  A(Array.from({ length: 30 }, (_, i) => N(i * 11))), UA([N(1), S('a'), E(null), ERR('Error', 'e')]),
+  UO([['u', E(undefined)], ['e', ERR('Error', 'e')]]),
+];
+
+function sectionCAUSE() {
+  const r = 'CAUSE';
+  for (const kind of ERROR_KINDS) {
+    for (const c of CAUSES) addD(r, caused(kind, 'm', c));
+  }
+  // Messages: none of its own, empty, on several lines, long.
+  for (const m of MESSAGES) {
+    for (const c of [S('c'), ERR('Error', 'inner'), E(undefined), O([['a', N(1)]])]) addD(r, caused('Error', m, c));
+  }
+  // Chains, to past the depth limit, ending in each kind of cause.
+  for (const leaf of [ERR('Error', 'e0'), S('s'), N(0), E(undefined), O([['a', N(1)]]), A([N(1)]), CODED[0], ERR('Error', 'l1\nl2')]) {
+    let d = leaf;
+    for (let n = 1; n <= 6; n++) {
+      d = caused(ERROR_KINDS[n % ERROR_KINDS.length], `e${n}`, d);
+      addD(r, d);
+    }
+  }
+  // At depth, in objects and arrays, and beside other values.
+  for (const d of [caused('TypeError', 'fetch failed', ERR('Error', 'inner')), caused('Error', 'm', caused('Error', 'c', S('s'))),
+    caused('Error', 'l1\nl2', S('x\ny')), caused('Error', 'm', O([['a', O([['b', N(1)]])]])), caused('RangeError', undefined, E(null))]) {
+    for (let n = 1; n <= 4; n++) {
+      addD(r, nestO(d, n));
+      addD(r, nestA(d, n));
+    }
+    addD(r, O([['a', N(1)], ['e', d], ['b', S('x')]]));
+    addD(r, O([['first', d], ['second', d]]));
+    addD(r, A([d, d]));
+    addD(r, S('before'), d);
+    addD(r, d, S('after'));
+    addD(r, d, d);
+  }
+  // Lengths either side of the break length, at the top level and indented.
+  for (let len = 30; len <= 80; len++) {
+    addD(r, caused('Error', 'x'.repeat(len), S('c')));
+    addD(r, caused('Error', 'm', S('y'.repeat(len))));
+    addD(r, O([['key', caused('Error', 'x'.repeat(len - 6), N(1))]]));
+    addD(r, A([caused('TypeError', 'x'.repeat(len - 10), ERR('Error', 'inner'))]));
+    addD(r, O([['outer', O([['inner', caused('Error', 'x'.repeat(len - 12), E(null))]])]]));
+  }
+  // Strings long enough to be split, or cut.
+  for (const c of [S('first line\nsecond line ' + 'w'.repeat(70)), S('one\ntwo\nthree'), S('v'.repeat(10005)), S('é😀'.repeat(30))]) {
+    addD(r, caused('Error', 'm', c));
+    addD(r, O([['k', caused('Error', 'm', c)]]));
+  }
+  // Error[], long enough to group, of errors with short causes.
+  for (const n of [6, 7, 8, 12, 16, 26]) {
+    addD(r, A(Array.from({ length: n }, (_, i) => caused('Error', undefined, N(i)))));
+    addD(r, A(Array.from({ length: n }, (_, i) => caused(ERROR_KINDS[i % 3], String.fromCharCode(97 + i), S('c')))));
+    addD(r, A(Array.from({ length: n }, (_, i) => (i % 3 === 0 ? ERR('Error') : caused('Error', undefined, E(undefined))))));
+  }
+  // As unknowns.
+  for (const c of CAUSES.slice(0, 12)) addU(r, UA([caused('Error', 'm', c), N(1)]));
+  addU(r, UO([['data', E(null)], ['error', caused('TypeError', 'fetch failed', ERR('Error', 'connect ECONNREFUSED'))]]));
+  addU(r, caused('Error', 'm', S('c')), E(undefined), N(1));
+  // A cause shared, and cycles back through one.
+  addD(r, O([['a', caused('Error', 'm', O([['x', N(1)]], 1))], ['b', caused('Error', 'n', R(1))]]));
+  addD(r, O([['e', caused('Error', 'm', R(1))]], 1));
+  addD(r, A([caused('Error', 'm', R(1))], 1));
+  addD(r, O([['list', A([caused('TypeError', 'x', O([['up', R(1)]]))])]], 1));
+  addD(r, O([['e', caused('Error', 'm', O([['self', R(1)]], 1))]]));
+}
+
+// ---------------------------------------------------------------------------
+// PROPS: Errors with own properties, as Node's system errors have them,
+// errno, code, syscall, address and port (S1 plan D7, s1-node R9, R11):
+// alone, as a cause, in objects and arrays to past the depth limit, every
+// kind of value and key, lengths either side of the break length, and with
+// a cause too, which comes after every property. SYSTEM[0] is s1-node R9's
+// refusal and SYSTEM[5] R11's bad URL; the others have Node's shapes, with
+// values for the printing, not measured from a failure.
+
+const SYSTEM = [
+  ERRX('Error', 'connect ECONNREFUSED 127.0.0.1:18901', {
+    p: [['errno', N(-61)], ['code', S('ECONNREFUSED')], ['syscall', S('connect')], ['address', S('127.0.0.1')], ['port', N(18901)]],
+  }),
+  ERRX('Error', 'connect ECONNREFUSED ::1:3000', {
+    p: [['errno', N(-61)], ['code', S('ECONNREFUSED')], ['syscall', S('connect')], ['address', S('::1')], ['port', N(3000)]],
+  }),
+  ERRX('Error', 'getaddrinfo ENOTFOUND example.invalid', {
+    p: [['errno', N(-3008)], ['code', S('ENOTFOUND')], ['syscall', S('getaddrinfo')], ['hostname', S('example.invalid')]],
+  }),
+  ERRX('Error', 'connect ETIMEDOUT 10.0.0.1:443', {
+    p: [['errno', N(-60)], ['code', S('ETIMEDOUT')], ['syscall', S('connect')], ['address', S('10.0.0.1')], ['port', N(443)]],
+  }),
+  ERRX('Error', 'read ECONNRESET', { p: [['errno', N(-54)], ['code', S('ECONNRESET')], ['syscall', S('read')]] }),
+  ERRX('TypeError', 'Invalid URL', { p: [['code', S('ERR_INVALID_URL')], ['input', S('not a url')]] }),
+];
+
+const PROP_VALUES = [
+  S(''), S('v'), S("it's"), S('say "hi"'), S('both \' and "'), S('back`tick'), S('x\ny'), S('tab\there'), S('é 😀 日本'),
+  S('nul\x00 esc\x1b'), S('w'.repeat(76)), S('long '.repeat(30)), S('first line\nsecond line ' + 'w'.repeat(70)),
+  S(`a\n${'b'.repeat(72)}`), S(`a\n${'b'.repeat(73)}`), N(0), N(-0), N(NaN), N(Infinity), N(-Infinity), N(1.5), N(-61),
+  N(1e21), N(1e-7), N(2 ** 53), N(4294967295), N(-3008),
+];
+const PROP_KEYS = ['code', 'errno', 'a-b', '$x', '_y', 'with space', 'é', 'A1', '1abc', '', "it's", 'x\ny', '4294967295', '01'];
+
+function sectionPROPS() {
+  const r = 'PROPS';
+  for (const d of SYSTEM) {
+    addD(r, d);
+    addD(r, caused('TypeError', 'fetch failed', d));
+    addD(r, O([['e', d]]));
+    addD(r, A([d]));
+    for (let n = 1; n <= 4; n++) {
+      addD(r, nestO(d, n));
+      addD(r, nestA(d, n));
+      addD(r, nestO(caused('TypeError', 'fetch failed', d), n));
+    }
+    addD(r, S('before'), d);
+    addD(r, d, S('after'));
+  }
+  // Each kind of value, and of key.
+  for (const v of PROP_VALUES) {
+    addD(r, ERRX('Error', 'm', { p: [['k', v]] }));
+    addD(r, O([['e', ERRX('Error', 'm', { p: [['k', v]] })]]));
+  }
+  for (const k of PROP_KEYS) addD(r, ERRX('Error', 'm', { p: [[k, N(1)]] }));
+  addD(r, ERRX('Error', 'm', { p: PROP_KEYS.map((k, i) => [k, N(i)]) }));
+  // Every kind, and every message.
+  for (const kind of ERROR_KINDS) addD(r, ERRX(kind, 'm', { p: [['code', S(`E_${kind.toUpperCase()}`)]] }));
+  for (const m of MESSAGES) addD(r, ERRX('Error', m, { p: [['code', S('E')], ['errno', N(-1)]] }));
+  // How many fit on a line, and lengths either side of the break length.
+  for (let n = 1; n <= 14; n++) addD(r, ERRX('Error', 'm', { p: Array.from({ length: n }, (_, i) => [`k${i}`, N(i)]) }));
+  for (let len = 30; len <= 80; len++) {
+    addD(r, ERRX('Error', 'x'.repeat(len), { p: [['code', S('E')]] }));
+    addD(r, ERRX('Error', 'm', { p: [['code', S('y'.repeat(len))]] }));
+    addD(r, O([['key', ERRX('Error', 'x'.repeat(len - 8), { p: [['errno', N(-61)], ['code', S('ECONNREFUSED')]] })]]));
+    addD(r, A([A([ERRX('RangeError', 'x'.repeat(len - 16), { p: [['n', N(len)]] })])]));
+  }
+  // Both: properties and a cause, which comes last.
+  const both = [
+    ERRX('Error', 'm', { p: [['code', S('E')]], cause: S('c') }),
+    ERRX('Error', 'connect ECONNREFUSED 127.0.0.1:18901', { p: SYSTEM[0].p, cause: ERR('Error', 'inner') }),
+    ERRX('TypeError', 'fetch failed', { p: [['code', S('UND_ERR_SOCKET')]], cause: SYSTEM[4] }),
+    ERRX('Error', 'l1\nl2', { p: [['a', N(1)], ['b', S('x')]], cause: E(undefined) }),
+    ERRX('Error', 'm', { p: [['code', S('E')]], cause: ERRX('Error', 'c', { p: [['code', S('F')]], cause: N(1) }) }),
+  ];
+  for (const d of both) {
+    addD(r, d);
+    addD(r, caused('TypeError', 'fetch failed', d));
+    for (let n = 1; n <= 3; n++) {
+      addD(r, nestO(d, n));
+      addD(r, nestA(d, n));
+    }
+  }
+  // Error[] of them, and as unknowns.
+  for (const n of [2, 7, 12]) {
+    addD(r, A(Array.from({ length: n }, (_, i) => ERRX('Error', undefined, { p: [['n', N(i)]] }))));
+    addD(r, A(Array.from({ length: n }, (_, i) => SYSTEM[i % SYSTEM.length])));
+  }
+  addU(r, UA([SYSTEM[0], N(1), caused('TypeError', 'fetch failed', SYSTEM[0])]));
+  addU(r, UO([['data', E(null)], ['error', caused('TypeError', 'fetch failed', SYSTEM[2])]]));
+  for (const d of SYSTEM) addU(r, d);
+}
+
+// ---------------------------------------------------------------------------
 
 sectionR1();
 sectionR2();
@@ -1337,13 +1521,18 @@ sectionRandom(TOTAL - deliberate);
 sectionMAYBE();
 sectionERROR();
 sectionUNKNOWN();
+sectionCAUSE();
+sectionPROPS();
 
-// The forms an entry of ERROR or UNKNOWN has beyond args and out.
-const extras = (args, any) => ({
+// The forms an entry of ERROR, UNKNOWN, CAUSE or PROPS has beyond args and
+// out; the stack only S1's.
+const S1 = new Set(['CAUSE', 'PROPS']);
+const extras = (section, args, any) => ({
   ...(any ? { any: true } : {}),
   ...(args.length === 1 ? { str: String(decodeArgs(args)[0]) } : {}),
+  ...(S1.has(section) && args.length === 1 && 'err' in args[0] ? { stack: decodeArgs(args)[0].stack } : {}),
 });
-const M6 = new Set(['ERROR', 'UNKNOWN']);
+const M6 = new Set(['ERROR', 'UNKNOWN', ...S1]);
 
 const lines = [];
 const index = {};
@@ -1356,7 +1545,7 @@ entries.forEach(({ section, args, any }, i) => {
     throw err;
   }
   if (M6.has(section)) {
-    const { any: flag, ...more } = extras(args, any);
+    const { any: flag, ...more } = extras(section, args, any);
     lines.push(JSON.stringify({ args, ...(flag ? { any: flag } : {}), out, ...more }));
   } else {
     lines.push(JSON.stringify({ args, out }));
@@ -1375,8 +1564,9 @@ const reread = fs.readFileSync(OUT, 'utf8').split('\n');
 if (reread.pop() !== '') throw new Error('no trailing newline');
 let mismatches = 0;
 for (const [i, text] of reread.entries()) {
-  const { args, out, str } = JSON.parse(text);
-  if (check(args) !== out || (str !== undefined && String(decodeArgs(args)[0]) !== str)) {
+  const { args, out, str, stack } = JSON.parse(text);
+  if (check(args) !== out || (str !== undefined && String(decodeArgs(args)[0]) !== str) ||
+      (stack !== undefined && decodeArgs(args)[0].stack !== stack)) {
     mismatches++;
     if (mismatches <= 5) console.error(`line ${i + 1}: output differs`);
   }

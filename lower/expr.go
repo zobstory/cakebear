@@ -303,6 +303,14 @@ func (l *lowerer) call(n *ast.Node) ir.Expr {
 	if m, ok := l.consoleMember(c.Expression); ok {
 		return l.consoleLog(n, c, m)
 	}
+	// fetch, and its Response's and Headers' methods (fetch.go), before
+	// node:http's, which would take a host receiver for one of its own.
+	if out, handled := l.fetchCall(n, c); handled {
+		return out
+	}
+	if out, handled := l.fetchMethodCall(n, c); handled {
+		return out
+	}
 
 	if out, handled := l.hostCall(n, c); handled {
 		return out

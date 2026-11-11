@@ -23,7 +23,9 @@ import (
 //   - callbacks such as listen's, in the order they were queued, each
 //     followed by the microtasks it queued. Node runs these through
 //     process.nextTick, which an ES module drains after its microtasks;
-//   - timers, as they come due, each followed by its microtasks.
+//   - timers, as they come due, each followed by its microtasks;
+//   - I/O completions, such as a fetch's, after the timers already due, as
+//     Node's poll phase follows its timers phase (R18).
 //
 // The process stays alive while a server is listening, a request's work is
 // still running after its response (liveHandles), or main has a timer
@@ -138,6 +140,7 @@ func run(sigs <-chan os.Signal) {
 		}
 		d.runInbox()
 		d.fireDue()
+		d.runIO()
 		if liveHandles.Load() == 0 && queueEmpty() && !d.pending() {
 			return
 		}

@@ -10926,3 +10926,314 @@
 {"value":{"a":[{"n":"1"},{"ref":1}],"id":1,"any":true},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Array'\n    --- index 1 closes the circle"}
 {"value":{"o":[["self",{"ref":1}]],"id":1,"any":true},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    --- property 'self' closes the circle"}
 {"value":{"a":[{"o":[["up",{"ref":1}]],"any":true}],"id":1,"any":true},"space":{"n":"2"},"any":true,"throws":"TypeError: Converting circular structure to JSON\n    --> starting at object with constructor 'Array'\n    |     index 0 -> object with constructor 'Object'\n    --- property 'up' closes the circle"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"inner"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"inner"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"inner"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"inner"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"inner"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"Cannot set headers after they are sent to the client","code":"ERR_HTTP_HEADERS_SENT"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"s":"s"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"s":"s"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"s":"s"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"s":"s"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"s":"s"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"n":"1"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"n":"1"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"n":"1"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"n":"1"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"n":"1"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"undefined"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"undefined"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"undefined"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"undefined"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"undefined"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"null"}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"null"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"null"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"null"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"e":"null"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"o":[["a",{"n":"1"}]]}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"o":[["a",{"n":"1"}]]}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"o":[["a",{"n":"1"}]]}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"o":[["a",{"n":"1"}]]}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"o":[["a",{"n":"1"}]]}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"a":[{"n":"1"}]}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"a":[{"n":"1"}]}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"a":[{"n":"1"}]}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"a":[{"n":"1"}]}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"a":[{"n":"1"}]}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"b":true}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"b":true}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"b":true}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"b":true}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"b":true}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"Error","m":"m","cause":{"err":"Error","m":"c","cause":{"s":"s"}}},"out":"{}"}
+{"value":{"err":"Error","m":"m","cause":{"err":"Error","m":"c","cause":{"s":"s"}}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"Error","m":"m","cause":{"err":"Error","m":"c","cause":{"s":"s"}}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"Error","m":"m","cause":{"err":"Error","m":"c","cause":{"s":"s"}}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"Error","m":"m","cause":{"err":"Error","m":"c","cause":{"s":"s"}}},"space":{"s":"--"},"out":"{}"}
+{"value":{"err":"RangeError","cause":{"e":"undefined"}},"out":"{}"}
+{"value":{"err":"RangeError","cause":{"e":"undefined"}},"space":{"n":"2"},"out":"{}"}
+{"value":{"err":"RangeError","cause":{"e":"undefined"}},"space":{"s":"\t"},"out":"{}"}
+{"value":{"err":"RangeError","cause":{"e":"undefined"}},"space":{"n":"0.5"},"out":"{}"}
+{"value":{"err":"RangeError","cause":{"e":"undefined"}},"space":{"s":"--"},"out":"{}"}
+{"value":{"o":[["error",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}]]},"out":"{\"error\":{}}"}
+{"value":{"o":[["error",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}]]},"space":{"n":"2"},"out":"{\n  \"error\": {}\n}"}
+{"value":{"o":[["error",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}]]},"space":{"s":"\t"},"out":"{\n\t\"error\": {}\n}"}
+{"value":{"o":[["error",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}]]},"space":{"n":"0.5"},"out":"{\n\"error\": {}\n}"}
+{"value":{"o":[["error",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}]]},"space":{"s":"--"},"out":"{\n--\"error\": {}\n}"}
+{"value":{"a":[{"err":"Error","m":"a","cause":{"n":"1"}},{"err":"Error","m":"b"},{"err":"RangeError","m":"c","cause":{"e":"null"}}]},"out":"[{},{},{}]"}
+{"value":{"a":[{"err":"Error","m":"a","cause":{"n":"1"}},{"err":"Error","m":"b"},{"err":"RangeError","m":"c","cause":{"e":"null"}}]},"space":{"n":"2"},"out":"[\n  {},\n  {},\n  {}\n]"}
+{"value":{"a":[{"err":"Error","m":"a","cause":{"n":"1"}},{"err":"Error","m":"b"},{"err":"RangeError","m":"c","cause":{"e":"null"}}]},"space":{"s":"\t"},"out":"[\n\t{},\n\t{},\n\t{}\n]"}
+{"value":{"a":[{"err":"Error","m":"a","cause":{"n":"1"}},{"err":"Error","m":"b"},{"err":"RangeError","m":"c","cause":{"e":"null"}}]},"space":{"n":"0.5"},"out":"[\n{},\n{},\n{}\n]"}
+{"value":{"a":[{"err":"Error","m":"a","cause":{"n":"1"}},{"err":"Error","m":"b"},{"err":"RangeError","m":"c","cause":{"e":"null"}}]},"space":{"s":"--"},"out":"[\n--{},\n--{},\n--{}\n]"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"x","cause":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}}]}]]}]]},"out":"{\"nested\":{\"deeper\":[{}]}}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"x","cause":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}}]}]]}]]},"space":{"n":"2"},"out":"{\n  \"nested\": {\n    \"deeper\": [\n      {}\n    ]\n  }\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"x","cause":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}}]}]]}]]},"space":{"s":"\t"},"out":"{\n\t\"nested\": {\n\t\t\"deeper\": [\n\t\t\t{}\n\t\t]\n\t}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"x","cause":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}}]}]]}]]},"space":{"n":"0.5"},"out":"{\n\"nested\": {\n\"deeper\": [\n{}\n]\n}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"x","cause":{"err":"RangeError","m":"options.port should be >= 0 and < 65536. Received type number (70000).","code":"ERR_SOCKET_BAD_PORT"}}]}]]}]]},"space":{"s":"--"},"out":"{\n--\"nested\": {\n----\"deeper\": [\n------{}\n----]\n--}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"m","cause":{"ref":1}}]],"id":1},"out":"{\"e\":{}}"}
+{"value":{"o":[["e",{"err":"Error","m":"m","cause":{"ref":1}}]],"id":1},"space":{"n":"2"},"out":"{\n  \"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"m","cause":{"ref":1}}]],"id":1},"space":{"s":"\t"},"out":"{\n\t\"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"m","cause":{"ref":1}}]],"id":1},"space":{"n":"0.5"},"out":"{\n\"e\": {}\n}"}
+{"value":{"o":[["e",{"err":"Error","m":"m","cause":{"ref":1}}]],"id":1},"space":{"s":"--"},"out":"{\n--\"e\": {}\n}"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"ref":1}}],"id":1},"out":"[{}]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"ref":1}}],"id":1},"space":{"n":"2"},"out":"[\n  {}\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"ref":1}}],"id":1},"space":{"s":"\t"},"out":"[\n\t{}\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"ref":1}}],"id":1},"space":{"n":"0.5"},"out":"[\n{}\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"ref":1}}],"id":1},"space":{"s":"--"},"out":"[\n--{}\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"s":"c"}},{"n":"1"},{"e":"undefined"}],"any":true},"any":true,"out":"[{},1,null]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"s":"c"}},{"n":"1"},{"e":"undefined"}],"any":true},"space":{"n":"2"},"any":true,"out":"[\n  {},\n  1,\n  null\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"s":"c"}},{"n":"1"},{"e":"undefined"}],"any":true},"space":{"s":"\t"},"any":true,"out":"[\n\t{},\n\t1,\n\tnull\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"s":"c"}},{"n":"1"},{"e":"undefined"}],"any":true},"space":{"n":"0.5"},"any":true,"out":"[\n{},\n1,\nnull\n]"}
+{"value":{"a":[{"err":"Error","m":"m","cause":{"s":"c"}},{"n":"1"},{"e":"undefined"}],"any":true},"space":{"s":"--"},"any":true,"out":"[\n--{},\n--1,\n--null\n]"}
+{"value":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},"out":"{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901}"}
+{"value":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},"space":{"n":"2"},"out":"{\n  \"errno\": -61,\n  \"code\": \"ECONNREFUSED\",\n  \"syscall\": \"connect\",\n  \"address\": \"127.0.0.1\",\n  \"port\": 18901\n}"}
+{"value":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},"space":{"s":"\t"},"out":"{\n\t\"errno\": -61,\n\t\"code\": \"ECONNREFUSED\",\n\t\"syscall\": \"connect\",\n\t\"address\": \"127.0.0.1\",\n\t\"port\": 18901\n}"}
+{"value":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},"space":{"n":"0.5"},"out":"{\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n}"}
+{"value":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},"space":{"s":"--"},"out":"{\n--\"errno\": -61,\n--\"code\": \"ECONNREFUSED\",\n--\"syscall\": \"connect\",\n--\"address\": \"127.0.0.1\",\n--\"port\": 18901\n}"}
+{"value":{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},"out":"{\"errno\":-3008,\"code\":\"ENOTFOUND\",\"syscall\":\"getaddrinfo\",\"hostname\":\"example.invalid\"}"}
+{"value":{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},"space":{"n":"2"},"out":"{\n  \"errno\": -3008,\n  \"code\": \"ENOTFOUND\",\n  \"syscall\": \"getaddrinfo\",\n  \"hostname\": \"example.invalid\"\n}"}
+{"value":{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},"space":{"s":"\t"},"out":"{\n\t\"errno\": -3008,\n\t\"code\": \"ENOTFOUND\",\n\t\"syscall\": \"getaddrinfo\",\n\t\"hostname\": \"example.invalid\"\n}"}
+{"value":{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},"space":{"n":"0.5"},"out":"{\n\"errno\": -3008,\n\"code\": \"ENOTFOUND\",\n\"syscall\": \"getaddrinfo\",\n\"hostname\": \"example.invalid\"\n}"}
+{"value":{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},"space":{"s":"--"},"out":"{\n--\"errno\": -3008,\n--\"code\": \"ENOTFOUND\",\n--\"syscall\": \"getaddrinfo\",\n--\"hostname\": \"example.invalid\"\n}"}
+{"value":{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},"out":"{\"errno\":-54,\"code\":\"ECONNRESET\",\"syscall\":\"read\"}"}
+{"value":{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},"space":{"n":"2"},"out":"{\n  \"errno\": -54,\n  \"code\": \"ECONNRESET\",\n  \"syscall\": \"read\"\n}"}
+{"value":{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},"space":{"s":"\t"},"out":"{\n\t\"errno\": -54,\n\t\"code\": \"ECONNRESET\",\n\t\"syscall\": \"read\"\n}"}
+{"value":{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},"space":{"n":"0.5"},"out":"{\n\"errno\": -54,\n\"code\": \"ECONNRESET\",\n\"syscall\": \"read\"\n}"}
+{"value":{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},"space":{"s":"--"},"out":"{\n--\"errno\": -54,\n--\"code\": \"ECONNRESET\",\n--\"syscall\": \"read\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]},"out":"{\"code\":\"ERR_INVALID_URL\",\"input\":\"not a url\"}"}
+{"value":{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]},"space":{"n":"2"},"out":"{\n  \"code\": \"ERR_INVALID_URL\",\n  \"input\": \"not a url\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]},"space":{"s":"\t"},"out":"{\n\t\"code\": \"ERR_INVALID_URL\",\n\t\"input\": \"not a url\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]},"space":{"n":"0.5"},"out":"{\n\"code\": \"ERR_INVALID_URL\",\n\"input\": \"not a url\"\n}"}
+{"value":{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]},"space":{"s":"--"},"out":"{\n--\"code\": \"ERR_INVALID_URL\",\n--\"input\": \"not a url\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":""}]]},"out":"{\"k\":\"\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":""}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":""}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":""}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":""}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"v"}]]},"out":"{\"k\":\"v\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"v"}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"v\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"v"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"v\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"v"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"v\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"v"}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"v\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"say \"hi\""}]]},"out":"{\"k\":\"say \\\"hi\\\"\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"say \"hi\""}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"say \\\"hi\\\"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"say \"hi\""}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"say \\\"hi\\\"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"say \"hi\""}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"say \\\"hi\\\"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"say \"hi\""}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"say \\\"hi\\\"\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"back\\slash"}]]},"out":"{\"k\":\"back\\\\slash\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"back\\slash"}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"back\\\\slash\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"back\\slash"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"back\\\\slash\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"back\\slash"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"back\\\\slash\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"back\\slash"}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"back\\\\slash\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"x\ny\r\t"}]]},"out":"{\"k\":\"x\\ny\\r\\t\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"x\ny\r\t"}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"x\\ny\\r\\t\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"x\ny\r\t"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"x\\ny\\r\\t\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"x\ny\r\t"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"x\\ny\\r\\t\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"x\ny\r\t"}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"x\\ny\\r\\t\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"\u0000\u001f"}]]},"out":"{\"k\":\"\\u0000\\u001f\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"\u0000\u001f"}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"\\u0000\\u001f\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"\u0000\u001f"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"\\u0000\\u001f\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"\u0000\u001f"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"\\u0000\\u001f\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"\u0000\u001f"}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"\\u0000\\u001f\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"  "}]]},"out":"{\"k\":\"  \"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"  "}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"  \"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"  "}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"  \"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"  "}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"  \"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"  "}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"  \"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"é 😀 日本"}]]},"out":"{\"k\":\"é 😀 日本\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"é 😀 日本"}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"é 😀 日本\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"é 😀 日本"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"é 😀 日本\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"é 😀 日本"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"é 😀 日本\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"s":"é 😀 日本"}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"é 😀 日本\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[55296]}]]},"out":"{\"k\":\"\\ud800\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[55296]}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"\\ud800\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[55296]}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"\\ud800\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[55296]}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"\\ud800\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[55296]}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"\\ud800\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[97,56320,98]}]]},"out":"{\"k\":\"a\\udc00b\"}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[97,56320,98]}]]},"space":{"n":"2"},"out":"{\n  \"k\": \"a\\udc00b\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[97,56320,98]}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": \"a\\udc00b\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[97,56320,98]}]]},"space":{"n":"0.5"},"out":"{\n\"k\": \"a\\udc00b\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"u":[97,56320,98]}]]},"space":{"s":"--"},"out":"{\n--\"k\": \"a\\udc00b\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"0"}]]},"out":"{\"k\":0}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"0"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"0"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"0"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"0"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-0"}]]},"out":"{\"k\":0}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-0"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-0"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-0"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-0"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 0\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"NaN"}]]},"out":"{\"k\":null}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"NaN"}]]},"space":{"n":"2"},"out":"{\n  \"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"NaN"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"NaN"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"NaN"}]]},"space":{"s":"--"},"out":"{\n--\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"Infinity"}]]},"out":"{\"k\":null}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"Infinity"}]]},"space":{"n":"2"},"out":"{\n  \"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"Infinity"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"Infinity"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"Infinity"}]]},"space":{"s":"--"},"out":"{\n--\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-Infinity"}]]},"out":"{\"k\":null}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-Infinity"}]]},"space":{"n":"2"},"out":"{\n  \"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-Infinity"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-Infinity"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-Infinity"}]]},"space":{"s":"--"},"out":"{\n--\"k\": null\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1.5"}]]},"out":"{\"k\":1.5}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1.5"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 1.5\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1.5"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 1.5\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1.5"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 1.5\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1.5"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 1.5\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-61"}]]},"out":"{\"k\":-61}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-61"}]]},"space":{"n":"2"},"out":"{\n  \"k\": -61\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-61"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": -61\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-61"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": -61\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"-61"}]]},"space":{"s":"--"},"out":"{\n--\"k\": -61\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e+21"}]]},"out":"{\"k\":1e+21}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e+21"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 1e+21\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e+21"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 1e+21\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e+21"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 1e+21\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e+21"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 1e+21\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e-7"}]]},"out":"{\"k\":1e-7}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e-7"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 1e-7\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e-7"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 1e-7\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e-7"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 1e-7\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"1e-7"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 1e-7\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"9007199254740992"}]]},"out":"{\"k\":9007199254740992}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"9007199254740992"}]]},"space":{"n":"2"},"out":"{\n  \"k\": 9007199254740992\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"9007199254740992"}]]},"space":{"s":"\t"},"out":"{\n\t\"k\": 9007199254740992\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"9007199254740992"}]]},"space":{"n":"0.5"},"out":"{\n\"k\": 9007199254740992\n}"}
+{"value":{"err":"Error","m":"m","p":[["k",{"n":"9007199254740992"}]]},"space":{"s":"--"},"out":"{\n--\"k\": 9007199254740992\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"1"}]]},"out":"{\"code\":1}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"code\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"code\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"code\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"code\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["a-b",{"n":"1"}]]},"out":"{\"a-b\":1}"}
+{"value":{"err":"Error","m":"m","p":[["a-b",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"a-b\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["a-b",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"a-b\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["a-b",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"a-b\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["a-b",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"a-b\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["$x",{"n":"1"}]]},"out":"{\"$x\":1}"}
+{"value":{"err":"Error","m":"m","p":[["$x",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"$x\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["$x",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"$x\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["$x",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"$x\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["$x",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"$x\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["with space",{"n":"1"}]]},"out":"{\"with space\":1}"}
+{"value":{"err":"Error","m":"m","p":[["with space",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"with space\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["with space",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"with space\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["with space",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"with space\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["with space",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"with space\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["é",{"n":"1"}]]},"out":"{\"é\":1}"}
+{"value":{"err":"Error","m":"m","p":[["é",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"é\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["é",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"é\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["é",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"é\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["é",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"é\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["",{"n":"1"}]]},"out":"{\"\":1}"}
+{"value":{"err":"Error","m":"m","p":[["",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["say \"hi\"",{"n":"1"}]]},"out":"{\"say \\\"hi\\\"\":1}"}
+{"value":{"err":"Error","m":"m","p":[["say \"hi\"",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"say \\\"hi\\\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["say \"hi\"",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"say \\\"hi\\\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["say \"hi\"",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"say \\\"hi\\\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["say \"hi\"",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"say \\\"hi\\\"\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["x\ny",{"n":"1"}]]},"out":"{\"x\\ny\":1}"}
+{"value":{"err":"Error","m":"m","p":[["x\ny",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"x\\ny\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["x\ny",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"x\\ny\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["x\ny",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"x\\ny\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["x\ny",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"x\\ny\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["4294967295",{"n":"1"}]]},"out":"{\"4294967295\":1}"}
+{"value":{"err":"Error","m":"m","p":[["4294967295",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"4294967295\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["4294967295",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"4294967295\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["4294967295",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"4294967295\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["4294967295",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"4294967295\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["01",{"n":"1"}]]},"out":"{\"01\":1}"}
+{"value":{"err":"Error","m":"m","p":[["01",{"n":"1"}]]},"space":{"n":"2"},"out":"{\n  \"01\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["01",{"n":"1"}]]},"space":{"s":"\t"},"out":"{\n\t\"01\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["01",{"n":"1"}]]},"space":{"n":"0.5"},"out":"{\n\"01\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["01",{"n":"1"}]]},"space":{"s":"--"},"out":"{\n--\"01\": 1\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"0"}],["a-b",{"n":"1"}],["$x",{"n":"2"}],["with space",{"n":"3"}],["é",{"n":"4"}],["",{"n":"5"}],["say \"hi\"",{"n":"6"}],["x\ny",{"n":"7"}],["4294967295",{"n":"8"}],["01",{"n":"9"}]]},"out":"{\"code\":0,\"a-b\":1,\"$x\":2,\"with space\":3,\"é\":4,\"\":5,\"say \\\"hi\\\"\":6,\"x\\ny\":7,\"4294967295\":8,\"01\":9}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"0"}],["a-b",{"n":"1"}],["$x",{"n":"2"}],["with space",{"n":"3"}],["é",{"n":"4"}],["",{"n":"5"}],["say \"hi\"",{"n":"6"}],["x\ny",{"n":"7"}],["4294967295",{"n":"8"}],["01",{"n":"9"}]]},"space":{"n":"2"},"out":"{\n  \"code\": 0,\n  \"a-b\": 1,\n  \"$x\": 2,\n  \"with space\": 3,\n  \"é\": 4,\n  \"\": 5,\n  \"say \\\"hi\\\"\": 6,\n  \"x\\ny\": 7,\n  \"4294967295\": 8,\n  \"01\": 9\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"0"}],["a-b",{"n":"1"}],["$x",{"n":"2"}],["with space",{"n":"3"}],["é",{"n":"4"}],["",{"n":"5"}],["say \"hi\"",{"n":"6"}],["x\ny",{"n":"7"}],["4294967295",{"n":"8"}],["01",{"n":"9"}]]},"space":{"s":"\t"},"out":"{\n\t\"code\": 0,\n\t\"a-b\": 1,\n\t\"$x\": 2,\n\t\"with space\": 3,\n\t\"é\": 4,\n\t\"\": 5,\n\t\"say \\\"hi\\\"\": 6,\n\t\"x\\ny\": 7,\n\t\"4294967295\": 8,\n\t\"01\": 9\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"0"}],["a-b",{"n":"1"}],["$x",{"n":"2"}],["with space",{"n":"3"}],["é",{"n":"4"}],["",{"n":"5"}],["say \"hi\"",{"n":"6"}],["x\ny",{"n":"7"}],["4294967295",{"n":"8"}],["01",{"n":"9"}]]},"space":{"n":"0.5"},"out":"{\n\"code\": 0,\n\"a-b\": 1,\n\"$x\": 2,\n\"with space\": 3,\n\"é\": 4,\n\"\": 5,\n\"say \\\"hi\\\"\": 6,\n\"x\\ny\": 7,\n\"4294967295\": 8,\n\"01\": 9\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"n":"0"}],["a-b",{"n":"1"}],["$x",{"n":"2"}],["with space",{"n":"3"}],["é",{"n":"4"}],["",{"n":"5"}],["say \"hi\"",{"n":"6"}],["x\ny",{"n":"7"}],["4294967295",{"n":"8"}],["01",{"n":"9"}]]},"space":{"s":"--"},"out":"{\n--\"code\": 0,\n--\"a-b\": 1,\n--\"$x\": 2,\n--\"with space\": 3,\n--\"é\": 4,\n--\"\": 5,\n--\"say \\\"hi\\\"\": 6,\n--\"x\\ny\": 7,\n--\"4294967295\": 8,\n--\"01\": 9\n}"}
+{"value":{"err":"Error","m":"m","p":[["k0",{"n":"0"}],["k1",{"s":"v1"}],["k2",{"n":"2"}],["k3",{"s":"v3"}],["k4",{"n":"4"}],["k5",{"s":"v5"}],["k6",{"n":"6"}],["k7",{"s":"v7"}],["k8",{"n":"8"}],["k9",{"s":"v9"}],["k10",{"n":"10"}],["k11",{"s":"v11"}]]},"out":"{\"k0\":0,\"k1\":\"v1\",\"k2\":2,\"k3\":\"v3\",\"k4\":4,\"k5\":\"v5\",\"k6\":6,\"k7\":\"v7\",\"k8\":8,\"k9\":\"v9\",\"k10\":10,\"k11\":\"v11\"}"}
+{"value":{"err":"Error","m":"m","p":[["k0",{"n":"0"}],["k1",{"s":"v1"}],["k2",{"n":"2"}],["k3",{"s":"v3"}],["k4",{"n":"4"}],["k5",{"s":"v5"}],["k6",{"n":"6"}],["k7",{"s":"v7"}],["k8",{"n":"8"}],["k9",{"s":"v9"}],["k10",{"n":"10"}],["k11",{"s":"v11"}]]},"space":{"n":"2"},"out":"{\n  \"k0\": 0,\n  \"k1\": \"v1\",\n  \"k2\": 2,\n  \"k3\": \"v3\",\n  \"k4\": 4,\n  \"k5\": \"v5\",\n  \"k6\": 6,\n  \"k7\": \"v7\",\n  \"k8\": 8,\n  \"k9\": \"v9\",\n  \"k10\": 10,\n  \"k11\": \"v11\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k0",{"n":"0"}],["k1",{"s":"v1"}],["k2",{"n":"2"}],["k3",{"s":"v3"}],["k4",{"n":"4"}],["k5",{"s":"v5"}],["k6",{"n":"6"}],["k7",{"s":"v7"}],["k8",{"n":"8"}],["k9",{"s":"v9"}],["k10",{"n":"10"}],["k11",{"s":"v11"}]]},"space":{"s":"\t"},"out":"{\n\t\"k0\": 0,\n\t\"k1\": \"v1\",\n\t\"k2\": 2,\n\t\"k3\": \"v3\",\n\t\"k4\": 4,\n\t\"k5\": \"v5\",\n\t\"k6\": 6,\n\t\"k7\": \"v7\",\n\t\"k8\": 8,\n\t\"k9\": \"v9\",\n\t\"k10\": 10,\n\t\"k11\": \"v11\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k0",{"n":"0"}],["k1",{"s":"v1"}],["k2",{"n":"2"}],["k3",{"s":"v3"}],["k4",{"n":"4"}],["k5",{"s":"v5"}],["k6",{"n":"6"}],["k7",{"s":"v7"}],["k8",{"n":"8"}],["k9",{"s":"v9"}],["k10",{"n":"10"}],["k11",{"s":"v11"}]]},"space":{"n":"0.5"},"out":"{\n\"k0\": 0,\n\"k1\": \"v1\",\n\"k2\": 2,\n\"k3\": \"v3\",\n\"k4\": 4,\n\"k5\": \"v5\",\n\"k6\": 6,\n\"k7\": \"v7\",\n\"k8\": 8,\n\"k9\": \"v9\",\n\"k10\": 10,\n\"k11\": \"v11\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["k0",{"n":"0"}],["k1",{"s":"v1"}],["k2",{"n":"2"}],["k3",{"s":"v3"}],["k4",{"n":"4"}],["k5",{"s":"v5"}],["k6",{"n":"6"}],["k7",{"s":"v7"}],["k8",{"n":"8"}],["k9",{"s":"v9"}],["k10",{"n":"10"}],["k11",{"s":"v11"}]]},"space":{"s":"--"},"out":"{\n--\"k0\": 0,\n--\"k1\": \"v1\",\n--\"k2\": 2,\n--\"k3\": \"v3\",\n--\"k4\": 4,\n--\"k5\": \"v5\",\n--\"k6\": 6,\n--\"k7\": \"v7\",\n--\"k8\": 8,\n--\"k9\": \"v9\",\n--\"k10\": 10,\n--\"k11\": \"v11\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"s":"c"}},"out":"{\"code\":\"E\"}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"s":"c"}},"space":{"n":"2"},"out":"{\n  \"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"s":"c"}},"space":{"s":"\t"},"out":"{\n\t\"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"s":"c"}},"space":{"n":"0.5"},"out":"{\n\"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"s":"c"}},"space":{"s":"--"},"out":"{\n--\"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"err":"Error","m":"c","p":[["code",{"s":"F"}]]}},"out":"{\"code\":\"E\"}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"err":"Error","m":"c","p":[["code",{"s":"F"}]]}},"space":{"n":"2"},"out":"{\n  \"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"err":"Error","m":"c","p":[["code",{"s":"F"}]]}},"space":{"s":"\t"},"out":"{\n\t\"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"err":"Error","m":"c","p":[["code",{"s":"F"}]]}},"space":{"n":"0.5"},"out":"{\n\"code\": \"E\"\n}"}
+{"value":{"err":"Error","m":"m","p":[["code",{"s":"E"}]],"cause":{"err":"Error","m":"c","p":[["code",{"s":"F"}]]}},"space":{"s":"--"},"out":"{\n--\"code\": \"E\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}],["b",{"s":"x"}]]},"out":"{\"a\":1,\"e\":{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901},\"b\":\"x\"}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}],["b",{"s":"x"}]]},"space":{"n":"2"},"out":"{\n  \"a\": 1,\n  \"e\": {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  },\n  \"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}],["b",{"s":"x"}]]},"space":{"s":"\t"},"out":"{\n\t\"a\": 1,\n\t\"e\": {\n\t\t\"errno\": -61,\n\t\t\"code\": \"ECONNREFUSED\",\n\t\t\"syscall\": \"connect\",\n\t\t\"address\": \"127.0.0.1\",\n\t\t\"port\": 18901\n\t},\n\t\"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}],["b",{"s":"x"}]]},"space":{"n":"0.5"},"out":"{\n\"a\": 1,\n\"e\": {\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n},\n\"b\": \"x\"\n}"}
+{"value":{"o":[["a",{"n":"1"}],["e",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}],["b",{"s":"x"}]]},"space":{"s":"--"},"out":"{\n--\"a\": 1,\n--\"e\": {\n----\"errno\": -61,\n----\"code\": \"ECONNREFUSED\",\n----\"syscall\": \"connect\",\n----\"address\": \"127.0.0.1\",\n----\"port\": 18901\n--},\n--\"b\": \"x\"\n}"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]}]},"out":"[{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901},{\"errno\":-3008,\"code\":\"ENOTFOUND\",\"syscall\":\"getaddrinfo\",\"hostname\":\"example.invalid\"},{\"errno\":-54,\"code\":\"ECONNRESET\",\"syscall\":\"read\"},{\"code\":\"ERR_INVALID_URL\",\"input\":\"not a url\"}]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]}]},"space":{"n":"2"},"out":"[\n  {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  },\n  {\n    \"errno\": -3008,\n    \"code\": \"ENOTFOUND\",\n    \"syscall\": \"getaddrinfo\",\n    \"hostname\": \"example.invalid\"\n  },\n  {\n    \"errno\": -54,\n    \"code\": \"ECONNRESET\",\n    \"syscall\": \"read\"\n  },\n  {\n    \"code\": \"ERR_INVALID_URL\",\n    \"input\": \"not a url\"\n  }\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]}]},"space":{"s":"\t"},"out":"[\n\t{\n\t\t\"errno\": -61,\n\t\t\"code\": \"ECONNREFUSED\",\n\t\t\"syscall\": \"connect\",\n\t\t\"address\": \"127.0.0.1\",\n\t\t\"port\": 18901\n\t},\n\t{\n\t\t\"errno\": -3008,\n\t\t\"code\": \"ENOTFOUND\",\n\t\t\"syscall\": \"getaddrinfo\",\n\t\t\"hostname\": \"example.invalid\"\n\t},\n\t{\n\t\t\"errno\": -54,\n\t\t\"code\": \"ECONNRESET\",\n\t\t\"syscall\": \"read\"\n\t},\n\t{\n\t\t\"code\": \"ERR_INVALID_URL\",\n\t\t\"input\": \"not a url\"\n\t}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]}]},"space":{"n":"0.5"},"out":"[\n{\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n},\n{\n\"errno\": -3008,\n\"code\": \"ENOTFOUND\",\n\"syscall\": \"getaddrinfo\",\n\"hostname\": \"example.invalid\"\n},\n{\n\"errno\": -54,\n\"code\": \"ECONNRESET\",\n\"syscall\": \"read\"\n},\n{\n\"code\": \"ERR_INVALID_URL\",\n\"input\": \"not a url\"\n}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]},{"err":"Error","m":"read ECONNRESET","p":[["errno",{"n":"-54"}],["code",{"s":"ECONNRESET"}],["syscall",{"s":"read"}]]},{"err":"TypeError","m":"Invalid URL","p":[["code",{"s":"ERR_INVALID_URL"}],["input",{"s":"not a url"}]]}]},"space":{"s":"--"},"out":"[\n--{\n----\"errno\": -61,\n----\"code\": \"ECONNREFUSED\",\n----\"syscall\": \"connect\",\n----\"address\": \"127.0.0.1\",\n----\"port\": 18901\n--},\n--{\n----\"errno\": -3008,\n----\"code\": \"ENOTFOUND\",\n----\"syscall\": \"getaddrinfo\",\n----\"hostname\": \"example.invalid\"\n--},\n--{\n----\"errno\": -54,\n----\"code\": \"ECONNRESET\",\n----\"syscall\": \"read\"\n--},\n--{\n----\"code\": \"ERR_INVALID_URL\",\n----\"input\": \"not a url\"\n--}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"e":"null"},{"e":"undefined"}]},"out":"[{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901},null,null]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"e":"null"},{"e":"undefined"}]},"space":{"n":"2"},"out":"[\n  {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  },\n  null,\n  null\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"e":"null"},{"e":"undefined"}]},"space":{"s":"\t"},"out":"[\n\t{\n\t\t\"errno\": -61,\n\t\t\"code\": \"ECONNREFUSED\",\n\t\t\"syscall\": \"connect\",\n\t\t\"address\": \"127.0.0.1\",\n\t\t\"port\": 18901\n\t},\n\tnull,\n\tnull\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"e":"null"},{"e":"undefined"}]},"space":{"n":"0.5"},"out":"[\n{\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n},\nnull,\nnull\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"e":"null"},{"e":"undefined"}]},"space":{"s":"--"},"out":"[\n--{\n----\"errno\": -61,\n----\"code\": \"ECONNREFUSED\",\n----\"syscall\": \"connect\",\n----\"address\": \"127.0.0.1\",\n----\"port\": 18901\n--},\n--null,\n--null\n]"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]}]}]]}]]},"out":"{\"nested\":{\"deeper\":[{\"errno\":-3008,\"code\":\"ENOTFOUND\",\"syscall\":\"getaddrinfo\",\"hostname\":\"example.invalid\"}]}}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]}]}]]}]]},"space":{"n":"2"},"out":"{\n  \"nested\": {\n    \"deeper\": [\n      {\n        \"errno\": -3008,\n        \"code\": \"ENOTFOUND\",\n        \"syscall\": \"getaddrinfo\",\n        \"hostname\": \"example.invalid\"\n      }\n    ]\n  }\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]}]}]]}]]},"space":{"s":"\t"},"out":"{\n\t\"nested\": {\n\t\t\"deeper\": [\n\t\t\t{\n\t\t\t\t\"errno\": -3008,\n\t\t\t\t\"code\": \"ENOTFOUND\",\n\t\t\t\t\"syscall\": \"getaddrinfo\",\n\t\t\t\t\"hostname\": \"example.invalid\"\n\t\t\t}\n\t\t]\n\t}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]}]}]]}]]},"space":{"n":"0.5"},"out":"{\n\"nested\": {\n\"deeper\": [\n{\n\"errno\": -3008,\n\"code\": \"ENOTFOUND\",\n\"syscall\": \"getaddrinfo\",\n\"hostname\": \"example.invalid\"\n}\n]\n}\n}"}
+{"value":{"o":[["nested",{"o":[["deeper",{"a":[{"err":"Error","m":"getaddrinfo ENOTFOUND example.invalid","p":[["errno",{"n":"-3008"}],["code",{"s":"ENOTFOUND"}],["syscall",{"s":"getaddrinfo"}],["hostname",{"s":"example.invalid"}]]}]}]]}]]},"space":{"s":"--"},"out":"{\n--\"nested\": {\n----\"deeper\": [\n------{\n--------\"errno\": -3008,\n--------\"code\": \"ENOTFOUND\",\n--------\"syscall\": \"getaddrinfo\",\n--------\"hostname\": \"example.invalid\"\n------}\n----]\n--}\n}"}
+{"value":{"o":[["outer",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],["inner",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]]},"out":"{\"outer\":{},\"inner\":{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901}}"}
+{"value":{"o":[["outer",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],["inner",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]]},"space":{"n":"2"},"out":"{\n  \"outer\": {},\n  \"inner\": {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  }\n}"}
+{"value":{"o":[["outer",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],["inner",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]]},"space":{"s":"\t"},"out":"{\n\t\"outer\": {},\n\t\"inner\": {\n\t\t\"errno\": -61,\n\t\t\"code\": \"ECONNREFUSED\",\n\t\t\"syscall\": \"connect\",\n\t\t\"address\": \"127.0.0.1\",\n\t\t\"port\": 18901\n\t}\n}"}
+{"value":{"o":[["outer",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],["inner",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]]},"space":{"n":"0.5"},"out":"{\n\"outer\": {},\n\"inner\": {\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n}\n}"}
+{"value":{"o":[["outer",{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],["inner",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]]},"space":{"s":"--"},"out":"{\n--\"outer\": {},\n--\"inner\": {\n----\"errno\": -61,\n----\"code\": \"ECONNREFUSED\",\n----\"syscall\": \"connect\",\n----\"address\": \"127.0.0.1\",\n----\"port\": 18901\n--}\n}"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"n":"1"},{"e":"undefined"},{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],"any":true},"any":true,"out":"[{\"errno\":-61,\"code\":\"ECONNREFUSED\",\"syscall\":\"connect\",\"address\":\"127.0.0.1\",\"port\":18901},1,null,{}]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"n":"1"},{"e":"undefined"},{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],"any":true},"space":{"n":"2"},"any":true,"out":"[\n  {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  },\n  1,\n  null,\n  {}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"n":"1"},{"e":"undefined"},{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],"any":true},"space":{"s":"\t"},"any":true,"out":"[\n\t{\n\t\t\"errno\": -61,\n\t\t\"code\": \"ECONNREFUSED\",\n\t\t\"syscall\": \"connect\",\n\t\t\"address\": \"127.0.0.1\",\n\t\t\"port\": 18901\n\t},\n\t1,\n\tnull,\n\t{}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"n":"1"},{"e":"undefined"},{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],"any":true},"space":{"n":"0.5"},"any":true,"out":"[\n{\n\"errno\": -61,\n\"code\": \"ECONNREFUSED\",\n\"syscall\": \"connect\",\n\"address\": \"127.0.0.1\",\n\"port\": 18901\n},\n1,\nnull,\n{}\n]"}
+{"value":{"a":[{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]},{"n":"1"},{"e":"undefined"},{"err":"TypeError","m":"fetch failed","cause":{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}}],"any":true},"space":{"s":"--"},"any":true,"out":"[\n--{\n----\"errno\": -61,\n----\"code\": \"ECONNREFUSED\",\n----\"syscall\": \"connect\",\n----\"address\": \"127.0.0.1\",\n----\"port\": 18901\n--},\n--1,\n--null,\n--{}\n]"}
+{"value":{"o":[["data",{"e":"null"}],["error",{"err":"Error","m":"connect ECONNREFUSED 127.0.0.1:18901","p":[["errno",{"n":"-61"}],["code",{"s":"ECONNREFUSED"}],["syscall",{"s":"connect"}],["address",{"s":"127.0.0.1"}],["port",{"n":"18901"}]]}]],"any":true},"space":{"n":"2"},"any":true,"out":"{\n  \"data\": null,\n  \"error\": {\n    \"errno\": -61,\n    \"code\": \"ECONNREFUSED\",\n    \"syscall\": \"connect\",\n    \"address\": \"127.0.0.1\",\n    \"port\": 18901\n  }\n}"}

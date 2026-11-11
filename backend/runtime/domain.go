@@ -55,12 +55,27 @@ type Domain struct {
 	// parked holds the async calls waiting in an Await (parked.go).
 	parked []*Co
 
+	// inflight counts the I/O this domain started that hasn't completed (a
+	// fetch, fetch.go). Each is pending work, as a spawn is: a domain with a
+	// fetch in flight waits for it (R17).
+	inflight int
+	// afterDrain holds what runs when the microtask queue is empty, before
+	// any macrotask: a body read whose bytes are in, which Node settles at
+	// that point, after any chain of microtasks and before a timer (R19).
+	afterDrain []func()
+
 	// The inbox is the one part of a domain other goroutines touch: a spawned
 	// domain posts its result here. It has its own lock, and wake tells the
 	// driver, which may be waiting on nothing but the inbox.
 	inboxMu sync.Mutex
 	inbox   []func()
 	wake    chan struct{}
+	// io is the inbox's other half, for I/O completions: what a fetch's
+	// goroutine posts. They run after the timers already due, as Node's
+	// poll phase follows its timers phase (R18, S1 plan D11), where a
+	// spawn's result keeps its place before them: under the shim that runs
+	// a program with spawn under Node, a spawn's result is a microtask.
+	io []func()
 }
 
 func newDomain() *Domain {
@@ -93,6 +108,32 @@ func (d *Domain) runInbox() {
 	}
 }
 
+// postIO queues f, an I/O completion, to run in d as a task, from any
+// goroutine, and wakes d's driver.
+func (d *Domain) postIO(f func()) {
+	d.inboxMu.Lock()
+	d.io = append(d.io, f)
+	d.inboxMu.Unlock()
+	select {
+	case d.wake <- struct{}{}:
+	default:
+	}
+}
+
+// runIO runs the I/O completions posted so far, in the order they were
+// posted, each as a task. The driver calls it after firing the timers that
+// are due.
+func (d *Domain) runIO() {
+	d.inboxMu.Lock()
+	in := d.io
+	d.io = nil
+	d.inboxMu.Unlock()
+	for _, f := range in {
+		d.running = inCallback
+		d.runTask(f)
+	}
+}
+
 // mainDomain is the main program's. Tests replace it, as they do the queue.
 var mainDomain = newDomain()
 
@@ -115,7 +156,16 @@ func (d *Domain) drain() {
 			panic(t)
 		}
 		if d.microHead == len(d.micro) {
-			break
+			if len(d.afterDrain) == 0 {
+				break
+			}
+			// The queue is empty: what waited for that runs, and its own
+			// microtasks drain before the next of them (R19).
+			f := d.afterDrain[0]
+			d.afterDrain = d.afterDrain[1:]
+			d.running = inCallback
+			f()
+			continue
 		}
 		f := d.micro[d.microHead]
 		d.micro[d.microHead] = nil
@@ -136,10 +186,10 @@ func (d *Domain) runTask(f func()) {
 }
 
 // pending reports whether the domain still has work that will run by itself:
-// a timer, or a spawn whose result is still to come. Microtasks are always
+// a timer, a spawn whose result is still to come, or I/O in flight. Microtasks are always
 // drained before anything asks. A promise that nothing will ever settle is
 // not pending work, so a program blocked only on one ends, as under Node.
-func (d *Domain) pending() bool { return len(d.timers) > 0 || d.spawned > 0 }
+func (d *Domain) pending() bool { return len(d.timers) > 0 || d.spawned > 0 || d.inflight > 0 }
 
 // timer is one setTimeout.
 type timer struct {
@@ -218,7 +268,8 @@ func (d *Domain) fireDue() {
 }
 
 // waitNext blocks until the earliest timer is due or another goroutine posts
-// to the inbox, then runs what was posted and fires every timer that is due.
+// to the inbox, then runs what was posted, fires every timer that is due,
+// and runs the I/O completions posted (R18: timers already due come first).
 // Nothing else can add work while the driver waits: only the domain's own
 // code adds timers, and a spawn's result comes through the inbox.
 func (d *Domain) waitNext() {
@@ -234,6 +285,7 @@ func (d *Domain) waitNext() {
 	}
 	d.runInbox()
 	d.fireDue()
+	d.runIO()
 }
 
 // finish drives the domain until it has nothing left to do.

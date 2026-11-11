@@ -23,7 +23,22 @@ func (d *decoder) errorValue(g goldenValue) *Error {
 	if g.Code != nil {
 		return newCodedError(ErrorKind(k), *g.Code, m, nil)
 	}
-	return NewError(ErrorKind(k), m, nil)
+	if g.P == nil && g.Cause == nil {
+		return NewError(ErrorKind(k), m, nil)
+	}
+	// S1: own properties, set in order, and a cause, an unknown.
+	var details ErrorDetails
+	for _, kv := range g.P {
+		var key string
+		if err := json.Unmarshal(kv[0], &key); err != nil {
+			d.t.Fatalf("a property's key: %v", err)
+		}
+		details.Props = append(details.Props, ErrorProp{Key: key, Value: d.value(kv[1])})
+	}
+	if g.Cause != nil {
+		details.Cause, details.HasCause = d.unknown(g.Cause), true
+	}
+	return NewErrorWith(ErrorKind(k), m, details, nil)
 }
 
 // unknown is a value an unknown holds: undefined and null as an unknown
