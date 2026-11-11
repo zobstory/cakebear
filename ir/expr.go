@@ -191,16 +191,24 @@ type Await struct {
 	Value Expr
 	Typ   Type
 	Span  Span
+	// Adopt marks an async function's `return p` of a promise, whose own
+	// promise adopts p's state: V8 waits a hop more for it than for
+	// `return await p` (S1 plan D5).
+	Adopt bool
 }
 
 // NewPromise is `new Promise<T>(executor)`. Typ is PromiseOf(T), and
 // Executor is a function value of ExecutorType(T), which the runtime calls
-// once, at once, with the resolve function. Rejection is not modelled: M2
-// refuses reject, and adopting another promise through resolve, in lowering.
+// once, at once, with resolve and reject; or of ExecutorAdoptType(T), with
+// adopt after them, where it is Adopting.
 type NewPromise struct {
 	Executor Expr
 	Typ      Type
 	Span     Span
+	// Adopting marks an executor calling resolve with a promise (S1 plan
+	// D5): Executor is of ExecutorAdoptType(T), its third parameter the
+	// adopt each such call calls.
+	Adopting bool
 }
 
 // Capture is one enclosing binding a FuncLit refers to.

@@ -67,6 +67,9 @@ func (l *lowerer) jsonSlot(n *ast.Node) bool {
 		if p.Parent != nil && p.Parent.Kind == ast.KindExpressionStatement {
 			return true // JSON.parse(s) for its throw alone
 		}
+		if l.allElement(p) {
+			return true // decoded as it is bound (promise.go)
+		}
 		if ct := l.contextualType(p); ct != nil {
 			if ct.Flags()&checker.TypeFlagsUnknown != 0 {
 				return true

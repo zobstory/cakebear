@@ -30,6 +30,14 @@ const (
 	HostHeadersAppend     // headers.append(name, value)
 	HostHeadersDelete     // headers.delete(name)
 	HostHeadersSetCookies // headers.getSetCookie()
+	// Promise's statics (S1 plan D5).
+	HostPromiseAll       // Promise.all(ps), an array of promises
+	HostPromiseAllValues // Promise.all(xs), an array of values
+	HostPromiseRace      // Promise.race(ps)
+	HostPromiseResolve   // Promise.resolve(v) of a value
+	HostPromiseReject    // Promise.reject(reason)
+	HostPromiseAllOf     // Promise.all([pa, pb, …]) of promises of different types: a promise of nothing
+	HostPromiseValue     // the value of Recv, a promise HostPromiseAllOf has seen fulfilled
 )
 
 // The keys a HostFetch's init properties have: a header's is its name
@@ -83,6 +91,16 @@ func (o HostOp) String() string {
 		return "Headers.delete"
 	case HostHeadersSetCookies:
 		return "Headers.getSetCookie"
+	case HostPromiseAll, HostPromiseAllValues, HostPromiseAllOf:
+		return "Promise.all"
+	case HostPromiseRace:
+		return "Promise.race"
+	case HostPromiseResolve:
+		return "Promise.resolve"
+	case HostPromiseReject:
+		return "Promise.reject"
+	case HostPromiseValue:
+		return "a promise's value"
 	default:
 		return "invalid host operation"
 	}

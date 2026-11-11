@@ -119,22 +119,35 @@ func (l *lowerer) asyncResult(n *ast.Node, fn *ir.Func) {
 	}
 }
 
-// returnable refuses `return p` in an async function when p is itself a
-// promise: the function's promise would adopt p's state, which M2 does not
-// model. Awaiting it first is the supported spelling.
-// returnStmt lowers `return` and `return v`.
+// returnStmt lowers `return` and `return v`. In an async function, a v that
+// is a promise is adopted, the function's promise settling as p does
+// (promise.go).
 func (l *lowerer) returnStmt(n *ast.Node) []ir.Stmt {
 	s := n.AsReturnStatement()
 	out := &ir.Return{Span: l.span(n)}
 	if s.Expression != nil {
-		if out.Value = l.expr(s.Expression); out.Value == nil {
+		v := l.exprOf(s.Expression)
+		if v == nil {
 			return nil
 		}
+		if a, ok := l.adopted(s.Expression, v); ok {
+			if a == nil {
+				return nil
+			}
+			if a.ExprType() == ir.Void {
+				// A promise of nothing: wait for it, then return.
+				return []ir.Stmt{&ir.ExprStmt{Expr: a, Span: out.Span}, out}
+			}
+			// The value it settles with fills the result's slot.
+			if v = l.boxed(s.Expression, l.wrapped(s.Expression, l.widened(s.Expression, a))); v == nil {
+				return nil
+			}
+		} else if v = l.fit(s.Expression, v); v == nil {
+			return nil
+		}
+		out.Value = v
 		if l.never(s.Expression, out.Value) { // errors.go
 			return []ir.Stmt{&ir.ExprStmt{Expr: out.Value, Span: out.Span}}
-		}
-		if !l.returnable(n, out.Value) {
-			return nil
 		}
 	}
 	if l.discard && out.Value != nil {
@@ -144,14 +157,6 @@ func (l *lowerer) returnStmt(n *ast.Node) []ir.Stmt {
 		return []ir.Stmt{&ir.ExprStmt{Expr: value, Span: out.Span}, out}
 	}
 	return []ir.Stmt{out}
-}
-
-func (l *lowerer) returnable(n *ast.Node, v ir.Expr) bool {
-	if l.async && !l.discard && v.ExprType().Kind == ir.KindPromise {
-		l.failf(n, "an async function returning a promise is not supported yet; return await it instead")
-		return false
-	}
-	return true
 }
 
 func (l *lowerer) await(n *ast.Node) ir.Expr {
@@ -222,8 +227,9 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 	}
 
 	// resolve is typed `(value: T | PromiseLike<T>) => void`. The union is
-	// there for adopting another promise, which resolvesWithPromise refuses,
-	// so what is left is a plain function (ir.ResolveType). reject is typed
+	// there for adopting another promise, which an executor's own resolve(p)
+	// does through adopt (adoptingExecutor, promise.go), so what is left is a
+	// plain function (ir.ResolveType). reject is typed
 	// `(reason?: any) => void`, and takes its reason as an unknown holds it
 	// (ir.RejectType): a call boxes it (boxedArgs), and leaving it out
 	// passes undefined.
@@ -238,6 +244,9 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 			}
 			l.resolvers[sym] = t
 		}
+	}
+	if adopt, ok := l.adoptingExecutor(n, exec, params, typ); ok { // promise.go
+		return adopt
 	}
 	executor := l.closureFor(exec, ir.ExecutorType(elem).Sig, nil, true)
 	if executor == nil {
@@ -255,8 +264,9 @@ func (l *lowerer) resolverType(n *ast.Node) (ir.Type, bool) {
 	return t, ok
 }
 
-// resolvesWithPromise refuses resolve(p) for a promise p, which would adopt
-// p's state rather than resolve with a value.
+// resolvesWithPromise refuses resolve(p) for a promise p that adoptCall
+// didn't make a call of the executor's adopt: a backstop, since both find
+// the call by the same symbol and the argument's type.
 func (l *lowerer) resolvesWithPromise(n *ast.Node, call *ir.Call) bool {
 	if _, ok := l.resolverType(n.AsCallExpression().Expression); !ok {
 		return false
@@ -361,18 +371,14 @@ func (l *lowerer) timerCallback(arg *ast.Node) ir.Expr {
 	return cb
 }
 
-// promiseMemberCall refuses the promise methods and Promise's statics by
-// name, rather than as "only calls to a function by name". It reports whether
-// it refused.
+// promiseMemberCall refuses the promise methods by name, rather than as
+// "only calls to a function by name". It reports whether it refused.
+// Promise's statics are promiseCall's (promise.go).
 func (l *lowerer) promiseMemberCall(n *ast.Node, c *ast.CallExpression) bool {
 	if c.Expression.Kind != ast.KindPropertyAccessExpression {
 		return false
 	}
 	recv, name := c.Expression.Expression(), c.Expression.Name().Text()
-	if recv.Kind == ast.KindIdentifier && recv.Text() == "Promise" && onlyInBundledLib(l.checker.GetSymbolAtLocation(recv), "") {
-		l.failf(n, "Promise.%s is not supported yet", name)
-		return true
-	}
 	if l.typeOf(recv).Kind == ir.KindPromise {
 		l.failf(n, "promise methods such as .%s are not supported yet; use await", name)
 		return true

@@ -416,10 +416,6 @@ func TestAsyncRefusals(t *testing.T) {
 			"await is allowed only in an async function or at the top level of a module"},
 		{"await on a non-promise", "async function f(): Promise<void> {\n  const x: number = await 5;\n}\n",
 			"await needs a promise; awaiting a number is not supported yet"},
-		{"returning a promise from async", g + "async function f(): Promise<number> {\n  return g();\n}\n",
-			"an async function returning a promise is not supported yet"},
-		{"resolve with a promise", g + "const p: Promise<number> = new Promise((resolve) => {\n  resolve(g());\n});\n",
-			"resolving a promise with another promise is not supported yet"},
 		{"executor not inline", "function ex(resolve: () => void): void {}\nconst p: Promise<void> = new Promise(ex);\n",
 			"new Promise needs its executor written inline"},
 		{"async executor", "const p: Promise<void> = new Promise(async (resolve) => {});\n", "an async executor is not supported"},
@@ -435,7 +431,7 @@ func TestAsyncRefusals(t *testing.T) {
 		{"delay that is not a number", "setTimeout(() => {}, i32(1));\n", "setTimeout's delay must be a number, not a i32"},
 		{"clearTimeout arity", "clearTimeout();\n", "clearTimeout takes 1 argument, got 0"},
 		{".then", g + "g().then((v) => {});\n", "promise methods such as .then are not supported yet; use await"},
-		{"Promise statics", "const p: Promise<number> = Promise.resolve(1);\n", "Promise.resolve is not supported yet"},
+		{"Promise statics", g + "Promise.allSettled([g()]);\n", "Promise.allSettled is not supported yet"},
 		{"logging a promise", g + "console.log(g());\n", "console.log cannot print a promise yet"},
 		// Every declaration of Promise must be in a bundled lib: a program that
 		// augments it has added members with nothing behind them.

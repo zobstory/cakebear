@@ -108,6 +108,9 @@ func (e *emitter) asyncBodyAs(lead string, result ir.Type, body []ir.Stmt, depth
 // needs Run even with no timer or server.
 func (e *emitter) await(x *ir.Await) string {
 	e.usesRuntime, e.needsRun = true, true
+	if x.Adopt {
+		return fmt.Sprintf("%s.AwaitAdopt(%s, %s)", rtPkg, coVar, e.expr(x.Value))
+	}
 	return fmt.Sprintf("%s.Await(%s, %s)", rtPkg, coVar, e.expr(x.Value))
 }
 
@@ -120,6 +123,9 @@ func (e *emitter) newPromise(x *ir.NewPromise) string {
 		return e.cannot(x.Span, "the backend cannot emit a value of type "+x.Typ.String()+" yet")
 	} else if elem == "struct{}" {
 		ctor = "NewPromiseVoid" // resolve takes no value (ir.ResolveType)
+	}
+	if x.Adopting {
+		ctor += "Adopting" // its executor takes adopt (ir.ExecutorAdoptType)
 	}
 	return fmt.Sprintf("%s.%s(%s, %s)", rtPkg, ctor, e.dom(), e.expr(x.Executor))
 }

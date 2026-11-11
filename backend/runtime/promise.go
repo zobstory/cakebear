@@ -50,12 +50,16 @@ type settlement struct {
 	// unhandled when the microtasks have drained ends the domain (R9).
 	handled   bool
 	reactions []func()
+	// locked is set while the promise follows another one an executor's
+	// resolve(p) gave it: resolved, though pending, so a later resolve,
+	// reject or throw from its executor does nothing (promise_adopt.go).
+	locked bool
 }
 
 // resolve fulfils p with v and queues its reactions. Once p has settled it
 // does nothing, as in JavaScript (R16).
 func (p *Promise[T]) resolve(v T) {
-	if p.settled {
+	if p.settled || p.locked {
 		return
 	}
 	p.value = v
@@ -66,7 +70,7 @@ func (p *Promise[T]) resolve(v T) {
 // A rejection nothing awaits yet is noted for the check after the drain,
 // which looks again then: an await before it is in time (R11).
 func (s *settlement) reject(t *Thrown) {
-	if s.settled {
+	if s.settled || s.locked {
 		return
 	}
 	if !s.handled {
