@@ -14,7 +14,7 @@ import (
 // JSONGap, for a call with no space, is compact.
 func (e *emitter) jsonStringify(x *ir.JSONStringify) string {
 	e.usesRuntime = true
-	if what := ir.Unserializable(x.Value.ExprType(), nil); what != "" {
+	if what := ir.JSONUnserializable(x.Value.ExprType()); what != "" {
 		return e.cannot(x.Span, "the backend cannot serialise a "+x.Value.ExprType().String()+" yet: it holds "+what)
 	}
 	gap := rtPkg + ".JSONGap{}"

@@ -115,6 +115,12 @@ func (e *jsonEncoder) value(v any, via jsonKey) {
 		e.buf = append(e.buf, "null"...)
 	case *Error:
 		e.errorJSON(x, via)
+	case *URL:
+		// toJSON gives the href (R24); a URLSearchParams has neither a
+		// toJSON nor an enumerable property of its own (R25).
+		e.buf = appendJSONString(e.buf, x.Href())
+	case *URLSearchParams:
+		e.buf = append(e.buf, "{}"...)
 	case Object:
 		e.object(x, via)
 	case jsonArray:

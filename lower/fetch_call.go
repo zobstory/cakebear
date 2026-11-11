@@ -33,6 +33,9 @@ func (l *lowerer) fetchCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) 
 	if input == nil {
 		return nil, true
 	}
+	if input.ExprType() == ir.HostOf(ir.HostURLValue) {
+		input, _ = urlString(input) // url.go
+	}
 	if input.ExprType() != ir.String {
 		l.failf(args[0], "fetch's input must be a string here, not a %s; a URL or a Request is not supported yet", input.ExprType())
 		return nil, true
@@ -65,6 +68,10 @@ func (l *lowerer) fetchInit(init *ast.Node, call *ir.HostCall) bool {
 			if v == nil {
 				return false
 			}
+			if key == "body" && v.ExprType() == ir.HostOf(ir.HostSearchParams) {
+				v, _ = urlString(v) // url.go: the form encoding, its own content type
+				key = ir.FetchKeyFormBody
+			}
 			if v.ExprType() != ir.String {
 				l.failf(value, "fetch's %s must be a string here, not a %s", key, v.ExprType())
 				return false
@@ -94,8 +101,15 @@ func (l *lowerer) fetchInit(init *ast.Node, call *ir.HostCall) bool {
 			}
 			l.fetchArg(call, ir.FetchKeyDropped, v)
 		case key == "signal":
-			l.failf(p, "fetch's signal lands with AbortSignal.timeout in a later S1 step")
-			return false
+			v := l.exprOf(value)
+			if v == nil {
+				return false
+			}
+			if v.ExprType() != ir.HostOf(ir.HostAbortSignal) {
+				l.failf(value, "fetch's signal must be an AbortSignal here, from AbortSignal.timeout, not %s", aType(v.ExprType()))
+				return false
+			}
+			l.fetchArg(call, ir.FetchKeySignal, v)
 		default:
 			l.failf(p, "fetch's %s is not supported yet", key)
 			return false

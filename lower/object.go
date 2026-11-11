@@ -306,6 +306,9 @@ func (l *lowerer) fieldGet(n *ast.Node) (ir.Expr, bool) {
 // fieldSet lowers `obj.f = v`, and reports whether target was an object's
 // field.
 func (l *lowerer) fieldSet(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
+	if out, ok := l.urlSet(stmt, target, value); ok { // url.go
+		return out, true
+	}
 	if target.Kind != ast.KindPropertyAccessExpression {
 		return nil, false
 	}

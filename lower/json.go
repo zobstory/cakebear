@@ -86,7 +86,7 @@ func (l *lowerer) jsonStringify(n *ast.Node, c *ast.CallExpression) ir.Expr {
 // subset has no value for), serialises a promise as `{}`, and a host value
 // as the runtime object behind it.
 func (l *lowerer) serializable(n *ast.Node, t ir.Type) bool {
-	what := ir.Unserializable(t, nil)
+	what := ir.JSONUnserializable(t)
 	switch {
 	case what == "":
 		return true

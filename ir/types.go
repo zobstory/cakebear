@@ -78,6 +78,12 @@ const (
 	// HostResponse and HostHeaders are fetch's (S1 plan D2).
 	HostResponse
 	HostHeaders
+	// HostURLValue and HostSearchParams are the URL Standard's URL and
+	// URLSearchParams, and HostAbortSignal what AbortSignal.timeout makes
+	// (S1 plan D6, D2).
+	HostURLValue
+	HostSearchParams
+	HostAbortSignal
 )
 
 func (h HostType) String() string {
@@ -94,6 +100,12 @@ func (h HostType) String() string {
 		return "Response"
 	case HostHeaders:
 		return "Headers"
+	case HostURLValue:
+		return "URL"
+	case HostSearchParams:
+		return "URLSearchParams"
+	case HostAbortSignal:
+		return "AbortSignal"
 	default:
 		return "host"
 	}

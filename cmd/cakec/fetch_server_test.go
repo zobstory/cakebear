@@ -76,8 +76,20 @@ func upstream(t *testing.T) string {
 	})
 	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
 		ms, _ := strconv.Atoi(r.URL.Query().Get("ms"))
-		time.Sleep(time.Duration(ms) * time.Millisecond)
+		if !wait(r, ms) {
+			return // the client went away: an abort
+		}
 		_, _ = io.WriteString(w, "slow "+strconv.Itoa(ms))
+	})
+	// /slowbody sends its headers at once and its body ms later.
+	mux.HandleFunc("/slowbody", func(w http.ResponseWriter, r *http.Request) {
+		ms, _ := strconv.Atoi(r.URL.Query().Get("ms"))
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		if wait(r, ms) {
+			_, _ = io.WriteString(w, "slow body "+strconv.Itoa(ms))
+		}
 	})
 	// /data answers its ?body as JSON: a bad one too, and a BOM before it.
 	mux.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +102,17 @@ func upstream(t *testing.T) string {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv.URL
+}
+
+// wait sleeps ms, or until r's client goes away, reporting whether it slept
+// the whole time: a server the test closes waits for its handlers.
+func wait(r *http.Request, ms int) bool {
+	select {
+	case <-time.After(time.Duration(ms) * time.Millisecond):
+		return true
+	case <-r.Context().Done():
+		return false
+	}
 }
 
 const fetchGoldensPath = "testdata/fetch-goldens.json"

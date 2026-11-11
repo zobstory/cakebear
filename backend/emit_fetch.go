@@ -80,6 +80,10 @@ func (e *emitter) fetchOption(key string, v ir.Expr) string {
 		return rtPkg + ".FetchRedirect(" + e.expr(v) + ")"
 	case key == ir.FetchKeyCache:
 		return rtPkg + ".FetchCache(" + e.expr(v) + ")"
+	case key == ir.FetchKeyFormBody:
+		return rtPkg + ".FetchFormBody(" + e.expr(v) + ")"
+	case key == ir.FetchKeySignal:
+		return rtPkg + ".FetchSignal(" + e.expr(v) + ")"
 	}
 	return rtPkg + ".FetchDropped(" + e.expr(v) + ")"
 }

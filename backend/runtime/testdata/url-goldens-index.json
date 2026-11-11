@@ -1,0 +1,86 @@
+{
+  "node": "v24.18.0",
+  "unicode": "17.0",
+  "ada": "3.4.4",
+  "seed": 539365649,
+  "sections": {
+    "MISC": {
+      "first": 1,
+      "last": 194,
+      "count": 194,
+      "errors": 35
+    },
+    "COMPONENTS": {
+      "first": 195,
+      "last": 3392,
+      "count": 3198,
+      "errors": 563
+    },
+    "HOSTS": {
+      "first": 3393,
+      "last": 6093,
+      "count": 2701,
+      "errors": 1223
+    },
+    "PATHS": {
+      "first": 6094,
+      "last": 7874,
+      "count": 1781,
+      "errors": 50
+    },
+    "RELATIVE": {
+      "first": 7875,
+      "last": 9441,
+      "count": 1567,
+      "errors": 256
+    },
+    "SETTERS": {
+      "first": 9442,
+      "last": 13780,
+      "count": 4339,
+      "errors": 150
+    },
+    "PARAMS": {
+      "first": 13781,
+      "last": 14564,
+      "count": 784,
+      "errors": 0
+    },
+    "FORM": {
+      "first": 14565,
+      "last": 16355,
+      "count": 1791,
+      "errors": 0
+    },
+    "LIVE": {
+      "first": 16356,
+      "last": 16760,
+      "count": 405,
+      "errors": 0
+    },
+    "INSPECT": {
+      "first": 16761,
+      "last": 17216,
+      "count": 456,
+      "errors": 0
+    },
+    "JSON": {
+      "first": 17217,
+      "last": 17671,
+      "count": 455,
+      "errors": 0
+    },
+    "IDNA": {
+      "first": 17672,
+      "last": 18335,
+      "count": 664,
+      "errors": 227
+    },
+    "INCONSISTENT": {
+      "first": 18336,
+      "last": 18346,
+      "count": 11,
+      "errors": 0
+    }
+  }
+}

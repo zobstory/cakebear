@@ -38,6 +38,24 @@ const (
 	HostPromiseReject    // Promise.reject(reason)
 	HostPromiseAllOf     // Promise.all([pa, pb, …]) of promises of different types: a promise of nothing
 	HostPromiseValue     // the value of Recv, a promise HostPromiseAllOf has seen fulfilled
+	// The URL Standard's URL and URLSearchParams, and AbortSignal.timeout
+	// (S1 plan D6, D2; url.go).
+	HostNewURL             // new URL(input, base?): base a string or a URL
+	HostURLCanParse        // URL.canParse(input, base?)
+	HostURLParse           // URL.parse(input, base?): a URL or null
+	HostURLSet             // u.<Keys[0]> = Args[0], a setter
+	HostURLString          // u.toString(), u.toJSON(), String(u) and a template's
+	HostNewSearchParams    // new URLSearchParams(init?): a string, or an object literal's values named by Keys
+	HostParamsAppend       // params.append(name, value)
+	HostParamsDelete       // params.delete(name, value?)
+	HostParamsGet          // params.get(name): a string or null
+	HostParamsGetAll       // params.getAll(name)
+	HostParamsHas          // params.has(name, value?)
+	HostParamsSet          // params.set(name, value)
+	HostParamsSort         // params.sort()
+	HostParamsString       // params.toString(), String(params) and a template's
+	HostParamsForEach      // params.forEach(callback), over the live list
+	HostAbortSignalTimeout // AbortSignal.timeout(ms)
 )
 
 // The keys a HostFetch's init properties have: a header's is its name
@@ -51,6 +69,8 @@ const (
 	FetchKeyRedirect = "redirect"
 	FetchKeyCache    = "cache"
 	FetchKeyDropped  = "dropped"
+	FetchKeyFormBody = "formBody" // a URLSearchParams as the body, its form encoding the value
+	FetchKeySignal   = "signal"
 )
 
 func (o HostOp) String() string {
@@ -102,6 +122,9 @@ func (o HostOp) String() string {
 	case HostPromiseValue:
 		return "a promise's value"
 	default:
+		if s, ok := urlOpNames[o]; ok {
+			return s
+		}
 		return "invalid host operation"
 	}
 }
@@ -125,6 +148,20 @@ const (
 	HostResponseHeaders                     // res.headers
 	HostBodyUsed                            // res.bodyUsed
 	HostResponseType                        // res.type
+	// A URL's getters, by their names (url.go), and a URLSearchParams' size.
+	HostURLHref
+	HostURLOrigin
+	HostURLProtocol
+	HostURLUsername
+	HostURLPassword
+	HostURLHost
+	HostURLHostname
+	HostURLPort
+	HostURLPathname
+	HostURLSearch
+	HostURLHash
+	HostURLSearchParams
+	HostParamsSize
 )
 
 func (p HostProperty) String() string {
@@ -150,6 +187,9 @@ func (p HostProperty) String() string {
 	case HostResponseType:
 		return "Response.type"
 	default:
+		if s, ok := urlPropNames[p]; ok {
+			return s
+		}
 		return "invalid host property"
 	}
 }

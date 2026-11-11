@@ -35,10 +35,43 @@ func (l *lowerer) spawnCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, ha
 		l.failf(arg, "spawn needs a function that takes no arguments, and this one is %s", fn.ExprType())
 		return nil, true
 	}
+	if h := heldHost(*typ.Elem, nil); h != "" {
+		// A host value belongs to the domain that made it, and a spawn's
+		// result reaches its caller's as it is (runtime's CloneValue).
+		l.failf(arg, "spawn's result holds %s, which belongs to the spawned function's domain: return the data you need from it, a URL's href say", h)
+		return nil, true
+	}
 	// fn runs in parallel with its caller: the race rule a request handler
 	// is held to applies, so the two share nothing that can change.
 	l.checkConcurrent(arg, fn, spawnRuns)
 	return &ir.HostCall{Op: ir.HostSpawn, Args: []ir.Expr{fn}, Typ: typ, Span: l.span(n)}, true
+}
+
+// heldHost names the host value a value of type t holds, directly or in an
+// array, a maybe or an object, or returns "".
+func heldHost(t ir.Type, seen map[*ir.Shape]bool) string {
+	switch t.Kind {
+	case ir.KindHost:
+		return aType(t)
+	case ir.KindArray, ir.KindMaybe:
+		if t.Elem != nil {
+			return heldHost(*t.Elem, seen)
+		}
+	case ir.KindObject:
+		if t.Shape == nil || seen[t.Shape] {
+			return ""
+		}
+		if seen == nil {
+			seen = map[*ir.Shape]bool{}
+		}
+		seen[t.Shape] = true
+		for _, f := range t.Shape.Fields {
+			if h := heldHost(f.Type, seen); h != "" {
+				return h
+			}
+		}
+	}
+	return ""
 }
 
 // spawnable reports whether a function of type t can be spawned for a promise

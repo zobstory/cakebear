@@ -30,6 +30,27 @@ type Response struct {
 	bodyUsed bool
 	// readers wait for the body, each settled when it has all arrived.
 	readers []func()
+	// cancel stops the request, its body too, and waiting is the body's
+	// wait under init's signal, if it had one.
+	cancel  func()
+	waiting *abortWait
+}
+
+// abort is the signal's abort while the body is still coming: every read
+// waiting, and any made after, rejects with the reason (R16), and what the
+// body's goroutine posts later is ignored.
+func (r *Response) abort(reason *Error) {
+	if r.bodyDone {
+		return
+	}
+	r.body, r.bodyErr, r.bodyDone = nil, reason, true
+	r.cancel()
+	readers := r.readers
+	r.readers = nil
+	for _, settle := range readers {
+		r.d.inflight--
+		settle()
+	}
 }
 
 // Status, OK, StatusText, URL, Redirected and Headers are the Response's
@@ -89,6 +110,11 @@ func (r *Response) readBody() {
 	data, err := decodedBody(r.resp)
 	d := r.d
 	d.postIO(func() {
+		if r.bodyDone {
+			return // aborted while it read
+		}
+		r.waiting.release()
+		r.cancel()
 		r.body, r.bodyDone = data, true
 		if err != nil {
 			r.bodyErr = NewError(ErrorType, "terminated", nil)

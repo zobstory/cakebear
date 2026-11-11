@@ -138,6 +138,12 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	case *ir.ArrayOp: // xs.length
 		op := &ir.ArrayOp{Method: ir.ArraySetLength, Array: get.Array, Args: []ir.Expr{sum}, Typ: ir.Void, Span: at}
 		return []ir.Stmt{&ir.ExprStmt{Expr: op, Span: l.span(stmt)}}, true
+	case *ir.HostProp: // u.pathname += "/x", a URL's setter (url.go)
+		return l.urlUpdate(stmt, get, sum, at), true
+	}
+	if target.Kind != ast.KindIdentifier {
+		l.failf(stmt, "%s on %s is not supported yet", text, nodeText(target))
+		return nil, true
 	}
 	name, module := l.ref(target)
 	return []ir.Stmt{&ir.Assign{Name: name, Module: module, Value: sum, Span: l.span(stmt)}}, true

@@ -19,6 +19,9 @@ var hostGoTypes = map[ir.HostType]string{
 	ir.HostTimeout:         "Timeout",
 	ir.HostResponse:        "Response",
 	ir.HostHeaders:         "Headers",
+	ir.HostURLValue:        "URL",
+	ir.HostSearchParams:    "URLSearchParams",
+	ir.HostAbortSignal:     "AbortSignal",
 }
 
 // hostMethods names the runtime method behind each host operation on a value.
@@ -100,6 +103,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 	if out, ok := e.promiseCall(x); ok { // emit_promise.go
 		return out
 	}
+	if out, ok := e.urlCall(x); ok { // emit_url.go
+		return out
+	}
 	args := make([]string, len(x.Args))
 	for i, a := range x.Args {
 		args[i] = e.expr(a)
@@ -124,6 +130,9 @@ func (e *emitter) hostCall(x *ir.HostCall) string {
 
 func (e *emitter) hostProp(x *ir.HostProp) string {
 	method, ok := hostProps[x.Prop]
+	if !ok {
+		method, ok = urlProps[x.Prop] // emit_url.go
+	}
 	if !ok {
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.Span, What: describeUnsupported(x)})
 		return "#error unhandled host property"

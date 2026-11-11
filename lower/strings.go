@@ -77,6 +77,9 @@ func (l *lowerer) template(n *ast.Node) ir.Expr {
 // stringOf is v as a string, ToString applied, where v is a primitive. what
 // names the place, for the refusal of anything else.
 func (l *lowerer) stringOf(n *ast.Node, v ir.Expr, what string) ir.Expr {
+	if s, ok := urlString(v); ok { // url.go: a URL's href, a URLSearchParams' encoding
+		return s
+	}
 	switch t := v.ExprType(); {
 	case t == ir.String || t == ir.Base64:
 		return v
