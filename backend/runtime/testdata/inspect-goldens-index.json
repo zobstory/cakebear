@@ -93,6 +93,16 @@
       "first": 20655,
       "last": 21169,
       "count": 515
+    },
+    "CAUSE": {
+      "first": 21170,
+      "last": 21903,
+      "count": 734
+    },
+    "PROPS": {
+      "first": 21904,
+      "last": 22382,
+      "count": 479
     }
   }
 }

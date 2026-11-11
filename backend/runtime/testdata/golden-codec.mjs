@@ -13,6 +13,17 @@
 // array may mix kinds. Node can't see the flag, so the canonical form leaves
 // it out (stripAny). An Error is a leaf: it never has an id.
 //
+// S1 added two more to an Error (S1 plan D7), after m: "p":[["key",<value>],
+// …], its own enumerable properties in order, each value a number or a
+// string ({"u":…} too in the JSON corpus), set by assignment after it is
+// made, as Node's uvException and exceptionWithHostPort set a system
+// error's errno, code, syscall, address and port; and "cause":<value>, any
+// value, passed as `{ cause }`, so {"e":"undefined"} is a cause of
+// undefined, which is printed, and no "cause" is none. "code" is still only
+// one of Node's own JavaScript errors, whose class is its own (NodeError),
+// and never has a "p" or a "cause": a code that is a plain property, a
+// system error's or one Node's C++ throws (ERR_INVALID_URL), is in "p".
+//
 // Errors are printed as under --stack-trace-limit=0, which this module sets
 // on import for every error made after: the flag only sets the same limit
 // before any code runs.
@@ -134,14 +145,33 @@ export function decodeArgs(args) {
       return d.e === 'null' ? null : undefined;
     }
     if ('err' in d) {
-      if (!ERROR_KINDS.includes(d.err) || keys.some((k) => !['err', 'm', 'code'].includes(k))) throw new Error('bad error');
+      if (!ERROR_KINDS.includes(d.err) || keys.some((k) => !['err', 'm', 'code', 'p', 'cause'].includes(k))) throw new Error('bad error');
       if ('m' in d && typeof d.m !== 'string') throw new Error('bad error message');
       if ('code' in d) {
+        if ('p' in d || 'cause' in d) throw new Error('one of Node\'s own errors with properties or a cause');
         const err = nodeError(d.code, d.m);
         if (err.name !== d.err) throw new Error(`${d.code} is a ${err.name}`);
         return err;
       }
-      return 'm' in d ? new globalThis[d.err](d.m) : new globalThis[d.err]();
+      const Kind = globalThis[d.err];
+      let err;
+      if ('cause' in d) {
+        err = new Kind('m' in d ? d.m : undefined, { cause: dec(d.cause) });
+      } else {
+        err = 'm' in d ? new Kind(d.m) : new Kind();
+      }
+      if ('p' in d) {
+        if (!Array.isArray(d.p) || d.p.length === 0) throw new Error('bad error properties');
+        for (const pair of d.p) {
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string') throw new Error('bad error property');
+          const [k, v] = pair;
+          if (Object.hasOwn(err, k)) throw new Error(`an error property ${JSON.stringify(k)} it has already`);
+          const x = dec(v);
+          if (typeof x !== 'number' && typeof x !== 'string') throw new Error('an error property neither a number nor a string');
+          err[k] = x;
+        }
+      }
+      return err;
     }
     if ('ref' in d) {
       if (keys.length !== 1) throw new Error('bad ref');
@@ -183,7 +213,12 @@ export function encodeArgs(values) {
   const multi = new Set();
   const children = (v) => (Array.isArray(v) ? v : Object.keys(v).map((k) => v[k]));
   const walk = (v) => {
-    if (typeof v !== 'object' || v === null || v instanceof Error) return;
+    if (typeof v !== 'object' || v === null) return;
+    if (v instanceof Error) {
+      // A leaf, reached as often as it is, but its cause may be a container.
+      if (Object.hasOwn(v, 'cause')) walk(v.cause);
+      return;
+    }
     if (seen.has(v)) { multi.add(v); return; }
     seen.add(v);
     for (const c of children(v)) walk(c);
@@ -202,7 +237,15 @@ export function encodeArgs(values) {
         if (v instanceof Error) {
           const r = { err: v.name };
           if (Object.hasOwn(v, 'message')) r.m = v.message;
-          if (Object.hasOwn(v, 'code')) r.code = v.code;
+          const own = Object.keys(v);
+          if (Object.getPrototypeOf(v) !== globalThis[v.name].prototype) {
+            // One of Node's own, of a class of its own.
+            if (own.length !== 1 || own[0] !== 'code' || Object.hasOwn(v, 'cause')) throw new Error('a NodeError the corpus has no form for');
+            r.code = v.code;
+          } else if (own.length > 0) {
+            r.p = own.map((k) => [k, enc(v[k])]);
+          }
+          if (Object.hasOwn(v, 'cause')) r.cause = enc(v.cause);
           return r;
         }
         if (ids.has(v)) {
@@ -245,6 +288,13 @@ export function validate(args, { forJSON = false } = {}) {
     if ('e' in d) return 'e';
     if ('err' in d) {
       if ('m' in d && !d.m.isWellFormed()) throw new Error('lone surrogate in a message');
+      for (const [k, val] of d.p ?? []) {
+        if (isIntegerLike(k) || ['message', 'name', 'stack', 'cause'].includes(k)) throw new Error(`an error property ${k}`);
+        if (!k.isWellFormed()) throw new Error('lone surrogate in a key');
+        const kind = walk(val);
+        if (kind !== 'n' && kind !== 's') throw new Error(`an error property of kind ${kind}`);
+      }
+      if ('cause' in d) walk(d.cause);
       return 'err';
     }
     if ('s' in d) {

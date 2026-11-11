@@ -31,7 +31,8 @@
 // regenerate those first if they change.
 //
 // The index file maps each section to its 1-based line range. ERROR and
-// UNKNOWN come last, so the lines before them stay as they were.
+// UNKNOWN come after the others, so the lines before them stay as they
+// were, and CAUSE and PROPS (S1) after those for the same reason.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -542,6 +543,69 @@ function sectionUNKNOWN() {
 }
 
 // ---------------------------------------------------------------------------
+// CAUSE and PROPS (S1 plan D7): an Error's cause is no enumerable property,
+// so an error with one and no properties of its own is {} whatever the
+// cause is, a cycle back through it included; and its own properties, a
+// system error's errno, code, syscall, address and port, are written in
+// their order, each a number or a string, wherever it is, under the gaps
+// that change the layout. SYSTEM is the inspect corpus's.
+
+const ERRX = (kind, m, { p, cause } = {}) => ({
+  err: kind, ...(m === undefined ? {} : { m }), ...(p === undefined ? {} : { p }), ...(cause === undefined ? {} : { cause }),
+});
+const caused = (kind, m, cause) => ERRX(kind, m, { cause });
+const SYSTEM = [
+  ERRX('Error', 'connect ECONNREFUSED 127.0.0.1:18901', {
+    p: [['errno', N(-61)], ['code', S('ECONNREFUSED')], ['syscall', S('connect')], ['address', S('127.0.0.1')], ['port', N(18901)]],
+  }),
+  ERRX('Error', 'getaddrinfo ENOTFOUND example.invalid', {
+    p: [['errno', N(-3008)], ['code', S('ENOTFOUND')], ['syscall', S('getaddrinfo')], ['hostname', S('example.invalid')]],
+  }),
+  ERRX('Error', 'read ECONNRESET', { p: [['errno', N(-54)], ['code', S('ECONNRESET')], ['syscall', S('read')]] }),
+  ERRX('TypeError', 'Invalid URL', { p: [['code', S('ERR_INVALID_URL')], ['input', S('not a url')]] }),
+];
+const PROP_VALUES = [
+  S(''), S('v'), S('say "hi"'), S('back\\slash'), S('x\ny\r\t'), S('\x00\x1f\x7f'), S('  '), S('é 😀 日本'),
+  S('\ud800'), S('a\udc00b'), N(0), N(-0), N(NaN), N(Infinity), N(-Infinity), N(1.5), N(-61), N(1e21), N(1e-7), N(2 ** 53),
+];
+const PROP_KEYS = ['code', 'a-b', '$x', 'with space', 'é', '', 'say "hi"', 'x\ny', '4294967295', '01'];
+
+function sectionCAUSE() {
+  const r = 'CAUSE';
+  const values = [
+    ...[ERR('Error', 'inner'), CODED[0], S('s'), N(1), E(undefined), E(null), O([['a', N(1)]]), A([N(1)]), B(true), SYSTEM[0]]
+      .map((c) => caused('TypeError', 'fetch failed', c)),
+    caused('Error', 'm', caused('Error', 'c', S('s'))), caused('RangeError', undefined, E(undefined)),
+    O([['error', caused('TypeError', 'fetch failed', SYSTEM[0])]]),
+    A([caused('Error', 'a', N(1)), ERR('Error', 'b'), caused('RangeError', 'c', E(null))]),
+    O([['nested', O([['deeper', A([caused('Error', 'x', CODED[4])])]])]]),
+    O([['e', caused('Error', 'm', R(1))]], 1), A([caused('Error', 'm', R(1))], 1),
+  ];
+  for (const x of values) {
+    for (const space of M6_SPACES) addD(r, x, space);
+  }
+  for (const space of M6_SPACES) addU(r, UA([caused('Error', 'm', S('c')), N(1), E(undefined)]), space);
+}
+
+function sectionPROPS() {
+  const r = 'PROPS';
+  const values = [
+    ...SYSTEM, ...PROP_VALUES.map((v) => ERRX('Error', 'm', { p: [['k', v]] })),
+    ...PROP_KEYS.map((k) => ERRX('Error', 'm', { p: [[k, N(1)]] })), ERRX('Error', 'm', { p: PROP_KEYS.map((k, i) => [k, N(i)]) }),
+    ERRX('Error', 'm', { p: Array.from({ length: 12 }, (_, i) => [`k${i}`, i % 2 ? S(`v${i}`) : N(i)]) }),
+    ERRX('Error', 'm', { p: [['code', S('E')]], cause: S('c') }),
+    ERRX('Error', 'm', { p: [['code', S('E')]], cause: ERRX('Error', 'c', { p: [['code', S('F')]] }) }),
+    O([['a', N(1)], ['e', SYSTEM[0]], ['b', S('x')]]), A(SYSTEM), A([SYSTEM[0], E(null), E(undefined)]),
+    O([['nested', O([['deeper', A([SYSTEM[1]])]])]]), O([['outer', caused('TypeError', 'fetch failed', SYSTEM[0])], ['inner', SYSTEM[0]]]),
+  ];
+  for (const x of values) {
+    for (const space of M6_SPACES) addD(r, x, space);
+  }
+  for (const space of M6_SPACES) addU(r, UA([SYSTEM[0], N(1), E(undefined), caused('TypeError', 'fetch failed', SYSTEM[0])]), space);
+  addU(r, UO([['data', E(null)], ['error', SYSTEM[0]]]), N(2));
+}
+
+// ---------------------------------------------------------------------------
 
 sectionSTR();
 sectionNUM();
@@ -554,6 +618,8 @@ sectionINSPECT();
 sectionMAYBE();
 sectionERROR();
 sectionUNKNOWN();
+sectionCAUSE();
+sectionPROPS();
 
 const lines = [];
 const index = {};
