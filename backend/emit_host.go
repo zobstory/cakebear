@@ -16,6 +16,7 @@ var hostGoTypes = map[ir.HostType]string{
 	ir.HostHTTPServer:      "Server",
 	ir.HostIncomingMessage: "IncomingMessage",
 	ir.HostServerResponse:  "ServerResponse",
+	ir.HostTimeout:         "Timeout",
 }
 
 // hostMethods names the runtime method behind each host operation on a value.

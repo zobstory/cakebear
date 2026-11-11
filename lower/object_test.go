@@ -119,6 +119,12 @@ func TestObjectRefusals(t *testing.T) {
 		{"a spread", "const a: { x: number } = { x: 1 };\nconst b: { x: number } = { ...a };\n", "spreading into an object literal is not supported yet"},
 		{"a computed key", "const o: { x: number } = { [\"x\"]: 1 };\n", "a computed property name is not supported yet"},
 		{"an integer-like key", "const o: { 1: number } = { 1: 2 };\n", "an integer-like property name (`1`) is not supported yet"},
+		// The checker names it "\xFE@iterator@<id>", the id different on
+		// every run: the refusal must say what the source says.
+		{"a method named by a symbol", "interface I { n: number; [Symbol.iterator](): number }\nfunction f(i: I): number {\n  return i.n;\n}\n",
+			"a property named by a symbol (`[Symbol.iterator]`) is not supported yet"},
+		{"a property named by a unique symbol", "const k: unique symbol = Symbol();\ninterface I { n: number; [k]: number }\nfunction f(i: I): number {\n  return i.n;\n}\n",
+			"a property named by a symbol (`[k]`) is not supported yet"},
 		{"a wider object in a variable", "interface P { x: number }\ninterface P3 { x: number; z: number }\nconst a: P3 = { x: 1, z: 2 };\nconst b: P = a;\n",
 			"a P3 can't be used as a P: an object has exactly the fields of its type in cakebear, and it has `z` too"},
 		{"a wider object as an argument", "interface P { x: number }\ninterface P3 { x: number; z: number }\nfunction f(p: P): number {\n  return p.x;\n}\nconst a: P3 = { x: 1, z: 2 };\nconst n: number = f(a);\n",

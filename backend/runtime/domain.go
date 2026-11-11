@@ -177,6 +177,18 @@ func ClearTimeout(d *Domain, id float64) {
 	heap.Remove(&d.timers, t.index)
 }
 
+// Timeout is what @types/node's setTimeout returns where the DOM's returns a
+// number (S1 plan D12): a timer that only clearTimeout takes.
+type Timeout struct{ id float64 }
+
+// SetNodeTimeout is setTimeout as @types/node declares it.
+func SetNodeTimeout(d *Domain, cb func(*Domain), ms float64) *Timeout {
+	return &Timeout{id: SetTimeout(d, cb, ms)}
+}
+
+// ClearNodeTimeout is clearTimeout of a Timeout.
+func ClearNodeTimeout(d *Domain, t *Timeout) { ClearTimeout(d, t.id) }
+
 // timerDelay is Node's coercion of a delay: anything below 1 ms, above
 // 2^31-1 ms, or NaN, becomes 1 ms. A fraction is kept.
 func timerDelay(ms float64) time.Duration {

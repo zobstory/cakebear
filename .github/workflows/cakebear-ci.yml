@@ -81,6 +81,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # The tests of a program with @types/node need its real files, at the
+      # versions the script pins: fetched, never vendored (S1 plan D12).
+      - name: Fetch @types/node for the tests
+        run: |
+          scripts/fetch-types-node.sh "$RUNNER_TEMP/types-node"
+          echo "CAKEBEAR_TYPES_NODE=$RUNNER_TEMP/types-node" >>"$GITHUB_ENV"
       - name: Test cakebear packages with coverage
         # The 70% floor is the merge gate; 80% is the target. When most owned
         # packages are past 80%, raise FLOOR and delete this comment.

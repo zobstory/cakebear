@@ -72,6 +72,9 @@ const (
 	HostHTTPServer
 	HostIncomingMessage
 	HostServerResponse
+	// HostTimeout is what @types/node's setTimeout returns, where the DOM's
+	// returns a number: only clearTimeout takes one.
+	HostTimeout
 )
 
 func (h HostType) String() string {
@@ -82,6 +85,8 @@ func (h HostType) String() string {
 		return "IncomingMessage"
 	case HostServerResponse:
 		return "ServerResponse"
+	case HostTimeout:
+		return "Timeout"
 	default:
 		return "host"
 	}

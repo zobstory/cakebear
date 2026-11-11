@@ -151,5 +151,12 @@ func (e *emitter) timerCall(x *ir.HostCall) string {
 	if x.Op == ir.HostClearTimeout {
 		name = "ClearTimeout"
 	}
+	// @types/node's timers take and return a Timeout, the DOM's a number.
+	switch timeout := ir.HostOf(ir.HostTimeout); {
+	case x.Op == ir.HostSetTimeout && x.Typ == timeout:
+		name = "SetNodeTimeout"
+	case x.Op == ir.HostClearTimeout && x.Args[0].ExprType() == timeout:
+		name = "ClearNodeTimeout"
+	}
 	return fmt.Sprintf("%s.%s(%s)", rtPkg, name, strings.Join(args, ", "))
 }

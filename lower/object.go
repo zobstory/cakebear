@@ -93,6 +93,12 @@ func (l *lowerer) shapeOf(t *checker.Type) (ir.Type, string) {
 	for _, prop := range props {
 		name := prop.Name()
 		flags := prop.Flags()
+		// A property named by a symbol has a name of the checker's own, such
+		// as "\xFE@iterator@<id>": unreadable, and the id changes from run to
+		// run. Name it as the source writes it, before anything else does.
+		if strings.HasPrefix(name, ast.InternalSymbolNamePrefix) {
+			return ir.Invalid, "a property named by a symbol (`" + c.SymbolToString(prop) + "`) is not supported yet"
+		}
 		switch {
 		case flags&ast.SymbolFlagsMethod != 0:
 			return ir.Invalid, "method `" + name + "` is not supported yet; a property holding an arrow function is"
