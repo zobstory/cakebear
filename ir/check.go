@@ -136,7 +136,7 @@ func (p *Program) checkNode(node any) error {
 		return checkMaybeNode(n)
 	case *Throw, *Try, *NewError, *ErrorGet, *Box, *Unbox, *InstanceOf, *TypeOf:
 		return checkErrorNode(n)
-	case *JSONParse, *UnknownGet, *UnknownIn, *UnknownIsArray, *UnknownIndex:
+	case *JSONParse, *UnknownGet, *UnknownIn, *UnknownIsArray, *UnknownIndex, *Decode:
 		return checkUnknownJSON(n.(Expr)) // unknown_json.go
 	case *Append:
 		return checkAppend(n)

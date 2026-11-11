@@ -135,6 +135,11 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 		}
 		b.WriteString("\n")
 	}
+	if e.decoded[s] {
+		// The values of the keys a decoded object has that its shape
+		// doesn't name, after the fields in its key table (emit_decode.go).
+		b.WriteString("\tts_extra []any\n")
+	}
 	b.WriteString("}\n\n")
 
 	fmt.Fprintf(b, "func (o *%s) Layout() *%s.Layout { return o.%s }\n\n", name, rtPkg, layoutField)
@@ -146,6 +151,9 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 			fmt.Fprintf(b, "\tcase %d:\n\t\treturn o.%s\n", i, fieldName(f.Name))
 		}
 		b.WriteString("\t}\n")
+	}
+	if e.decoded[s] {
+		fmt.Fprintf(b, "\tif i >= %d && i-%[1]d < len(o.ts_extra) {\n\t\treturn o.ts_extra[i-%[1]d]\n\t}\n", len(s.Fields))
 	}
 	fmt.Fprintf(b, "\tpanic(%s)\n}\n\n", strconv.Quote("cakebear: "+s.String()+" has no field of that index"))
 
@@ -159,6 +167,9 @@ func (e *emitter) shapeDecl(b *strings.Builder, s *ir.Shape, at ir.Span) {
 		if cloned(f.Type) {
 			fmt.Fprintf(b, "\tcopied.%s = %s.CloneValue(c, o.%[1]s)\n", fieldName(f.Name), rtPkg)
 		}
+	}
+	if e.decoded[s] {
+		fmt.Fprintf(b, "\tcopied.ts_extra = make([]any, len(o.ts_extra))\n\tfor i, v := range o.ts_extra {\n\t\tcopied.ts_extra[i] = %s.CloneValue(c, v)\n\t}\n", rtPkg)
 	}
 	b.WriteString("\treturn copied\n}\n\n")
 	e.optionalMethods(b, s)

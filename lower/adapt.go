@@ -18,6 +18,7 @@ func (l *lowerer) fit(n *ast.Node, v ir.Expr) ir.Expr {
 	if !l.readonlyOK(n, v) {
 		return nil
 	}
+	v = l.decodeAny(n, v) // cast.go
 	v = l.widened(n, v)
 	v = l.wrapped(n, v)
 	if v = l.boxed(n, v); v == nil { // errors.go

@@ -444,6 +444,44 @@ D4 (b); `runtime/json_parse*.go`, `json_object.go`, `unknown_object.go`,
   bad, empty and BOM bodies, and 6 uncaught parse errors whose whole report
   is Node's but for its last line. 9 mutations RED.
 
+Step 3, the checked cast, is done (S1 plan D4 (a), (c); `lower/cast.go`,
+`backend/emit_decode.go`, `runtime/decode.go`):
+- `u as T` of an unknown, and the `any` of JSON.parse, res.json() or an
+  unknown's element filling a data type's slot (`const p: Page =
+  JSON.parse(s)`, an argument, a return), decode into T's shape with a
+  decoder the emitter generates per type cast to. It checks each value's
+  kind, a required property's presence and null only where T admits it,
+  as the IR holds T (a literal union as its base type); where a value
+  doesn't fit it throws a TypeError at the cast, naming the path, what it
+  is and what the type wants there (`$.items[0].id is a string, where the
+  type Page wants a number`): Node erases the cast and carries on, an
+  accepted difference.
+- **Keys the shape doesn't name are kept, in place**: a decoded shape's
+  struct holds their values after its fields, and its key table, one per
+  key order and shape, lists them where the JSON did, so a program that
+  passes the data on prints and serialises what Node would, and a property
+  set after lands after them.
+- A value that is already the type is itself, so `x as unknown as T` of a T
+  is the same object (`===` holds), and an array of the element type the
+  same array.
+- `e satisfies T` changes nothing; `e as unknown` boxes; a cast between two
+  types the IR holds is refused, as is one to a type holding a function,
+  a promise or a host value, an extension type (not range-checked yet), an
+  index signature or a union of objects (S2). `JSON.parse(s)` as a
+  statement of its own, for its throw alone, lowers too.
+- ⚠ The plan's decoder reads the text straight into T (the spike's 1.43×
+  Node's parse). This one decodes the dynamic value JSON.parse made, which
+  is one mechanism for `as` and for JSON alike: 3,000 parses and casts of a
+  45 KB response took 1.17–1.27 s against Node's 0.33–0.35 s for the
+  parses alone, the parse 1.02–1.15 s of it (measured under a load
+  average of 49, so rough). The direct decoder is for the performance
+  track.
+- Tests: two programs held to Node, 20 runs each (keys kept and printed,
+  an optional property written after, the double cast's identity, an
+  Error out of a catch, primitives, unknown fields, res.json() typed and
+  returned); `TestCastMismatches` holds 7 mismatches' messages and an
+  uncaught one's report, pointing at the cast. 7 mutations RED.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
@@ -2381,6 +2419,7 @@ not listed here that behaves differently is a bug.
 | A callback that shrinks its array during `map`, `filter`, `forEach`, `some`, `every`, `reduce`, `findIndex`, `find` or `findLast` (D9) | skips the indices it removed (`findIndex`, `find` and `findLast` read them as `undefined`) | a panic saying so: `cakebear: the array shrank to 2 elements while forEach ran over 4 (Node skips the rest)` |
 | The calls `sort`'s comparator gets | V8's TimSort pairs | a Go stable sort's: the same result for any consistent comparator, but a comparator that logs or counts sees other calls (`[3, 1, 2]`: Node calls it 4 times, cakebear 3) |
 | A `spawn`'s object or array result, or what it rejects with, while the spawned domain may still run: a timer, a microtask queued or a call parked (D11, M6 D10) | the same object | a copy, aliasing and cycles kept, so the spawn's leftover work can't change it in parallel |
+| A checked cast, `u as T`, or JSON.parse's or res.json()'s `any` in a slot of type T, whose value doesn't fit T (S1 plan D4) | carries on with the value, whatever it is | a TypeError thrown at the cast, naming the path: `$.items[0].id is a string, where the type Page wants a number` |
 | A value TypeScript narrowed, used after something emptied it, such as a call between the check and the use (M5 D4) | carries on with `undefined` or `null` (`box.n + 1` is `NaN`) | a panic naming the value: `cakebear: box.n is undefined where TypeScript had narrowed it to a value (Node carries on with undefined)`, exit 2 |
 | A write to a property of a value that is null or undefined, `u!.p = f()` | runs `f()`, then throws | throws Node's TypeError before `f()` runs (M5 step 4) |
 | `x!` on a value that is null or undefined, used as a value (M5 step 4) | carries on with it | a panic: `cakebear: m is undefined, though a ! asserted it isn't (Node carries on with undefined)`, exit 2. Reading, writing, deleting or iterating it, or `in`, throws the TypeError Node throws (M6 D9) |
