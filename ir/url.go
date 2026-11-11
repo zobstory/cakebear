@@ -20,6 +20,8 @@ var urlOpNames = map[HostOp]string{
 	HostParamsString:       "URLSearchParams.toString",
 	HostParamsForEach:      "URLSearchParams.forEach",
 	HostAbortSignalTimeout: "AbortSignal.timeout",
+	HostEnvGet:             "process.env",
+	HostEnvHas:             "in process.env",
 }
 
 // URLProps maps a URL's getters, by name, to their properties: every one a

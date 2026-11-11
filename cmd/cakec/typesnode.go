@@ -48,14 +48,15 @@ func usesTypesNode(p *compiler.Program) bool {
 	return false
 }
 
-// withoutNodeHTTP is config without cakebear's node:http declarations as a
-// root file.
+// withoutNodeHTTP is config without cakebear's node:http declarations, or
+// its declaration of process, as root files: @types/node declares both.
 func withoutNodeHTTP(config *tsoptions.ParsedCommandLine) *tsoptions.ParsedCommandLine {
-	ours := tspath.RootedFilePath(cakebeartypes.NodeHTTPPath())
+	http := tspath.RootedFilePath(cakebeartypes.NodeHTTPPath())
+	globals := tspath.RootedFilePath(cakebeartypes.NodeGlobalsPath())
 	names := config.FileNames()
 	kept := make([]tspath.RootedFilePath, 0, len(names))
 	for _, name := range names {
-		if name != ours {
+		if name != http && name != globals {
 			kept = append(kept, name)
 		}
 	}

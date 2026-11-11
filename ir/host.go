@@ -56,6 +56,8 @@ const (
 	HostParamsString       // params.toString(), String(params) and a template's
 	HostParamsForEach      // params.forEach(callback), over the live list
 	HostAbortSignalTimeout // AbortSignal.timeout(ms)
+	HostEnvGet             // process.env[Args[0]]: a string or undefined (S1 plan D8)
+	HostEnvHas             // Args[0] in process.env
 )
 
 // The keys a HostFetch's init properties have: a header's is its name
