@@ -301,6 +301,9 @@ func (l *lowerer) coalesceAssign(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		return nil, false
 	}
 	b := expr.AsBinaryExpression()
+	if l.envWrite(stmt, b.Left) { // env.go
+		return nil, true
+	}
 	if !updatable(b.Left) {
 		l.failf(stmt, "??= on anything but a variable's name, a field of one, or an element indexed by a name or a number, is not supported yet")
 		return nil, true

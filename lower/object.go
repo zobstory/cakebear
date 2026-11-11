@@ -309,6 +309,9 @@ func (l *lowerer) fieldSet(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
 	if out, ok := l.urlSet(stmt, target, value); ok { // url.go
 		return out, true
 	}
+	if l.envWrite(stmt, target) { // env.go
+		return nil, true
+	}
 	if target.Kind != ast.KindPropertyAccessExpression {
 		return nil, false
 	}

@@ -81,6 +81,10 @@ func (e *emitter) urlCall(x *ir.HostCall) (string, bool) {
 		// The live list, read again each turn, as Node's forEach reads it.
 		return fmt.Sprintf("func() {\n\tts_p, ts_cb := %s, %s\n\tfor ts_i := 0; ts_i < ts_p.Len(); ts_i++ {\n\t\tts_name, ts_value := ts_p.Entry(ts_i)\n\t\tts_cb(%s, ts_value, ts_name, ts_p)\n\t}\n}()",
 			recv(), args[0], e.dom()), true
+	case ir.HostEnvGet:
+		return rt("EnvGet"), true
+	case ir.HostEnvHas:
+		return rt("EnvHas"), true
 	case ir.HostAbortSignalTimeout:
 		e.usesRuntime = true
 		return rtPkg + ".AbortSignalTimeout(" + e.dom() + ", " + args[0] + ", " + e.siteArg(x.Span) + ")", true

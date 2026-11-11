@@ -122,6 +122,9 @@ func (l *lowerer) exprOf(n *ast.Node) ir.Expr {
 		if v, ok := l.unknownElement(n); ok { // unknown_json.go
 			return v
 		}
+		if v, ok := l.envElement(n); ok { // env.go
+			return v
+		}
 		return l.elementGet(n)
 
 	default:

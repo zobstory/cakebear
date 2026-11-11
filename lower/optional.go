@@ -20,6 +20,9 @@ func (l *lowerer) presence(n *ast.Node) (ir.Expr, bool) {
 		return nil, true
 	case ast.KindBinaryExpression:
 		if b := n.AsBinaryExpression(); b.OperatorToken.Kind == ast.KindInKeyword {
+			if v, ok := l.envIn(n, b); ok { // env.go
+				return v, true
+			}
 			return l.inExpr(n, b), true
 		}
 	}
@@ -59,6 +62,9 @@ func (l *lowerer) deleteStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 		return nil, false
 	}
 	target := ast.SkipParentheses(expr.AsDeleteExpression().Expression)
+	if l.envWrite(stmt, target) { // env.go
+		return nil, true
+	}
 	if target.Kind != ast.KindPropertyAccessExpression || target.AsPropertyAccessExpression().QuestionDotToken != nil {
 		l.failf(stmt, "delete of anything but an object's property, o.p, is not supported yet")
 		return nil, true

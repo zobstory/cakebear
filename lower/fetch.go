@@ -166,6 +166,9 @@ func (l *lowerer) fetchMethodCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, 
 	if out, ok := l.urlMethodCall(n, c); ok { // url.go
 		return out, true
 	}
+	if l.processCall(c) { // env.go
+		return nil, true
+	}
 	if c.Expression.Kind != ast.KindPropertyAccessExpression {
 		return nil, false
 	}

@@ -579,6 +579,27 @@ D6, D2): the runtime by agent s1-url-rt (`runtime/url*.go`), the rest in
     `TestURLRefusals`;
   - 25 mutations RED (13 in the runtime, 12 in the rest).
 
+Step 6, process.env, is done (S1 plan D8; `lower/env.go`,
+`runtime/env.go`, `types/node-globals.d.ts`):
+- A variable read by name or by a computed string key is a string or
+  undefined, from the environment the program started with, decoded as
+  UTF-8 as Node decodes it; `key in process.env` tests presence. A read
+  the checker narrowed is the string, which nothing can make unsound.
+- **Writes are refused by name**, assignment, compound, `??=` and delete:
+  the environment would be state every request shares. With none, the
+  table never changes, so a handler or a spawn reads it freely.
+  process.env whole and process's other members are refused by name.
+- A program without @types/node gets cakebear's own declaration of
+  process, `env` alone and read-only (`types/node-globals.d.ts`), so a
+  write or another member is a type error in TypeScript's words. A native
+  build of a program with @types/node leaves it out with node-http.d.ts
+  and lowers @types/node's (globals.d.ts, process.d.ts).
+- Tests: `TestEnvMatchesNode` holds a program of every read to Node's
+  output under a fixed environment, with cakebear's declaration and with
+  @types/node's (`TestTypesNodeEnv`, which also refuses each write);
+  `TestEnvInHandlersUnderRace` serves 200 requests reading it from a race
+  build; `TestEnvRefusals`. 6 mutations RED.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,

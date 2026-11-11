@@ -30,6 +30,9 @@ var declarations string
 //go:embed node-http.d.ts
 var nodeHTTPDeclarations string
 
+//go:embed node-globals.d.ts
+var nodeGlobalsDeclarations string
+
 // scheme mirrors how upstream serves its bundled lib files. The declarations
 // never exist on disk, so they cannot be edited, shadowed by a file of the same
 // name, or left stale by a partial install.
@@ -41,11 +44,16 @@ func DeclarationPath() string { return scheme + "cakebear.d.ts" }
 // NodeHTTPPath is the virtual path of cakebear's node:http declarations.
 func NodeHTTPPath() string { return scheme + "node-http.d.ts" }
 
+// NodeGlobalsPath is the virtual path of cakebear's declaration of process,
+// which steps aside for @types/node's with node-http.d.ts.
+func NodeGlobalsPath() string { return scheme + "node-globals.d.ts" }
+
 // virtualFiles is every declarations file the overlay serves, in the order
 // they become root files. Adding a bundled module is one entry here.
 var virtualFiles = []struct{ path, contents string }{
 	{DeclarationPath(), declarations},
 	{NodeHTTPPath(), nodeHTTPDeclarations},
+	{NodeGlobalsPath(), nodeGlobalsDeclarations},
 }
 
 // RootFiles returns the virtual path of every declarations file. cakec adds

@@ -222,6 +222,9 @@ func (l *lowerer) property(n *ast.Node) ir.Expr {
 	if v, ok := l.urlProperty(n); ok { // url.go
 		return v
 	}
+	if v, ok := l.envProperty(n); ok { // env.go
+		return v
+	}
 	if v, ok := l.unknownProperty(n); ok { // unknown_json.go
 		return v
 	}

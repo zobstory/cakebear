@@ -280,6 +280,9 @@ func (l *lowerer) popStatement(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 // arrayAssign lowers `xs[i] = v` and `xs.length = n`, and reports whether
 // target was an array's element or length.
 func (l *lowerer) arrayAssign(stmt, target, value *ast.Node) ([]ir.Stmt, bool) {
+	if l.envWrite(stmt, target) { // env.go
+		return nil, true
+	}
 	switch target.Kind {
 	case ast.KindElementAccessExpression:
 		arr, index, ok := l.element(target, target.AsElementAccessExpression())

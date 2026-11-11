@@ -88,6 +88,9 @@ func (l *lowerer) update(stmt, expr *ast.Node) ([]ir.Stmt, bool) {
 	if !ok {
 		return nil, false
 	}
+	if l.envWrite(stmt, target) { // env.go
+		return nil, true
+	}
 	if !updatable(target) {
 		l.failf(stmt, "%s on anything but a variable's name, a field of one, or an element indexed by a name or a number, is not supported yet", text)
 		return nil, true
