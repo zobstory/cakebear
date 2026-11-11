@@ -95,6 +95,9 @@ func unprintable(t ir.Type, seen map[*ir.Shape]bool) string {
 	case ir.KindFunc:
 		return "a function"
 	case ir.KindHost:
+		if t.Host == ir.HostURLValue || t.Host == ir.HostSearchParams {
+			return "" // printed as Node prints them (R24, R25)
+		}
 		return "a " + t.String()
 	case ir.KindPromise:
 		return "a promise"

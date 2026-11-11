@@ -527,6 +527,58 @@ Step 4, promises, is done (S1 plan D5; `lower/promise.go`,
   time, each fanning out to three upstream GETs, from a race build.
   15 mutations RED.
 
+Step 5, URL, URLSearchParams and AbortSignal.timeout, is done (S1 plan
+D6, D2): the runtime by agent s1-url-rt (`runtime/url*.go`), the rest in
+`lower/url.go`, `backend/emit_url.go` and `runtime/abort.go`:
+- **The URL Standard's own parser**, not net/url, which differs from Node
+  on 20 of s1-node's 37 URLs: the basic URL parser state by state, the
+  host parser (IPv4 in every form, IPv6 compressed), the percent-encode
+  sets and the serializer; every getter, every setter from its state
+  override (bad values ignored), `toString`, `toJSON`, `URL.canParse` and
+  `URL.parse`. `searchParams` is one object, live both ways. Where Ada,
+  Node's parser, leaves the standard, twice, it is matched (measured).
+- **URLSearchParams**: from a string, an object literal of strings or
+  another one; its methods, `size`, the form encoding both ways, `sort`
+  stable in UTF-16 order, and `forEach` over the live list, as Node's
+  reads it. A URL and a URLSearchParams print as Node's custom inspects
+  print them, and serialise as Node's toJSON gives them (an href, `{}`),
+  in arrays and objects too.
+- An invalid URL throws Node's TypeError with its `code`, `input` and
+  `base`; the href setter throws Node's own coded one, which differs.
+- `String(u)`, a template and fetch's input take a URL's href, and
+  `u.pathname += "/x"` goes through the setter. A base that is a URL is
+  taken as its href, as Node takes it (`${base}`).
+- `fetch(url, { body: params })` sends the form encoding with Node's
+  `application/x-www-form-urlencoded;charset=UTF-8`.
+- **`AbortSignal.timeout(ms)` as fetch's signal** (R16): it rejects a
+  fetch waiting for its headers, or a body read for its body, in the timer
+  that fired, with Node's `DOMException [TimeoutError]` (an Error to
+  instanceof, `TimeoutError: …` as a string); one signal can end several
+  fetches, and one that fired before the call rejects at once. Its timer
+  is **unref'd** (`timer.unref`, `Domain.unrefd`), as Node's is, so it
+  keeps no program or request alive. A delay that isn't an integer from 0
+  to 2^32 − 1 throws Node's `ERR_OUT_OF_RANGE`.
+- Each is a host value of its domain: a handler or a spawn can't reach one
+  made outside it, and a spawn's result holding one, an unknown holding
+  one and throwing one are refused. `===` on one is refused.
+- Refused by name: `AbortController`, `AbortSignal.abort` and `any`, a
+  signal's members, URLSearchParams' iterators (forEach goes over its
+  pairs), pairs as an init (tuples), `URL.createObjectURL`.
+- Tests:
+  - the runtime's goldens, 18,346 cases recorded from Node (parsing 9,441,
+    setters 4,339, the params 2,980, printing 911), all passing outside
+    two accepted sections (below);
+  - three programs held to Node, 20 runs each: every member, printing,
+    the form body, URLs in arrays and objects, a live forEach, and
+    aborts before the headers, during the body, shared, fired early, and
+    Node's errors for a bad delay;
+  - `TestURLsInHandlersUnderRace` serves 200 requests, 8 at a time, each
+    parsing its `req.url` and fetching an upstream URL built with
+    searchParams under a signal, from a race build;
+  - `TestAbortSignalKeepsNothingAlive`, `TestUncaughtAbortEndsAsNode` and
+    `TestURLRefusals`;
+  - 25 mutations RED (13 in the runtime, 12 in the rest).
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
@@ -2144,7 +2196,7 @@ as `_u` and its hex code point, closed by `_`: `$count` is `ts_x__Dcount`.
 The escape reads back to exactly one name, so two names never meet. Before,
 each reached `go build` and failed there.
 
-Not yet: mixed-type `+`, RegExp, `URL` and `URLSearchParams`, `var`, loose equality, classes,
+Not yet: mixed-type `+`, RegExp, `var`, loose equality, classes,
 generics, imports from anything but `node:http` and the program's own
 modules, `for…in`, `do…while`, `switch`, bitwise operators, `**` (it waits
 for `Math`, since Go's `math.Pow` differs from V8's in the last bit);
@@ -2452,6 +2504,8 @@ not listed here that behaves differently is a bug.
 | Async ordering within one request, or within main | synchronous code, microtasks, then timers | identical, byte for byte (`ordering.ts`, 20 of 20 runs) |
 | Async code in *different* requests after an `await` | interleaved on one thread | in parallel (8 requests that await then compute `fib(38)`: ~1.2× one, vs Node's ~7.2×) |
 | `setTimeout`'s return value | a `Timeout` object | a `number`, as the DOM's declaration types it |
+| A host with non-ASCII characters UTS 46 maps or refuses (S1 plan D6): a compatibility character (`ﬁ`, `Ⅻ`, `ⓐ`), a combining mark NFC would compose, a label mixing right-to-left and Latin, an `xn--` label that decodes to an invalid one | mapped, normalised or refused, as UTS 46 says | lowercased and punycoded as written: the runtime takes no Unicode tables from outside the standard library. Everyday IDNs (`exämple`, `münchen`, `пример.рф`, `日本語.jp`, fullwidth ASCII) match; 202 of the goldens' 664 deliberately hostile hosts differ |
+| A URL setter whose result Ada, Node's parser, writes as an href that parses back to another URL (11 measured, `host = "b:99"` on `sc:/.//p`) | Ada's href | the URL Standard's |
 | The cost of one `await` | ~32 ns | ~224 ns: a goroutine handoff |
 | A throw, or a rejection nothing handles, in work that runs after the response (a timer set after `res.end()`) | the uncaught exception kills the process | reported on stderr as an uncaught throw is, and the process stays up; a Go panic there as `cakebear: after a response was sent: …` |
 | A delay over 2^31−1 ms | 1 ms, plus a `TimeoutOverflowWarning` | 1 ms, without the warning |

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -73,6 +74,10 @@ type FetchInit struct {
 	Body     Maybe[string]
 	Redirect string
 	Cache    string // "" for default
+	// Form marks a body that was a URLSearchParams, whose default content
+	// type is the form encoding's; Signal is init's signal, or nil.
+	Form   bool
+	Signal *AbortSignal
 }
 
 // The methods Node upper-cases (the Fetch Standard's normalisation); any
@@ -114,7 +119,9 @@ func Fetch(d *Domain, input string, init *FetchInit, site *Site) *Promise[*Respo
 		// message Headers.append throws (R7).
 		pairs := init.Pairs
 		if t := Try(func() {
-			init = &FetchInit{Method: init.Method, Headers: NewHeaders(pairs, site), Body: init.Body, Redirect: init.Redirect, Cache: init.Cache}
+			with := *init
+			with.Pairs, with.Headers = nil, NewHeaders(pairs, site)
+			init = &with
 		}); t != nil {
 			fail, _ = t.V.(*Error)
 		}
@@ -128,16 +135,45 @@ func Fetch(d *Domain, input string, init *FetchInit, site *Site) *Promise[*Respo
 		d.queueMicrotask(func() { p.reject(&Thrown{V: fail, Site: site}) })
 		return p
 	}
+	signal := init.Signal
+	if signal != nil && signal.reason != nil {
+		p.reject(&Thrown{V: signal.reason, Site: site}) // aborted already
+		return p
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	req = req.WithContext(ctx)
+	var waiting *abortWait
+	if signal != nil {
+		// An abort rejects at once, in the timer that fired it, as Node's
+		// abort event does (R16); what the cancelled request posts later
+		// is ignored.
+		waiting = signal.wait(d, func(reason *Error) {
+			cancel()
+			p.reject(&Thrown{V: reason, Site: site})
+		})
+	}
 	d.inflight++
 	go func() {
 		res, failure := roundTrip(req, input, site)
 		d.postIO(func() {
 			d.inflight--
+			if p.settled {
+				if res != nil {
+					_ = res.resp.Body.Close()
+				}
+				cancel()
+				return
+			}
+			waiting.release()
 			if failure != nil {
+				cancel()
 				p.reject(&Thrown{V: failure, Site: site})
 				return
 			}
-			res.d = d
+			res.d, res.cancel = d, cancel
+			if signal != nil {
+				res.waiting = signal.wait(d, res.abort)
+			}
 			p.resolve(res)
 			go res.readBody()
 		})
@@ -214,7 +250,11 @@ func setRequestHeaders(req *http.Request, init *FetchInit) {
 			set[e.lower] = true
 		}
 	}
-	if !init.Body.IsEmpty() && !set["content-type"] {
+	switch {
+	case init.Body.IsEmpty() || set["content-type"]:
+	case init.Form:
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
+	default:
 		req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
 	}
 	if !set["connection"] {
@@ -277,6 +317,14 @@ func FetchHeader(name, value string) FetchOption {
 func FetchHeaders(h *Headers) FetchOption { return func(i *FetchInit) { i.Headers = h } }
 
 func FetchBody(b string) FetchOption { return func(i *FetchInit) { i.Body = Some(b) } }
+
+// FetchFormBody is a URLSearchParams as the body, b its form encoding.
+func FetchFormBody(b string) FetchOption {
+	return func(i *FetchInit) { i.Body, i.Form = Some(b), true }
+}
+
+// FetchSignal is init's signal.
+func FetchSignal(s *AbortSignal) FetchOption { return func(i *FetchInit) { i.Signal = s } }
 
 func FetchRedirect(mode string) FetchOption { return func(i *FetchInit) { i.Redirect = mode } }
 

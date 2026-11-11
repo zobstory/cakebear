@@ -189,6 +189,11 @@ func (l *lowerer) newExpr(n *ast.Node) ir.Expr {
 		if callee.Text() == "Headers" && declaredForFetch(l.checker.GetSymbolAtLocation(callee)) {
 			return l.newHeaders(n, n.Arguments()) // fetch_call.go
 		}
+		if sym := l.checker.GetSymbolAtLocation(callee); declaredForURL(sym) && callee.Text() == "URL" {
+			return l.newURL(n, n.Arguments()) // url.go
+		} else if declaredForURL(sym) && callee.Text() == "URLSearchParams" {
+			return l.newSearchParams(n, n.Arguments())
+		}
 	}
 	if callee.Kind != ast.KindIdentifier || callee.Text() != "Promise" ||
 		!onlyInBundledLib(l.checker.GetSymbolAtLocation(callee), "") {

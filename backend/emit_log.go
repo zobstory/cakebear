@@ -95,6 +95,8 @@ func inspectable(t ir.Type, seen map[*ir.Shape]bool) bool {
 		return true
 	case ir.KindArray, ir.KindMaybe:
 		return t.Elem != nil && inspectable(*t.Elem, seen)
+	case ir.KindHost:
+		return t.Host == ir.HostURLValue || t.Host == ir.HostSearchParams // url_inspect.go
 	case ir.KindObject:
 		if t.Shape == nil {
 			return false

@@ -73,6 +73,9 @@ func (l *lowerer) hostType(t *checker.Type) ir.HostType {
 	if h := fetchHostType(t); h != ir.HostNone { // fetch.go
 		return h
 	}
+	if h := urlHostType(t); h != ir.HostNone { // url.go
+		return h
+	}
 	return l.typesNodeHostType(t) // typesnode.go
 }
 
@@ -214,6 +217,9 @@ func (s hostSpec) arity() string {
 // property lowers a property read. node:http's are the only ones so far.
 func (l *lowerer) property(n *ast.Node) ir.Expr {
 	if v, ok := l.fetchProperty(n); ok { // fetch.go
+		return v
+	}
+	if v, ok := l.urlProperty(n); ok { // url.go
 		return v
 	}
 	if v, ok := l.unknownProperty(n); ok { // unknown_json.go

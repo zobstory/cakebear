@@ -76,6 +76,9 @@ type Domain struct {
 	// spawn's result keeps its place before them: under the shim that runs
 	// a program with spawn under Node, a spawn's result is a microtask.
 	io []func()
+	// unrefd counts the timers in timers that keep nothing alive (timer's
+	// unref), which pending leaves out.
+	unrefd int
 }
 
 func newDomain() *Domain {
@@ -189,7 +192,9 @@ func (d *Domain) runTask(f func()) {
 // a timer, a spawn whose result is still to come, or I/O in flight. Microtasks are always
 // drained before anything asks. A promise that nothing will ever settle is
 // not pending work, so a program blocked only on one ends, as under Node.
-func (d *Domain) pending() bool { return len(d.timers) > 0 || d.spawned > 0 || d.inflight > 0 }
+func (d *Domain) pending() bool {
+	return len(d.timers) > d.unrefd || d.spawned > 0 || d.inflight > 0
+}
 
 // timer is one setTimeout.
 type timer struct {
@@ -198,6 +203,10 @@ type timer struct {
 	id    float64
 	cb    func(*Domain)
 	index int // in the heap, for ClearTimeout
+	// unref marks a timer that keeps nothing alive, as Node's unref'd
+	// timers don't: AbortSignal.timeout's (abort.go). It fires while the
+	// domain has other work, and is dropped with the domain otherwise.
+	unref bool
 }
 
 // nextTimerID numbers timers across the whole process, so an id one domain
@@ -262,6 +271,9 @@ func (d *Domain) fireDue() {
 	for len(d.timers) > 0 && !d.timers[0].when.After(time.Now()) {
 		t := heap.Pop(&d.timers).(*timer)
 		delete(d.byID, t.id)
+		if t.unref {
+			d.unrefd--
+		}
 		d.running = inTimer
 		d.runTask(func() { t.cb(d) })
 	}

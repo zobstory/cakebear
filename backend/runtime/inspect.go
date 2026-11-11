@@ -101,6 +101,10 @@ func (c *inspector) value(v any, recurse int) string {
 		return "null"
 	case *Error:
 		return c.errorValue(x, recurse)
+	case *URL:
+		return c.urlValue(x, recurse) // url_inspect.go
+	case *URLSearchParams:
+		return c.paramsValue(x, recurse)
 	case Object, array:
 		return c.container(x, recurse)
 	case maybe:

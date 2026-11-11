@@ -163,6 +163,9 @@ func (l *lowerer) failFetchMember(n *ast.Node, recv ir.HostType, name string, kn
 
 // fetchMethodCall lowers a call of a Response's or a Headers' method.
 func (l *lowerer) fetchMethodCall(n *ast.Node, c *ast.CallExpression) (ir.Expr, bool) {
+	if out, ok := l.urlMethodCall(n, c); ok { // url.go
+		return out, true
+	}
 	if c.Expression.Kind != ast.KindPropertyAccessExpression {
 		return nil, false
 	}

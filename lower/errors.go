@@ -375,7 +375,7 @@ func (l *lowerer) box(n *ast.Node, v ir.Expr) ir.Expr {
 // message: "an unknown", "an Error", "a () => number".
 func aType(t ir.Type) string {
 	name := t.String()
-	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) {
+	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) && !strings.HasPrefix(name, "URL") {
 		return "an " + name
 	}
 	return "a " + name

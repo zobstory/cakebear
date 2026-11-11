@@ -13,8 +13,8 @@ func TestFetchRefusals(t *testing.T) {
 	for _, tt := range []struct{ name, src, want string }{
 		{"an init in a variable", "const init: RequestInit = { method: \"POST\" };\nconst r: Response = await fetch(\"http://a.test/\", init);\nexport {};\n",
 			"fetch's init must be an object literal here"},
-		{"a signal", "const r: Response = await fetch(\"http://a.test/\", { signal: AbortSignal.timeout(5) });\nexport {};\n",
-			"fetch's signal lands with AbortSignal.timeout"},
+		{"a signal from a controller", "const r: Response = await fetch(\"http://a.test/\", { signal: new AbortController().signal });\nexport {};\n",
+			"AbortController is not supported yet: fetch's signal comes from AbortSignal.timeout"},
 		{"a mode", "const r: Response = await fetch(\"http://a.test/\", { mode: \"cors\" });\nexport {};\n",
 			"fetch's mode is not supported yet"},
 		{"a redirect that isn't written", "const m: RequestRedirect = \"manual\";\nconst r: Response = await fetch(\"http://a.test/\", { redirect: m });\nexport {};\n",

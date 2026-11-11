@@ -24,7 +24,7 @@ func (e *JSONStringify) ExprSpan() Span { return e.Span }
 // checkJSONStringify holds JSON.stringify to a value it can serialise and a
 // space of a type JavaScript reads one from.
 func checkJSONStringify(x *JSONStringify) error {
-	if what := Unserializable(x.Value.ExprType(), nil); what != "" {
+	if what := JSONUnserializable(x.Value.ExprType()); what != "" {
 		return fmt.Errorf("JSON.stringify of a %s, which holds %s", x.Value.ExprType(), what)
 	}
 	if x.Space != nil {
@@ -35,17 +35,27 @@ func checkJSONStringify(x *JSONStringify) error {
 	return nil
 }
 
-// Unserializable names what in a value of type t JSON.stringify has no
-// serialisation for in the subset, or returns "": a function, a promise, a
-// host value, or a type the IR can't represent, directly or inside an object
-// or array.
-func Unserializable(t Type, seen map[*Shape]bool) string {
+// Unserializable names what in a value of type t isn't data, or returns
+// "": a function, a promise, a host value, or a type the IR can't
+// represent, directly or inside an object or array. Only data may be
+// boxed into an unknown, thrown or rejected with.
+func Unserializable(t Type, seen map[*Shape]bool) string { return unserializable(t, seen, false) }
+
+// JSONUnserializable is Unserializable for JSON.stringify, which also
+// serialises a URL, as its quoted href, and a URLSearchParams, as `{}`
+// (S1 plan D6, R24, R25): host values, so no data.
+func JSONUnserializable(t Type) string { return unserializable(t, nil, true) }
+
+func unserializable(t Type, seen map[*Shape]bool, urls bool) string {
 	switch t.Kind {
 	case KindInvalid:
 		return "a type the IR can't represent"
 	case KindFunc:
 		return "a function"
 	case KindHost:
+		if urls && (t.Host == HostURLValue || t.Host == HostSearchParams) {
+			return ""
+		}
 		return article(t.String())
 	case KindPromise:
 		return "a promise"
@@ -58,7 +68,7 @@ func Unserializable(t Type, seen map[*Shape]bool) string {
 		// A Maybe's null is written as null, and its undefined as nothing at
 		// all (a property) or null (an element), as JSON.stringify does.
 		if t.Elem != nil {
-			return Unserializable(*t.Elem, seen)
+			return unserializable(*t.Elem, seen, urls)
 		}
 	case KindObject:
 		if t.Shape == nil || seen[t.Shape] {
@@ -69,7 +79,7 @@ func Unserializable(t Type, seen map[*Shape]bool) string {
 		}
 		seen[t.Shape] = true
 		for _, f := range t.Shape.Fields {
-			if what := Unserializable(f.Type, seen); what != "" {
+			if what := unserializable(f.Type, seen, urls); what != "" {
 				return what
 			}
 		}
@@ -79,7 +89,7 @@ func Unserializable(t Type, seen map[*Shape]bool) string {
 
 // article puts "a" or "an" before name, by its first letter.
 func article(name string) string {
-	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) {
+	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) && !strings.HasPrefix(name, "URL") { // "a URL"
 		return "an " + name
 	}
 	return "a " + name

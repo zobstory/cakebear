@@ -39,9 +39,13 @@ const (
 	ErrorSyntax                     // SyntaxError
 	ErrorReference                  // ReferenceError
 	ErrorEval                       // EvalError
+	// ErrorDOMException is no kind the IR has: a DOMException, which the
+	// runtime makes for an abort (abort.go). Its name is its own, such as
+	// TimeoutError, and instanceof finds it only as an Error.
+	ErrorDOMException
 )
 
-var errorKindNames = [...]string{"Error", "TypeError", "RangeError", "URIError", "SyntaxError", "ReferenceError", "EvalError"}
+var errorKindNames = [...]string{"Error", "TypeError", "RangeError", "URIError", "SyntaxError", "ReferenceError", "EvalError", "DOMException"}
 
 // String is the kind's constructor name, which is also an error's name.
 func (k ErrorKind) String() string { return errorKindNames[k] }
@@ -75,6 +79,8 @@ type Error struct {
 	// site is where the error was made, which the report of an uncaught
 	// one points at in an ES module's top level (R6).
 	site *Site
+	// name, for a DOMException, is its name, which isn't its kind's.
+	name string
 }
 
 // ErrorProp is one of an Error's own enumerable properties: its key, and
@@ -179,7 +185,12 @@ func (e *Error) Kind() ErrorKind { return e.kind }
 func (e *Error) Message() string { return e.message }
 
 // Name is `e.name`, the constructor's name.
-func (e *Error) Name() string { return e.kind.String() }
+func (e *Error) Name() string {
+	if e.name != "" {
+		return e.name
+	}
+	return e.kind.String()
+}
 
 // Stack is `e.stack`, which TypeScript types `string | undefined`: always
 // a string here, its first line and nothing more.
@@ -293,6 +304,11 @@ func (c *inspector) errorValue(e *Error, recurse int) string {
 // lines indented to where it is printed.
 func (c *inspector) errorBase(e *Error) string {
 	base := "[" + e.stackText() + "]"
+	if e.kind == ErrorDOMException {
+		// inspect's improveStack names the constructor where the name
+		// differs: `[DOMException [TimeoutError]: …]` (R16).
+		base = "[DOMException [" + e.name + "]" + e.stackText()[len(e.name):] + "]"
+	}
 	if c.indent != 0 {
 		base = strings.ReplaceAll(base, "\n", "\n"+strings.Repeat(" ", c.indent))
 	}
