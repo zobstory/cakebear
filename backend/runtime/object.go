@@ -133,9 +133,12 @@ func NewLayout(keys []string, fields []int) *Layout {
 
 // printedKey is how Node prints a property name (R5): bare when it is an
 // identifier of ASCII letters, digits and `_`, reserved words included, and
-// otherwise quoted and escaped as a string is. __proto__ never gets here:
-// lowering refuses it.
+// otherwise quoted and escaped as a string is. A literal's __proto__ never
+// gets here, since lowering refuses it; a parsed object's can.
 func printedKey(k string) string {
+	if k == "__proto__" {
+		return "['__proto__']" // a parsed object's own key, as Node prints it (R28)
+	}
 	if isBareKey(k) {
 		return k
 	}

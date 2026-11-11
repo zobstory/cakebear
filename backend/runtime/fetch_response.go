@@ -139,6 +139,22 @@ func (r *Response) Text(d *Domain, site *Site) *Promise[string] {
 	return p
 }
 
+// JSON is `res.json()`: the body as text() reads it, parsed as JSON.parse
+// parses it, an unknown, or a rejection with JSON.parse's own SyntaxError
+// (R13), which points into the body (R30).
+func (r *Response) JSON(d *Domain, site *Site) *Promise[any] {
+	p := &Promise[any]{settlement: settlement{d: d}}
+	r.read(d, site, &p.settlement, func() {
+		v, err := parseJSON(decodeUTF8(r.body))
+		if err != nil {
+			p.reject(&Thrown{V: err, Site: err.site})
+			return
+		}
+		p.resolve(v)
+	})
+	return p
+}
+
 // read settles a body read: at once with Node's TypeError for a body used
 // already, else when the body is in.
 func (r *Response) read(d *Domain, site *Site, s *settlement, done func()) {

@@ -232,7 +232,15 @@ func TestFetchMatchesNode(t *testing.T) {
 				if got := unaddress(stdout, base, dead); got != want.Stdout || code != want.Exit {
 					t.Fatalf("run %d: exit %d, printed\n%s\nwant exit %d, as Node prints\n%s\nstderr:\n%s", run, code, got, want.Exit, want.Stdout, stderr)
 				}
-				if want.Exit != 0 {
+				switch {
+				case strings.HasPrefix(name, "uncaught-json"):
+					// Into the data: the whole report is Node's, but its
+					// last line (json_e2e_test.go).
+					got := unaddress(stderr, base, dead)
+					if node := strings.Replace(want.Stderr, "\n\nNode.js v24.18.0\n", "", 1); got != node+"\n\ncakebear "+version+"\n" {
+						t.Fatalf("the report is\n%s\nwant, as Node's\n%s", got, node+"\n\ncakebear "+version+"\n")
+					}
+				case want.Exit != 0:
 					checkUncaughtBody(t, unaddress(stderr, base, dead), want.Stderr)
 				}
 			}

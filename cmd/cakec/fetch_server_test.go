@@ -79,6 +79,14 @@ func upstream(t *testing.T) string {
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 		_, _ = io.WriteString(w, "slow "+strconv.Itoa(ms))
 	})
+	// /data answers its ?body as JSON: a bad one too, and a BOM before it.
+	mux.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Has("bom") {
+			_, _ = io.WriteString(w, "\uFEFF")
+		}
+		_, _ = io.WriteString(w, r.URL.Query().Get("body"))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv.URL

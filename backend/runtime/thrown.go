@@ -58,7 +58,14 @@ type Site struct {
 	// With none, the report gives the location alone, and with no File, no
 	// location: the site is unknown, as a nil one is.
 	Text string
+	// Data marks a place in data the program parsed, not in its source: a
+	// JSON.parse SyntaxError's (R30). Its File is anonymousScript, and a Col
+	// of 0 is no caret, for the end of the input.
+	Data bool
 }
+
+// anonymousScript is what Node's report names data it parsed (R30).
+const anonymousScript = "<anonymous_script>"
 
 // Thrown is a JavaScript value in flight: what `throw v` panics with.
 type Thrown struct {

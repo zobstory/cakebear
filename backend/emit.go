@@ -339,6 +339,9 @@ func (e *emitter) expr(x ir.Expr) string {
 	case *ir.NewError, *ir.ErrorGet, *ir.Box, *ir.Unbox, *ir.InstanceOf, *ir.TypeOf:
 		return e.errorExpr(x) // emit_errors.go
 
+	case *ir.JSONParse, *ir.UnknownGet, *ir.UnknownIn, *ir.UnknownIsArray, *ir.UnknownIndex:
+		return e.unknownJSON(x) // emit_unknown_json.go
+
 	default:
 		e.unsupported = append(e.unsupported, Unsupported{Span: x.ExprSpan(), What: describeUnsupported(x)})
 		return fmt.Sprintf("#error unhandled expression %T", x)

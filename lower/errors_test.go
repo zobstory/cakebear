@@ -320,8 +320,6 @@ func TestErrorRefusals(t *testing.T) {
 			"instanceof on a number[] is not supported yet"},
 		{"typeof of a function", "const f = (): number => 1;\nconsole.log(typeof f === \"function\");\n",
 			"typeof of a () => number is not supported yet: it holds a function"},
-		{"in on an unknown object", "function has(u: unknown): boolean {\n  return typeof u === \"object\" && u !== null && \"k\" in u;\n}\nconsole.log(has(1));\n",
-			"in on an unknown is not supported yet"},
 		{"an unknown narrowed to an array", "function list(v: unknown): unknown[] {\n  return Array.isArray(v) ? v : [];\n}\nconsole.log(list(1));\n",
 			"an unknown narrowed to an array, as Array.isArray narrows it, is not supported yet"},
 		{"typeof against a variable", "const u: unknown = 1;\nconst s: string = \"number\";\nconsole.log(typeof u === s);\n",

@@ -159,6 +159,18 @@ func inspectExpr(e Expr, visit func(node any)) {
 		inspectExpr(e.Value, visit)
 	case *TypeOf:
 		inspectExpr(e.Value, visit)
+	case *JSONParse:
+		inspectExpr(e.Text, visit)
+	case *UnknownGet:
+		inspectExpr(e.Value, visit)
+	case *UnknownIn:
+		inspectExpr(e.Key, visit)
+		inspectExpr(e.Value, visit)
+	case *UnknownIsArray:
+		inspectExpr(e.Value, visit)
+	case *UnknownIndex:
+		inspectExpr(e.Value, visit)
+		inspectExpr(e.Index, visit)
 	default:
 		panic(fmt.Sprintf("ir.Inspect: no case for expression %T", e))
 	}
