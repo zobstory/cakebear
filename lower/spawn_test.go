@@ -73,7 +73,7 @@ createServer(async (req, res) => {
     r.end("from a spawn");
   });
 }).listen(3000);
-`, "so it can't use `r`, a node:http value created outside it; one can't be shared with a spawned function yet"},
+`, "so it can't use `r`, a ServerResponse created outside it; one can't be shared with a spawned function yet"},
 		{"a parameter", "function run(n: number): Promise<number> {\n  return spawn(() => n + 1);\n}\n",
 			"so it can't read `n`, which can change while it runs"},
 		{"a named function", "let total: number = 0;\nfunction work(): number {\n  return total;\n}\nconst p: Promise<number> = spawn(work);\n",
@@ -119,7 +119,7 @@ createServer((req, res) => {
   res.end("ok");
 }).listen(3000);
 `)
-	if want := "this handler runs on many requests at once, so it can't use `other`, a node:http value created outside it; one can't be shared between requests yet"; !strings.Contains(joinMsgs(errs), want) {
+	if want := "this handler runs on many requests at once, so it can't use `other`, a Server created outside it; one can't be shared between requests yet"; !strings.Contains(joinMsgs(errs), want) {
 		t.Errorf("errors = %q, want one containing %q", joinMsgs(errs), want)
 	}
 }

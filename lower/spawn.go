@@ -38,13 +38,26 @@ func (l *lowerer) spawnCall(n *ast.Node, c *ast.CallExpression) (out ir.Expr, ha
 	if h := heldHost(*typ.Elem, nil); h != "" {
 		// A host value belongs to the domain that made it, and a spawn's
 		// result reaches its caller's as it is (runtime's CloneValue).
-		l.failf(arg, "spawn's result holds %s, which belongs to the spawned function's domain: return the data you need from it, a URL's href say", h)
+		l.failf(arg, "spawn's result holds %s, which belongs to the spawned function's domain: return the data you need from it", h)
 		return nil, true
 	}
 	// fn runs in parallel with its caller: the race rule a request handler
 	// is held to applies, so the two share nothing that can change.
 	l.checkConcurrent(arg, fn, spawnRuns)
 	return &ir.HostCall{Op: ir.HostSpawn, Args: []ir.Expr{fn}, Typ: typ, Span: l.span(n)}, true
+}
+
+// hostOf names the host value the binding n reads holds, of kind, "a URL"
+// say, or "" for any other value: a maybe is what it holds.
+func (l *lowerer) hostOf(n *ast.Node, kind ir.Kind) string {
+	if kind != ir.KindHost {
+		return ""
+	}
+	t := l.typeOf(n)
+	if m, ok := l.storedMaybe(n); ok {
+		t = *m.Elem
+	}
+	return aType(t)
 }
 
 // heldHost names the host value a value of type t holds, directly or in an

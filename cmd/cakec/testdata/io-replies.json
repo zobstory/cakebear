@@ -1,0 +1,32 @@
+{
+  "/fail?id=3": {
+    "status": 502,
+    "type": "",
+    "body": "Error: /status?code=503 answered 503"
+  },
+  "/r": {
+    "status": 200,
+    "type": "application/json",
+    "body": "{\"id\":0,\"names\":[\"item 0\",\"item 1\"],\"tags\":[\"t0\",\"t1\"],\"total\":1.25,\"hello\":\"hello, world\",\"gone\":404,\"who\":\"cakebear\",\"query\":\"\",\"b\":{\"id\":1,\"name\":\"item 1\",\"tags\":[\"t1\"],\"price\":1.25,\"extra\":true}}"
+  },
+  "/r?id=1": {
+    "status": 200,
+    "type": "application/json",
+    "body": "{\"id\":1,\"names\":[\"item 1\",\"item 2\"],\"tags\":[\"t1\",\"t2\"],\"total\":1.25,\"hello\":\"hello, world\",\"gone\":404,\"who\":\"cakebear\",\"query\":\"?id=1\",\"b\":{\"id\":2,\"name\":\"item 2\",\"tags\":[\"t2\"],\"price\":null,\"extra\":true}}"
+  },
+  "/r?id=2\u0026q=x%20y": {
+    "status": 200,
+    "type": "application/json",
+    "body": "{\"id\":2,\"names\":[\"item 2\",\"item 3\"],\"tags\":[\"t2\",\"t0\"],\"total\":3.75,\"hello\":\"hello, world\",\"gone\":404,\"who\":\"cakebear\",\"query\":\"?id=2\u0026q=x%20y\",\"b\":{\"id\":3,\"name\":\"item 3\",\"tags\":[\"t0\"],\"price\":3.75,\"extra\":true}}"
+  },
+  "/r?id=4": {
+    "status": 200,
+    "type": "application/json",
+    "body": "{\"id\":4,\"names\":[\"item 4\",\"item 5\"],\"tags\":[\"t1\",\"t2\"],\"total\":6.25,\"hello\":\"hello, world\",\"gone\":404,\"who\":\"cakebear\",\"query\":\"?id=4\",\"b\":{\"id\":5,\"name\":\"item 5\",\"tags\":[\"t2\"],\"price\":6.25,\"extra\":true}}"
+  },
+  "/r?id=7\u0026q=%C3%A9": {
+    "status": 200,
+    "type": "application/json",
+    "body": "{\"id\":7,\"names\":[\"item 7\",\"item 8\"],\"tags\":[\"t1\",\"t2\"],\"total\":8.75,\"hello\":\"hello, world\",\"gone\":404,\"who\":\"cakebear\",\"query\":\"?id=7\u0026q=%C3%A9\",\"b\":{\"id\":8,\"name\":\"item 8\",\"tags\":[\"t2\"],\"price\":null,\"extra\":true}}"
+  }
+}
