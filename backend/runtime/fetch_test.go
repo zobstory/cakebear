@@ -161,7 +161,7 @@ func TestFetchReadsAResponse(t *testing.T) { //nolint:paralleltest // isolate sw
 			log(strings.Join(h.GetSetCookie().items, "|"))
 			log(fmt.Sprint(h.Has("X-CUSTOM", nil), r.BodyUsed()))
 			log(Await(co, r.Text(d, nil)))
-			log(fmt.Sprint(r.BodyUsed()))
+			log(strconv.FormatBool(r.BodyUsed()))
 			return struct{}{}
 		})
 	})

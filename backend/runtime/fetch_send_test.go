@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,7 +59,7 @@ func TestFetchSendsNodesHeaders(t *testing.T) { //nolint:paralleltest // isolate
 			t.Errorf("a bare fetch sent %s %q, want %q, as Node sends", name, got, want)
 		}
 	}
-	if e.Method != "GET" || e.Headers["content-type"] != "" {
+	if e.Method != http.MethodGet || e.Headers["content-type"] != "" {
 		t.Errorf("a bare fetch was %s with content-type %q, want GET with none", e.Method, e.Headers["content-type"])
 	}
 
@@ -75,7 +76,7 @@ func TestFetchSendsNodesHeaders(t *testing.T) { //nolint:paralleltest // isolate
 			t.Errorf("a POST sent %s %q, want %q, as Node sends", name, got, want)
 		}
 	}
-	if e.Method != "POST" || e.Body != "hé 😀" {
+	if e.Method != http.MethodPost || e.Body != "hé 😀" {
 		t.Errorf("method %q body %q, want POST and the body", e.Method, e.Body)
 	}
 

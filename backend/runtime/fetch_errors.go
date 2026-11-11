@@ -20,14 +20,18 @@ func withRedirectMode(mode string) context.Context {
 // fetchFailed is `TypeError: fetch failed`, whose cause says why (R9). It
 // has no frames even without --stack-trace-limit=0, and none here.
 func fetchFailed(cause *Error, site *Site) *Error {
-	_ = cause // TODO(s1-errors): an Error's cause, once the runtime holds one
-	return NewError(ErrorType, "fetch failed", site)
+	return NewErrorWith(ErrorType, "fetch failed", ErrorDetails{Cause: cause, HasCause: true}, site)
 }
 
-// invalidFetchURL is Node's rejection of an input that isn't a URL (R11).
+// invalidFetchURL is Node's rejection of an input that isn't a URL (R11),
+// whose cause is the URL parser's TypeError. Its code is a property, not
+// the bracketed code of Node's own errors: it comes from Node's C++
+// (s1-errors, measured).
 func invalidFetchURL(input string, site *Site) *Error {
-	// TODO(s1-errors): cause `[TypeError: Invalid URL] { code: 'ERR_INVALID_URL', input }`.
-	return NewError(ErrorType, "Failed to parse URL from "+input, site)
+	cause := NewErrorWith(ErrorType, "Invalid URL", ErrorDetails{Props: []ErrorProp{
+		StringProp("code", "ERR_INVALID_URL"), StringProp("input", input),
+	}}, nil)
+	return NewErrorWith(ErrorType, "Failed to parse URL from "+input, ErrorDetails{Cause: cause, HasCause: true}, site)
 }
 
 // fetchCause is the cause Node gives a failure Go's client returned: its
@@ -61,10 +65,13 @@ func fetchCause(err error, req *http.Request) *Error {
 	return NewError(ErrorBase, err.Error(), nil)
 }
 
-// systemError is one of Node's system errors: its message, then errno, code
-// and syscall, and the address it concerns, in the order Node lists them.
+// systemError is one of Node's system errors, as its uvException makes
+// them: the message, then errno, code and syscall, and what it concerns, a
+// host's name or an address and a port, in the order Node lists them (R9).
 func systemError(message string, errno float64, code, syscall, key, value, numKey string, num float64) *Error {
-	// TODO(s1-errors): the properties, once an Error holds them.
-	_, _, _, _, _, _, _ = errno, code, syscall, key, value, numKey, num
-	return NewError(ErrorBase, message, nil)
+	props := []ErrorProp{NumberProp("errno", errno), StringProp("code", code), StringProp("syscall", syscall), StringProp(key, value)}
+	if numKey != "" {
+		props = append(props, NumberProp(numKey, num))
+	}
+	return NewErrorWith(ErrorBase, message, ErrorDetails{Props: props}, nil)
 }

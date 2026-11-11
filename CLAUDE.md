@@ -351,6 +351,62 @@ Step 0, what the research found in passing, is done (S1 plan D12, D13):
   `TestTypesNodeServerServes`, `TestTypesNodeTimersMatchNode` and
   `TestTypesNodeRefusals` hold it; 8 mutations RED.
 
+Step 1, fetch, is done (S1 plan D2, D7, D11; `runtime/fetch*.go`,
+`lower/fetch*.go`, `backend/emit_fetch.go`):
+- The runtime's fetch is one process-wide net/http client, set to send and
+  read as Node 24.18's fetch: Node's default headers (accept, accept-language,
+  sec-fetch-mode, `user-agent: node`, `accept-encoding: gzip, deflate`,
+  `connection: keep-alive`), `text/plain;charset=UTF-8` for a string body,
+  no Referer on a redirect, at most 20 redirects, and gzip and deflate
+  decoded by the runtime so content-encoding and content-length read as
+  sent. Go writes the headers sorted and in canonical case: an accepted
+  difference.
+- `cache` isn't the no-op it looked: under the Fetch Standard no-store and
+  reload send `Pragma` and `Cache-Control: no-cache`, and no-cache
+  `Cache-Control: max-age=0` (found by the goldens). Next.js's `next`,
+  `keepalive` and `credentials` are evaluated and dropped, as Node ignores
+  them.
+- A fetch runs on a goroutine and posts its completions to its domain as
+  I/O, which runs after the timers already due, as Node's poll phase follows
+  its timers phase (R18); a spawn's result keeps its place before timers,
+  where the shim puts it. A body read whose bytes are in settles when the
+  microtask queue drains, before any timer (R19). A fetch in flight is
+  pending work, so a program or a request waits for it (R17). The body is
+  read whole as it arrives.
+- Response: status, ok, statusText (the wire's phrase, R8), url,
+  redirected, type, bodyUsed, headers and text() (the Encoding Standard's
+  UTF-8 decode: a BOM dropped, one U+FFFD per ill-formed subpart). Headers:
+  get (null when missing), has, set, append, delete, getSetCookie, and
+  `new Headers()` of an object literal or pairs; a response's are immutable.
+- Failures are rejections, at Node's hop: a URL that isn't one, GET or HEAD
+  with a body, a bad or forbidden method, a bad header, a scheme but http(s),
+  the Fetch Standard's blocked ports, a bad cache mode, and `TypeError: fetch
+  failed` for the network's, its cause Node's system error for a refused
+  connection and a failed lookup, and the redirect limits'. Printed, and in
+  an uncaught report, each is Node's byte for byte, cause and all; the
+  report's header points at the program's fetch call.
+- The runtime's Errors carry a cause and Node's system-error properties
+  (agent s1-errors, `runtime/error.go`, `NewErrorWith`): `[cause]` after
+  every own property, an error's block one level deeper than the error, a
+  cycle through a cause as Node prints it, and JSON.stringify writing the
+  properties and never the cause. The inspect and JSON goldens hold 1,213
+  and 311 more outputs recorded from Node, after the old ones, which are
+  byte for byte as they were; 23 mutations RED. An Error still never changes
+  once made, so a program's own `new Error(m, { cause })` stays refused (S1
+  plan D7): its cause could be any object.
+- Recognised by the declaring file: lib.dom.d.ts, or @types/node's
+  web-globals typed by undici-types (whose `json()` is `Promise<unknown>`).
+- Refused by name: `json()` (step 2), bodies as bytes, Blobs, form data or
+  streams, `clone()`, a Headers' iteration, a signal (step 5), a URL or a
+  Request as the input, an init not written as an object literal, and a
+  value of init's that may be undefined.
+- `TestFetchMatchesNode` holds 7 programs to what Node 24.18 printed against
+  the same in-process server (`testdata/fetch-goldens.json`, recorded by
+  `TestRecordFetchGoldens` with `CAKEBEAR_RECORD_FETCH=<node>`), 20 runs
+  each, the stderr of an uncaught failure's report too;
+  `TestFetchFromHandlersUnderRace` serves 200 requests that each fetch
+  upstream from a race build. 16 mutations RED.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
@@ -2256,6 +2312,9 @@ not listed here that behaves differently is a bug.
 | A handler returns without `res.end()` | the request hangs until it times out | an empty 200, plus a one-line warning on stderr |
 | A throw nothing catches in a request handler, the program's own or one of node:http's (headers after they were sent, a bad status code, a header name that isn't a token, a header value with a character past U+00FF or a control), a rejection nothing handles in its domain (an async handler's, before or after an await), or a write after `end` (M6 D8) | the uncaught exception kills the server | only that request ends: its connection is dropped before `res.end()`, the response stands after it, the report goes to stderr as Node's would, and the server serves on |
 | A header value with spaces at either end | sent as written | trimmed, as `net/http` writes every header |
+| The headers a `fetch` sends (S1 plan D9) | the program's in its order and case, then Node's defaults, content-length last (R6) | the same names and values, in Go's order (sorted) and canonical case: header names are case-insensitive and order-free |
+| The cause of a `fetch` failure other than a refused connection, a failed lookup or a redirect limit (D9) | Node's own error for each (a reset socket, a TLS failure, a timeout) | an Error in Go's words |
+| `fetch` of `localhost` refused on every address (R10) | the cause is an AggregateError of each address's | the last address's error |
 | A request line holding raw bytes from 0x80 up | a 400 | served: each such byte is one U+FFFD in `req.url` |
 | Response header names | sent as written | canonicalised (`content-type` → `Content-Type`) |
 | `writeHead` with a status from 100 to 199 | that status line as the whole response, with no body | an informational response with that status, then `200` with the body: net/http sends a 1xx only as informational |
@@ -2290,7 +2349,7 @@ not listed here that behaves differently is a bug.
 | `xs![i]` read or written with `xs` null or undefined and `i` not a literal (M5 step 6) | evaluates `i`, then throws `Cannot read properties of undefined (reading '3')` | throws before `i` is evaluated, the same TypeError with `(reading an index)` |
 | `i32(a / b)` or `i32(a % b)` with `b` zero, and the same for the other integer types | no such conversion; the shim `i32 = x => x \| 0` gives 0 | a panic saying so: `cakebear: i32(a / b) with b zero: as a number it is Infinity, or NaN for 0 / 0, which i32 can't hold`, exit 2 |
 | An Error's stack (M6 D4) | `Name: message`, then V8's frames | `Name: message` alone: no frames are kept, so `console.log(err)` prints `[Error: m]`, as Node prints under `--stack-trace-limit=0` |
-| The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs, by its bare path for a file with no import or export, which it runs as CommonJS; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code (`node:internal/…`) for node:http's errors, and at an ES module's top level for a non-Error, for an error a builtin throws, and for an Error whose stack was read before the throw | ends `cakebear <version>`; names the source's path at build time, always as a `file://` URL; prints the error with none (above); gives no advice; points at the program's throw, its call or the Error's creation, the caret where V8 would record it. A string made too long by `+`, a pad or a replace has no source excerpt |
+| The report of an uncaught throw (M6 D6) | ends `Node.js v24.18.0`; names the file as it runs, by its bare path for a file with no import or export, which it runs as CommonJS; prints the error with its frames; advises `node --trace-uncaught` for a non-Error; points into its own code (`node:internal/…`) for node:http's errors and fetch's rejections (S1), and at an ES module's top level for a non-Error, for an error a builtin throws, and for an Error whose stack was read before the throw | ends `cakebear <version>`; names the source's path at build time, always as a `file://` URL; prints the error with none (above); gives no advice; points at the program's throw, its call or the Error's creation, the caret where V8 would record it. A string made too long by `+`, a pad or a replace has no source excerpt |
 | A recursion that never ends (M6 D3) | a `RangeError: Maximum call stack size exceeded` a try can catch | Go's `fatal error: stack overflow`, past every catch, exit 2 |
 | The report of a rejection nothing handles whose reason isn't an Error (R13) | `node:internal/process/promises:392` and its line, then `UnhandledPromiseRejection: …` with Node's frames and a `code` block | the same error as Node prints it under `--stack-trace-limit=0`, `[UnhandledPromiseRejection: …] { code: 'ERR_UNHANDLED_REJECTION' }`, after the excerpt of the throw that rejected the promise; none for `reject(v)` |
 | A failure nothing catches in a spawned function's own work, its timer's throw or a rejection nothing there handles, from a request's spawn or after the spawn's result (M6 D7) | under the shim, an uncaught exception: the process dies | before the result, uncaught in the caller: a request's spawn ends only that request (D8), and main's ends main as Node's does. After the result, reported on stderr, and it ends the program only when main spawned it |

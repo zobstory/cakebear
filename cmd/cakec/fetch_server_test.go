@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -108,13 +110,26 @@ func readFetchGoldens(t *testing.T) map[string]fetchGolden {
 // withBase is src with BASE spelled as base, a string literal's contents.
 func withBase(src, base string) string { return strings.ReplaceAll(src, "BASE", base) }
 
+// unaddress is out with the addresses that vary from run to run named:
+// BASE, DEAD, and the dead address's parts in a refused connection's cause,
+// whose errno is the platform's (-61 on macOS, -111 on Linux).
+func unaddress(out, base, dead string) string {
+	host := strings.TrimPrefix(dead, "http://")
+	_, port, _ := strings.Cut(host, ":")
+	return strings.NewReplacer(
+		base, "BASE", dead, "DEAD", host, "DEADADDR", "port: "+port, "port: DEADPORT",
+		"errno: "+strconv.Itoa(-int(syscall.ECONNREFUSED)), "errno: ERRNO",
+	).Replace(out)
+}
+
 // runOutput runs a command and returns its stdout, stderr and exit code.
 func runOutput(cmd *exec.Cmd) (string, string, int) {
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		code = ee.ExitCode()
 	} else if err != nil {
 		code = -1
@@ -124,6 +139,7 @@ func runOutput(cmd *exec.Cmd) (string, string, int) {
 
 // TestRecordFetchGoldens runs every fetch program under Node, when asked to.
 func TestRecordFetchGoldens(t *testing.T) {
+	t.Parallel()
 	node := os.Getenv("CAKEBEAR_RECORD_FETCH")
 	if node == "" {
 		t.Skip("set CAKEBEAR_RECORD_FETCH to Node 24.18's binary to record fetch's goldens")
@@ -136,8 +152,7 @@ func TestRecordFetchGoldens(t *testing.T) {
 			t.Fatal(err)
 		}
 		stdout, stderr, code := runOutput(exec.Command(node, "--stack-trace-limit=0", path))
-		unbase := strings.NewReplacer(base, "BASE", dead, "DEAD", path, "MAIN")
-		out[name] = fetchGolden{Stdout: unbase.Replace(stdout), Stderr: unbase.Replace(stderr), Exit: code}
+		out[name] = fetchGolden{Stdout: unaddress(stdout, base, dead), Stderr: unaddress(strings.ReplaceAll(stderr, path, "MAIN"), base, dead), Exit: code}
 	}
 	raw, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

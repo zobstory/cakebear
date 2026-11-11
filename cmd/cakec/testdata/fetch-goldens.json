@@ -4,6 +4,11 @@
     "stderr": "",
     "exit": 0
   },
+  "causes": {
+    "stdout": "[TypeError: fetch failed] {\n  [cause]: [Error: connect ECONNREFUSED DEADADDR] {\n    errno: ERRNO,\n    code: 'ECONNREFUSED',\n    syscall: 'connect',\n    address: '127.0.0.1',\n    port: DEADPORT\n  }\n}\n[TypeError: Failed to parse URL from not a url] {\n  [cause]: [TypeError: Invalid URL] {\n    code: 'ERR_INVALID_URL',\n    input: 'not a url'\n  }\n}\n[TypeError: fetch failed] { [cause]: [Error: redirect count exceeded] }\n[TypeError: fetch failed] { [cause]: [Error: unexpected redirect] }\n[TypeError: fetch failed] { [cause]: [Error: bad port] }\n[TypeError: fetch failed] { [cause]: [Error: unknown scheme] }\n[TypeError: 'only-if-cached' can be set only with 'same-origin' mode]\n",
+    "stderr": "",
+    "exit": 0
+  },
   "failures": {
     "stdout": "refused TypeError: fetch failed true\nTypeError: Failed to parse URL from not a url\nTypeError: Request with GET/HEAD method cannot have body.\nTypeError: 'BAD METHOD' is not a valid HTTP method.\nTypeError: Headers.append: \"bad name\" is an invalid header name.\nTypeError: Body is unusable: Body has already been read\n",
     "stderr": "",
@@ -33,5 +38,10 @@
     "stdout": "200 true OK \"status 200\"\n201 true Created \"status 201\"\n204 true No Content \"\"\n404 false Not Found \"status 404\"\n500 false Internal Server Error \"status 500\"\n",
     "stderr": "",
     "exit": 0
+  },
+  "uncaught": {
+    "stdout": "before\n",
+    "stderr": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[TypeError: fetch failed] {\n  [cause]: [Error: connect ECONNREFUSED DEADADDR] {\n    errno: ERRNO,\n    code: 'ECONNREFUSED',\n    syscall: 'connect',\n    address: '127.0.0.1',\n    port: DEADPORT\n  }\n}\n\nNode.js v24.18.0\n",
+    "exit": 1
   }
 }

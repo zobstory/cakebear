@@ -139,6 +139,49 @@ setTimeout((): void => console.log("timeout set when it resolved"), 0);
 console.log("text", await r.text());
 export {};
 `,
+	// R9, R11, R15: what each failure prints, its cause too.
+	"causes": `try {
+  await fetch("DEAD/x");
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("not a url");
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("BASE/chain?n=21");
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("BASE/redirect?code=302", { redirect: "error" });
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("http://127.0.0.1:1/");
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("ftp://127.0.0.1/x");
+} catch (e) {
+  console.log(e);
+}
+try {
+  await fetch("BASE/echo", { cache: "only-if-cached" });
+} catch (e) {
+  console.log(e);
+}
+export {};
+`,
+	// R12: a failure nothing catches ends the program.
+	"uncaught": `console.log("before");
+await fetch("DEAD/x");
+export {};
+`,
 	// A program's own Headers, and one as init's headers.
 	"headers": `const h = new Headers({ "X-B": "2", "x-a": "1" });
 h.append("x-a", "again");
@@ -186,9 +229,11 @@ func TestFetchMatchesNode(t *testing.T) {
 			bin := buildProgram(t, name, strings.ReplaceAll(withBase(src, base), "DEAD", dead))
 			for run := range 20 {
 				stdout, stderr, code := runOutput(exec.Command(bin))
-				unbase := strings.NewReplacer(base, "BASE", dead, "DEAD", filepath.Dir(bin), "DIR")
-				if got := unbase.Replace(stdout); got != want.Stdout || code != want.Exit {
+				if got := unaddress(stdout, base, dead); got != want.Stdout || code != want.Exit {
 					t.Fatalf("run %d: exit %d, printed\n%s\nwant exit %d, as Node prints\n%s\nstderr:\n%s", run, code, got, want.Exit, want.Stdout, stderr)
+				}
+				if want.Exit != 0 {
+					checkUncaughtBody(t, unaddress(stderr, base, dead), want.Stderr)
 				}
 			}
 		})
@@ -254,5 +299,24 @@ func TestFetchFromHandlersUnderRace(t *testing.T) {
 	}
 	if strings.Contains(server.stderr.String(), "DATA RACE") {
 		t.Errorf("the race detector found a race:\n%s", server.stderr.String())
+	}
+}
+
+// checkUncaughtBody holds an uncaught report's error to Node's: the same
+// text between the header and the last line. Node's header points into its
+// own run_main, and cakebear's at the program's call (an accepted
+// difference); the last line names the runtime.
+func checkUncaughtBody(t *testing.T, got, node string) {
+	t.Helper()
+	body := func(report, trailer string) string {
+		_, rest, _ := strings.Cut(report, "\n\n")
+		b, _, _ := strings.Cut(rest, "\n\n"+trailer)
+		return b
+	}
+	if g, w := body(got, "cakebear "), body(node, "Node.js "); g != w || g == "" {
+		t.Fatalf("the report's error is\n%s\nwant, as Node reports it\n%s\nwhole report:\n%s", g, w, got)
+	}
+	if !strings.Contains(got, "await fetch(\"DEAD/x\");\n      ^\n") {
+		t.Errorf("the report doesn't point at the fetch call:\n%s", got)
 	}
 }

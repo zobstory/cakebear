@@ -14,9 +14,9 @@ func refused() *Error {
 	}}, nil)
 }
 
-// fetchFailed is R9's whole error: `TypeError: fetch failed`, caused by the
-// refusal.
-func fetchFailed() *Error {
+// builtFetchFailed is R9's whole error, built by hand: `TypeError: fetch
+// failed`, caused by the refusal.
+func builtFetchFailed() *Error {
 	return NewErrorWith(ErrorType, "fetch failed", ErrorDetails{Cause: refused(), HasCause: true}, nil)
 }
 
@@ -40,7 +40,7 @@ const fetchFailedPrinted = `[TypeError: fetch failed] {
 func TestFetchFailureMatchesNode(t *testing.T) {
 	t.Parallel()
 
-	e, cause := fetchFailed(), refused()
+	e, cause := builtFetchFailed(), refused()
 	for _, c := range []struct{ what, got, want string }{
 		{"inspect", Inspect(e), fetchFailedPrinted},
 		{"console.log", Format(e), fetchFailedPrinted},

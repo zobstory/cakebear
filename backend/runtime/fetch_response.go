@@ -46,7 +46,7 @@ func (r *Response) Type() string       { return "basic" }
 // roundTrip sends req and makes the Response from what comes back, or the
 // failure Node rejects with: `TypeError: fetch failed` and its cause (R9).
 func roundTrip(req *http.Request, input string, site *Site) (*Response, *Error) {
-	resp, err := fetchClient().Do(req)
+	resp, err := fetchClient().Do(req) //nolint:bodyclose // decodedBody closes it, once the body is read
 	if err != nil {
 		return nil, fetchFailed(fetchCause(err, req), site)
 	}
@@ -200,7 +200,7 @@ func decodeUTF8(b []byte) string {
 			continue
 		}
 		j := i + 1
-		for k := 0; k < need; k++ {
+		for range need {
 			if j >= len(b) || b[j] < lo || b[j] > hi {
 				break
 			}
