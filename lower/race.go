@@ -56,10 +56,10 @@ type sharedUse struct {
 	name    string
 	file    *ast.SourceFile // where the binding is declared
 	write   bool
-	promise bool // the binding holds a promise
-	host    bool // the binding holds a host value, such as a response
-	opaque  bool // the binding holds a function value the rule can't see into
-	unknown bool // the binding is an unknown, which may hold an object that can change (M6)
+	promise bool   // the binding holds a promise
+	host    string // the host value the binding holds, "a Response" say, or ""
+	opaque  bool   // the binding holds a function value the rule can't see into
+	unknown bool   // the binding is an unknown, which may hold an object that can change (M6)
 	// maybeFunc is a const that may hold a function (M5), which the rule
 	// sees into none of yet.
 	maybeFunc bool
@@ -186,7 +186,7 @@ func (rc *raceChecker) scan(fn *ast.Node) (uses []sharedUse, refs []reference) {
 					}
 					u := sharedUse{
 						sym: sym, name: n.Text(), file: ast.GetSourceFileOfNode(decl), write: isWrite(n),
-						promise: kind == ir.KindPromise, host: kind == ir.KindHost, aggregate: aggregateWord(kind), at: n,
+						promise: kind == ir.KindPromise, host: rc.l.hostOf(n, kind), aggregate: aggregateWord(kind), at: n,
 						maybeFunc: kind == ir.KindFunc && isConstDecl(decl), unknown: kind == ir.KindUnknown,
 					}
 					if u.aggregate != "" {
@@ -457,8 +457,8 @@ func touchPhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 			". Freeze it, or create it " + who.inside + ", or in a function that returns a new one"
 	case u.promise:
 		return "use " + name + ", a promise created outside it; a promise can't be shared " + who.across + " yet"
-	case u.host:
-		return "use " + name + ", a node:http value created outside it; one can't be shared " + who.across + " yet"
+	case u.host != "":
+		return "use " + name + ", " + u.host + " created outside it; one can't be shared " + who.across + " yet"
 	case u.maybeFunc:
 		return "use " + name + ", which may hold a function; one that may be null or undefined can't be shared " + who.across + " yet"
 	case u.unknown:
@@ -480,8 +480,8 @@ func calleePhrase(u sharedUse, who concurrency, from *ast.SourceFile) string {
 		return "uses " + name + ", an " + u.aggregate + " created " + who.outside + ", which isn't frozen: " + u.notFrozen
 	case u.promise:
 		return "uses " + name + ", a promise created " + who.outside
-	case u.host:
-		return "uses " + name + ", a node:http value created " + who.outside
+	case u.host != "":
+		return "uses " + name + ", " + u.host + " created " + who.outside
 	case u.maybeFunc:
 		return "uses " + name + ", which may hold a function"
 	case u.unknown:

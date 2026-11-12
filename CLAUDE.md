@@ -600,6 +600,29 @@ Step 6, process.env, is done (S1 plan D8; `lower/env.go`,
   `TestEnvInHandlersUnderRace` serves 200 requests reading it from a race
   build; `TestEnvRefusals`. 6 mutations RED.
 
+Step 7, the race rule for I/O, is done (S1 done-check 10). It needed no
+new rule: every I/O value is a host value, a promise, an unknown or an
+object, which the rule already holds a handler and a spawn to.
+- `TestIOServerUnderRace` serves 240 requests, 8 at a time, from a race
+  build of one handler using all of S1's I/O: req.url parsed as a URL,
+  process.env, a fan-out to four upstream fetches with headers under an
+  AbortSignal, `res.json()` cast into a shape and returned, `JSON.parse`
+  into an unknown, and an upstream failing on one path (a 502). Every
+  reply is Node 24.18's for the same sources (recorded by
+  `TestRecordIOReplies`), and no race is found.
+- `TestIORaceRefusals` refuses a handler using each I/O value made outside
+  it, directly and through a function it calls: a Response, a Headers, a
+  URL, a URLSearchParams, an AbortSignal, a fetch's promise, JSON as an
+  unknown, JSON cast to a shape that isn't frozen, a let it writes, and a
+  spawn's Response. `TestIOSharedFreely` lets through what never changes:
+  a string from process.env, a frozen const and process.env itself.
+- The rule now names the host value it refuses (`a URL created outside
+  it`), where every one was "a node:http value".
+- The runtime's package-level state behind S1 is read-only tables or
+  synchronised (`sync.Map`, `sync.OnceValue`): audited, and the race build
+  holds it. 2 mutations RED: the rule blind to host values, and a decoded
+  shape's key tables in a plain map, which the race build catches.
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
