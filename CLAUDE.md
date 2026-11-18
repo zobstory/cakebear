@@ -623,6 +623,42 @@ object, which the rule already holds a handler and a spawn to.
   holds it. 2 mutations RED: the rule blind to host values, and a decoded
   shape's key tables in a plain map, which the race build catches.
 
+**Next: step 8, which closes S1** (S1 plan §4 step 8, done-checks 11–14).
+Steps 0–7 are merged (PRs 75–82, `7904416a9a`, 2026-11-12). Step 8 is:
+- **Done-check 11, the reference server:** an example in `examples/`, as
+  `route-server` and `workspace` are. It is a JSON API whose handler fans
+  out to 2–5 upstream stubs in parallel with `Promise.all`. Each upstream
+  is a `URL` with headers under `AbortSignal.timeout`. The handler checks
+  `ok` and `status`, casts or narrows `json()`, and answers JSON. It is
+  served as Node serves the same sources, and from a race build, with
+  every reply Node's. `TestIOServerUnderRace` (step 7) is its nearest
+  model, and its upstream stubs are the in-process server
+  `cmd/cakec/fetch_server_test.go` starts.
+- **Done-check 12, informational:** the reference server's CPU per request
+  and latency against Node's at 1, 8 and 32 connections, and its memory.
+  Use `spikes/m6-cpu/` with its HTTP/1.1 client, `--client h1load`, never
+  `ab -k`, which speaks HTTP/1.0 (see the serving perf step).
+- **Done-check 13, informational:** re-measure wx-next's server-side code
+  with the real lowering, as `~/Desktop/cakebear/agents/m7-remeasure/` did
+  at M7's end. Check
+  the next milestone, S2 (object types), against what it finds.
+- **Done-check 14:** every existing gate stays green.
+- Then close S1 here: in "Current phase" and the "Completed" list. Plan S2
+  only once it is the active phase (per-phase planning, below).
+
+Parked from S1, to carry forward:
+- `TestFetchMatchesNode/order` (step 1) failed once in 20 runs under the
+  gates' full parallel load. A body read landed after a 0 ms timer set
+  when the fetch resolved, because the body's goroutine had not finished
+  when the domain resumed. It is load-dependent and not fixed.
+- The direct JSON decoder, which reads the text straight into a shape, is
+  for the performance track (step 3). The cast decodes the value
+  JSON.parse made, at about 3.5× Node's parse.
+- tsc mode and the language server still need `skipLibCheck` for a project
+  with @types/node, until packages are bound (S4; step 0).
+- The Go build cache grows by about 2 GB for every new worktree, and by
+  several GB for each full run of the gates (see "Build / test / run").
+
 The roadmap after M7, decided 2026-11-10 by zob from
 `~/Desktop/cakebear/roadmap-server-proposal.md`:
 - **S1, talking to services:** `fetch` (Response, Headers, `json()`,
